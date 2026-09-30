@@ -54,7 +54,7 @@ export function BikeLoadingList({ bookings, stopOrder, spaces }: { bookings: Boo
         <ol className="divide-y divide-[#edeef0]">
           {rows.map(({ bike, booking }, i) => (
             <li key={bike.id} className="flex items-center gap-4 px-5 py-3">
-              <span className="w-6 text-[13px] font-extrabold text-[#9a9ba5] tabular-nums">{i + 1}</span>
+              <span className="w-6 text-[13px] font-extrabold text-[#6b6d78] tabular-nums">{i + 1}</span>
               <BikeThumb bike={bike} onOpen={() => setOpen({ bike, booking })} />
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-bold text-[#050a44] truncate">
@@ -66,7 +66,7 @@ export function BikeLoadingList({ bookings, stopOrder, spaces }: { bookings: Boo
                 </p>
               </div>
               <div className="text-right shrink-0">
-                <p className="text-[11px] font-bold text-[#777680]">Unload at</p>
+                <p className="text-[11px] font-bold text-[#686873]">Unload at</p>
                 <p className="text-[13px] font-bold text-[#050a44]">{booking.to}</p>
               </div>
             </li>
@@ -87,7 +87,7 @@ export function BikeLoadingList({ bookings, stopOrder, spaces }: { bookings: Boo
               ['Paid for bike', formatLKR(open.bike.fee)],
             ].map(([k, v]) => (
               <div key={k}>
-                <dt className="text-[11px] font-bold text-[#777680]">{k}</dt>
+                <dt className="text-[11px] font-bold text-[#686873]">{k}</dt>
                 <dd className="font-semibold text-[#050a44] break-words">{v}</dd>
               </div>
             ))}

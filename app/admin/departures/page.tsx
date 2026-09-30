@@ -127,7 +127,7 @@ function Manifest({ run }: { run: Run }) {
             <p className="text-[13px] text-[#46464f]">
               {formatDateLabel(run.date)} · {formatTime12(run.schedule.departure)}
             </p>
-            <p className="text-[12px] text-[#777680]">
+            <p className="text-[12px] text-[#686873]">
               {run.bus.name} · {run.bus.regNo}
             </p>
           </div>
@@ -203,7 +203,7 @@ function Manifest({ run }: { run: Run }) {
                     <td className="px-4 py-3 min-w-[170px]">
                       <p className="font-bold text-[#050a44] whitespace-nowrap">{b.passenger.name}</p>
                       <p className="text-[12px] text-[#46464f] whitespace-nowrap">{b.passenger.phone}</p>
-                      <p className="text-[11px] text-[#9a9ba5] whitespace-nowrap">{b.ref}</p>
+                      <p className="text-[11px] text-[#6b6d78] whitespace-nowrap">{b.ref}</p>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {b.from} → {b.to}
@@ -313,7 +313,7 @@ function Legend({ className, label }: { className: string; label: string }) {
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] font-bold text-[#777680]">{label}</dt>
+      <dt className="text-[11px] font-bold text-[#686873]">{label}</dt>
       <dd className="font-semibold text-[#050a44] break-words">{value}</dd>
     </div>
   );
@@ -366,7 +366,7 @@ function SeatGrid({
 
   return (
     <div className="rounded-2xl bg-[#f2f4f6] p-3">
-      <p className="text-[10px] font-bold text-[#777680] text-right mb-2 pr-1">Front · driver</p>
+      <p className="text-[10px] font-bold text-[#686873] text-right mb-2 pr-1">Front · driver</p>
       <div className="space-y-2">
         {rows.map((r, i) => (
           <div key={i} className="grid grid-cols-[1fr_1fr_14px_1fr_1fr] gap-1.5">

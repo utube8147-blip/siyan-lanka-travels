@@ -76,7 +76,7 @@ export default function FleetPage() {
               <div className="mt-4 border-t border-[#edeef0] pt-3">
                 <p className="text-[12px] font-bold text-[#46464f] mb-1">Timetabled departures</p>
                 {runs.length === 0 ? (
-                  <p className="text-[13px] text-[#777680]">None yet. Add one in Routes &amp; timetable.</p>
+                  <p className="text-[13px] text-[#686873]">None yet. Add one in Routes &amp; timetable.</p>
                 ) : (
                   <ul className="text-[13px] text-[#050a44] space-y-0.5">
                     {runs.map((s) => (

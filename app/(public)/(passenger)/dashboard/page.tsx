@@ -36,7 +36,7 @@ type ResaleStatus = 'active' | 'sold' | 'expired';
 const RESALE_STATUS_BADGE: Record<ResaleStatus, { label: string; className: string }> = {
   active: { label: 'Active', className: 'bg-[#006e1c]/10 text-[#006e1c]' },
   sold: { label: 'Sold', className: 'bg-[#050a44]/10 text-[#050a44]' },
-  expired: { label: 'Expired', className: 'bg-[#f1f3f9] text-[#9a9ba5]' },
+  expired: { label: 'Expired', className: 'bg-[#f1f3f9] text-[#6b6d78]' },
 };
 
 interface ResaleListing {
@@ -520,7 +520,7 @@ export default function Dashboard() {
                 <span className="material-symbols-outlined text-[20px]">person</span>
               </div>
               <div>
-                <p className="text-[11px] font-bold text-[#9a9ba5] uppercase tracking-wide">Full Name</p>
+                <p className="text-[11px] font-bold text-[#6b6d78] uppercase tracking-wide">Full Name</p>
                 <p className="text-[14px] font-bold text-[#050a44]">{details.name}</p>
               </div>
             </div>
@@ -529,7 +529,7 @@ export default function Dashboard() {
                 <span className="material-symbols-outlined text-[20px]">mail</span>
               </div>
               <div>
-                <p className="text-[11px] font-bold text-[#9a9ba5] uppercase tracking-wide">Email Address</p>
+                <p className="text-[11px] font-bold text-[#6b6d78] uppercase tracking-wide">Email Address</p>
                 <p className="text-[14px] font-bold text-[#050a44]">{details.email}</p>
               </div>
             </div>
@@ -538,7 +538,7 @@ export default function Dashboard() {
                 <span className="material-symbols-outlined text-[20px]">phone</span>
               </div>
               <div>
-                <p className="text-[11px] font-bold text-[#9a9ba5] uppercase tracking-wide">Phone Number</p>
+                <p className="text-[11px] font-bold text-[#6b6d78] uppercase tracking-wide">Phone Number</p>
                 <p className="text-[14px] font-bold text-[#050a44]">{details.phone}</p>
               </div>
             </div>
@@ -547,7 +547,7 @@ export default function Dashboard() {
                 <span className="material-symbols-outlined text-[20px]">badge</span>
               </div>
               <div>
-                <p className="text-[11px] font-bold text-[#9a9ba5] uppercase tracking-wide">National ID</p>
+                <p className="text-[11px] font-bold text-[#6b6d78] uppercase tracking-wide">National ID</p>
                 <p className="text-[14px] font-bold text-[#050a44]">ID-8849-2024-X</p>
               </div>
             </div>
@@ -573,14 +573,14 @@ export default function Dashboard() {
         <div className="md:col-span-8 flex flex-col gap-[24px]">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-[24px]">
             {/* Wallet */}
-            <div className="relative h-[200px] rounded-2xl p-[24px] text-white shadow-[0_8px_24px_-6px_rgba(5,10,68,0.45)] overflow-hidden bg-[#050a44]">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#0d1670] via-[#050a44] to-[#02051f]" />
+            <div className="keep-navy relative h-[200px] rounded-2xl p-[24px] text-white shadow-[0_10px_28px_-8px_rgba(0,0,0,0.55)] overflow-hidden bg-[#111216] ring-1 ring-[#feb700]/25">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#2a2b31] via-[#17181c] to-[#0b0c0e]" />
               <div className="absolute inset-0 bg-[linear-gradient(115deg,transparent_35%,rgba(255,255,255,0.08)_50%,transparent_65%)]" />
               <div
                 className="absolute inset-0 opacity-[0.05] mix-blend-overlay"
                 style={{ backgroundImage: 'repeating-linear-gradient(115deg, #ffffff 0px, #ffffff 1px, transparent 1px, transparent 5px)' }}
               />
-              <div className="absolute -right-16 -bottom-16 w-56 h-56 bg-[#7a7fbb] opacity-[0.18] rounded-full blur-3xl" />
+              <div className="absolute -right-16 -bottom-16 w-56 h-56 bg-[#feb700] opacity-[0.14] rounded-full blur-3xl" />
 
               <div className="relative z-10 h-full flex flex-col justify-between">
                 <div className="flex items-start justify-between">
@@ -592,7 +592,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="flex items-end justify-between">
-                  <p className="text-[11px] font-medium text-white/50 tracking-[0.1em] tabular-nums">•••• •••• •••• 4821</p>
+                  <p className="text-[11px] font-medium text-white/70 tracking-[0.1em] tabular-nums">•••• •••• •••• 4821</p>
                   <div className="flex gap-[10px]">
                     <button
                       onClick={() => setAddingFunds(true)}
@@ -602,7 +602,7 @@ export default function Dashboard() {
                     </button>
                     <button
                       onClick={() => setViewingHistory(true)}
-                      className="bg-white/10 text-white border border-white/15 text-[12px] font-bold px-4 py-2 rounded-lg hover:bg-white/15 transition-colors"
+                      className="bg-white/10 text-white border border-white/25 text-[12px] font-bold px-4 py-2 rounded-lg hover:bg-white/20 transition-colors"
                     >
                       History
                     </button>
@@ -612,19 +612,19 @@ export default function Dashboard() {
             </div>
 
             {/* Rewards */}
-            <div className="relative h-[200px] rounded-2xl p-[24px] overflow-hidden shadow-[0_8px_24px_-6px_rgba(180,124,0,0.35)] bg-gradient-to-br from-[#feb700] to-[#e6a300]">
+            <div className="on-gold relative h-[200px] rounded-2xl p-[24px] overflow-hidden shadow-[0_8px_24px_-6px_rgba(180,124,0,0.35)] bg-gradient-to-br from-[#feb700] to-[#e6a300]">
               <div
                 className="absolute inset-0 opacity-[0.08]"
                 style={{ backgroundImage: 'radial-gradient(circle, #6b4b00 1px, transparent 1px)', backgroundSize: '14px 14px' }}
               />
-              <div className="relative z-10 h-full flex flex-col justify-between text-[#6b4b00]">
+              <div className="relative z-10 h-full flex flex-col justify-between text-[#3d2b00]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[#7c5800] text-[18px]">workspace_premium</span>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#7c5800]">Gold Tier</p>
+                    <span className="material-symbols-outlined text-[#3d2b00] text-[18px]">workspace_premium</span>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#3d2b00]">Gold Tier</p>
                   </div>
                   <div className="w-9 h-9 rounded-full bg-white/40 border border-[#7c5800]/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[#7c5800] text-[18px]">stars</span>
+                    <span className="material-symbols-outlined text-[#3d2b00] text-[18px]">stars</span>
                   </div>
                 </div>
 
@@ -632,11 +632,11 @@ export default function Dashboard() {
                   <h3 className="text-[28px] font-extrabold tabular-nums leading-none">{rewardsPoints.toLocaleString()} pts</h3>
                   <div className="mt-4">
                     <div className="w-full bg-black/10 h-1.5 rounded-full">
-                      <div className="bg-[#6b4b00] h-full rounded-full" style={{ width: `${rewardsProgress}%` }} />
+                      <div className="bg-[#3d2b00] h-full rounded-full" style={{ width: `${rewardsProgress}%` }} />
                     </div>
                     <div className="flex justify-between mt-[6px]">
-                      <p className="text-[10px] font-bold text-[#7c5800] uppercase tracking-wide">Gold</p>
-                      <p className="text-[11px] font-semibold text-[#6b4b00]">{pointsToNextTier.toLocaleString()} pts to Platinum</p>
+                      <p className="text-[10px] font-bold text-[#3d2b00] uppercase tracking-wide">Gold</p>
+                      <p className="text-[11px] font-semibold text-[#3d2b00]">{pointsToNextTier.toLocaleString()} pts to Platinum</p>
                     </div>
                   </div>
                 </div>
@@ -736,7 +736,7 @@ export default function Dashboard() {
                     <div className="flex items-baseline gap-[6px]">
                       <p className="text-[15px] font-extrabold text-[#050a44]">{formatLKR(listing.listedPrice)}</p>
                       {listing.listedPrice < listing.originalPrice && (
-                        <p className="text-[11px] font-medium text-[#9a9ba5] line-through">{formatLKR(listing.originalPrice)}</p>
+                        <p className="text-[11px] font-medium text-[#6b6d78] line-through">{formatLKR(listing.originalPrice)}</p>
                       )}
                     </div>
 
@@ -852,7 +852,7 @@ export default function Dashboard() {
                           {STATUS_BADGE[b.status].label}
                         </span>
                       </td>
-                      <td className={`px-[24px] py-4 font-bold text-[13px] ${b.status === 'cancelled' ? 'text-[#9a9ba5] line-through' : 'text-[#050a44]'}`}>
+                      <td className={`px-[24px] py-4 font-bold text-[13px] ${b.status === 'cancelled' ? 'text-[#6b6d78] line-through' : 'text-[#050a44]'}`}>
                         {formatLKR(b.totalPrice)}
                       </td>
                       <td className="px-[24px] py-4">

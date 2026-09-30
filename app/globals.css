@@ -270,9 +270,11 @@ html.dark .hover\:text-\[\#46464f\]:hover:not(.keep-navy, .keep-navy *),
 html.dark .hover\:text-on-surface-variant:hover:not(.keep-navy, .keep-navy *) { color: #a6a8b0; }
 html.dark .focus\:text-\[\#46464f\]:focus:not(.keep-navy, .keep-navy *),
 html.dark .focus\:text-on-surface-variant:focus:not(.keep-navy, .keep-navy *) { color: #a6a8b0; }
+html.dark .text-\[\#686873\]:not(.keep-navy, .keep-navy *),
+html.dark .text-\[\#6b6d78\]:not(.keep-navy, .keep-navy *),
 html.dark .text-\[\#777680\]:not(.keep-navy, .keep-navy *),
 html.dark .text-\[\#9a9ba5\]:not(.keep-navy, .keep-navy *),
-html.dark .text-\[\#c7c5d1\]:not(.keep-navy, .keep-navy *) { color: #75777f; }
+html.dark .text-\[\#c7c5d1\]:not(.keep-navy, .keep-navy *) { color: #9c9ea6; }
 html.dark .text-\[\#006e1c\]:not(.keep-navy, .keep-navy *) { color: #5bd97a; }
 html.dark .text-\[\#ba1a1a\]:not(.keep-navy, .keep-navy *),
 html.dark .text-\[\#93000a\]:not(.keep-navy, .keep-navy *),
@@ -306,9 +308,18 @@ html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *) .material-symbols-outli
 html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *) .text-white\/70,
 html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *) .text-white\/60 { color: rgba(14,15,18,.65); }
 
-/* Gold stays gold, with dark text, in both themes */
-html.dark .bg-\[\#feb700\], html.dark .bg-\[\#feb700\] * { color: #14120a; }
-html.dark .bg-\[\#feb700\] .text-white\/70 { color: rgba(20,18,10,.7); }
+/* Gold stays gold, with dark text, in both themes (beats the text swaps above) */
+html.dark .bg-\[\#feb700\], html.dark .bg-\[\#feb700\] *,
+html.dark .bg-\[\#ffd54a\], html.dark .bg-\[\#ffd54a\] *,
+html.dark .on-gold, html.dark .on-gold * { color: #14120a !important; }
+html.dark .on-gold .text-\[\#3d2b00\] { color: #3d2b00 !important; }
+html.dark .bg-\[\#feb700\] .text-white\/70 { color: rgba(20,18,10,.7) !important; }
+
+/* Black buttons (bg-black / #000) would vanish on charcoal: make them light */
+html.dark .bg-black:not(.keep-navy, .keep-navy *), html.dark .bg-\[\#000000\]:not(.keep-navy, .keep-navy *) { background-color: #ededf0; }
+html.dark .bg-black.text-white, html.dark .bg-black .text-white, html.dark .bg-black.text-white *,
+html.dark .bg-\[\#000000\].text-white, html.dark .bg-\[\#000000\].text-\[\#ffffff\],
+html.dark .bg-\[\#000000\].text-white *, html.dark .bg-\[\#000000\].text-\[\#ffffff\] * { color: #0e0f12; }
 
 /* Brand blocks (header, footer, sidebar, navy sections): charcoal */
 html.dark .keep-navy.bg-\[\#050a44\] { background-color: #131418; }
@@ -334,7 +345,7 @@ html.dark .seat-available { border-color: #2c2e35; color: #a6a8b0; }
 html.dark .seat-booked { background-color: #2b2d34; color: #75777f; }
 html.dark .seat-female { background-color: rgba(244,166,198,.16); color: #f9c6dc; }
 html.dark .hero-mesh { background: #0e0f12; }
-html.dark ::placeholder { color: #75777f; }
+html.dark ::placeholder { color: #9c9ea6; }
 html.dark * { scrollbar-color: #2b2d34 #0e0f12; }
 /* Leftover blue accents */
 html.dark .bg-\[\#0f144c\] { background-color: #feb700; }

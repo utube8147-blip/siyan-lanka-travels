@@ -289,7 +289,7 @@ export default function MarketplaceBuyPage() {
                   disabled={isDownloading || !qrImageUrl}
                   className={`w-full py-3 px-4 rounded-xl font-bold text-[13px] flex items-center justify-center gap-2 transition-all ${
                     isDownloading || !qrImageUrl
-                      ? 'bg-[#e1e2e4] text-[#9a9ba5] cursor-not-allowed'
+                      ? 'bg-[#e1e2e4] text-[#6b6d78] cursor-not-allowed'
                       : 'bg-black text-white hover:opacity-90 active:scale-95'
                   }`}
                 >
@@ -397,14 +397,14 @@ export default function MarketplaceBuyPage() {
             </div>
 
             <div className="px-[24px] py-[16px] flex items-center justify-between">
-              <span className="text-[12px] text-[#9a9ba5] line-through">{formatLKR(ticket.originalPrice)} original fare</span>
+              <span className="text-[12px] text-[#6b6d78] line-through">{formatLKR(ticket.originalPrice)} original fare</span>
               <span className="text-[12px] font-bold text-[#006e1c]">You save {formatLKR(savings)}</span>
             </div>
           </div>
 
           <div className="bg-white rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
             <h2 className="text-[16px] font-semibold mb-[4px]">Your details</h2>
-            <p className="text-[12px] text-[#9a9ba5] mb-[16px]">
+            <p className="text-[12px] text-[#6b6d78] mb-[16px]">
               This ticket transfers to your name — carry a matching photo ID when boarding.
             </p>
             <div className="space-y-[12px]">
@@ -440,7 +440,7 @@ export default function MarketplaceBuyPage() {
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-[#9a9ba5] px-1">Your e-ticket will be sent here.</p>
+              <p className="text-[11px] text-[#6b6d78] px-1">Your e-ticket will be sent here.</p>
             </div>
           </div>
 
@@ -536,7 +536,7 @@ export default function MarketplaceBuyPage() {
                   </button>
                 ))}
                 {wallet && (
-                  <p className="text-[11px] text-[#9a9ba5] mt-[8px] px-1">
+                  <p className="text-[11px] text-[#6b6d78] mt-[8px] px-1">
                     You'll receive a payment prompt on {buyerPhone || 'your registered number'} to confirm.
                   </p>
                 )}

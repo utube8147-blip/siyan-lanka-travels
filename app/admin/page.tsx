@@ -59,7 +59,7 @@ export default function AdminOverview() {
           <Card key={s.label} className="p-5">
             <p className="text-[12px] font-bold text-[#46464f]">{s.label}</p>
             <p className="text-[26px] font-extrabold text-[#050a44] tabular-nums mt-1">{s.value}</p>
-            <p className="text-[12px] text-[#777680] mt-1">{s.note}</p>
+            <p className="text-[12px] text-[#686873] mt-1">{s.note}</p>
           </Card>
         ))}
       </div>
@@ -127,7 +127,7 @@ export default function AdminOverview() {
                   <p className="text-[12px] text-[#46464f] truncate">
                     {b.from} → {b.to} · {formatDateLabel(b.date, false)} · {b.seats.join(', ')}
                   </p>
-                  <p className="text-[11px] text-[#777680] truncate">{scheduleRoute(b.scheduleId)}</p>
+                  <p className="text-[11px] text-[#686873] truncate">{scheduleRoute(b.scheduleId)}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-[13px] font-bold text-[#050a44] tabular-nums">{formatLKR(b.total)}</p>

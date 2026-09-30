@@ -157,7 +157,7 @@ function RefundPageInner() {
                           ? 'bg-[#006e1c] text-white'
                           : step.active
                           ? 'bg-[#feb700]/20 text-[#7c5800] border-2 border-[#feb700]'
-                          : 'bg-[#e1e2e4] text-[#9a9ba5]'
+                          : 'bg-[#e1e2e4] text-[#6b6d78]'
                       }`}
                     >
                       {step.done ? (
@@ -171,7 +171,7 @@ function RefundPageInner() {
                     )}
                   </div>
                   <div className="pb-[20px]">
-                    <p className={`text-[13px] font-bold ${step.done || step.active ? 'text-[#050a44]' : 'text-[#9a9ba5]'}`}>
+                    <p className={`text-[13px] font-bold ${step.done || step.active ? 'text-[#050a44]' : 'text-[#6b6d78]'}`}>
                       {step.label}
                     </p>
                     {step.active && <p className="text-[11px] text-[#46464f] mt-0.5">Usually takes 5–7 business days</p>}

@@ -295,7 +295,7 @@ function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => vo
           </tbody>
         </table>
       </div>
-      <p className="text-[11px] text-[#777680]">Travel times over 24 hours aren&apos;t supported by the time picker.</p>
+      <p className="text-[11px] text-[#686873]">Travel times over 24 hours aren&apos;t supported by the time picker.</p>
       <div className="flex flex-wrap items-center gap-3">
         <Button
           variant="secondary"

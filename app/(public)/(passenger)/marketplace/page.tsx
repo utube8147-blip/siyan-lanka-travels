@@ -171,7 +171,7 @@ export default function TicketResaleMarketplace() {
             <div>
               <label className="text-[11px] font-bold text-[#46464f] px-1">From</label>
               <div className="flex items-center gap-[8px] mt-1 bg-[#f2f4f6] rounded-lg px-3 py-2.5">
-                <span className="material-symbols-outlined text-[18px] text-[#9a9ba5]">location_on</span>
+                <span className="material-symbols-outlined text-[18px] text-[#6b6d78]">location_on</span>
                 <input
                   value={fromQuery}
                   onChange={(e) => setFromQuery(e.target.value)}
@@ -184,7 +184,7 @@ export default function TicketResaleMarketplace() {
             <div>
               <label className="text-[11px] font-bold text-[#46464f] px-1">To</label>
               <div className="flex items-center gap-[8px] mt-1 bg-[#f2f4f6] rounded-lg px-3 py-2.5">
-                <span className="material-symbols-outlined text-[18px] text-[#9a9ba5]">directions_bus</span>
+                <span className="material-symbols-outlined text-[18px] text-[#6b6d78]">directions_bus</span>
                 <input
                   value={toQuery}
                   onChange={(e) => setToQuery(e.target.value)}
@@ -197,7 +197,7 @@ export default function TicketResaleMarketplace() {
             <div>
               <label className="text-[11px] font-bold text-[#46464f] px-1">Travel date</label>
               <div className="flex items-center gap-[8px] mt-1 bg-[#f2f4f6] rounded-lg px-3 py-2.5">
-                <span className="material-symbols-outlined text-[18px] text-[#9a9ba5]">calendar_today</span>
+                <span className="material-symbols-outlined text-[18px] text-[#6b6d78]">calendar_today</span>
                 <input
                   value={dateQuery}
                   onChange={(e) => setDateQuery(e.target.value)}
@@ -391,7 +391,7 @@ export default function TicketResaleMarketplace() {
 
                   <div className="md:w-56 flex flex-row md:flex-col justify-between items-center md:items-end md:pl-[24px] md:border-l border-[#e1e2e4] gap-[12px]">
                     <div className="text-center md:text-right">
-                      <p className="text-[11px] font-medium text-[#9a9ba5] line-through mb-0.5">
+                      <p className="text-[11px] font-medium text-[#6b6d78] line-through mb-0.5">
                         {formatLKR(ticket.originalPrice)}
                       </p>
                       <div className="flex items-baseline gap-[6px] justify-center md:justify-end">

@@ -95,7 +95,7 @@ export default function BookingsPage() {
 
       <Card className="p-4 mb-4 space-y-3">
         <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#9a9ba5]" />
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#6b6d78]" />
           <input
             value={q}
             onChange={(e) => {
@@ -232,14 +232,14 @@ export default function BookingsPage() {
               ['Channel', open.channel],
             ].map(([k, v]) => (
               <div key={k}>
-                <dt className="text-[11px] font-bold text-[#777680]">{k}</dt>
+                <dt className="text-[11px] font-bold text-[#686873]">{k}</dt>
                 <dd className="font-semibold text-[#050a44] break-words">{v}</dd>
               </div>
             ))}
           </dl>
           {open.bikes?.length ? (
             <div className="rounded-xl bg-[#f8f9fb] border border-[#edeef0] p-3 space-y-2">
-              <p className="text-[11px] font-bold text-[#777680]">Luggage compartment</p>
+              <p className="text-[11px] font-bold text-[#686873]">Luggage compartment</p>
               {open.bikes.map((bike) => (
                 <div key={bike.id} className="flex items-center gap-3">
                   <BikeThumb bike={bike} size={64} />

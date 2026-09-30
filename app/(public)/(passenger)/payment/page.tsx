@@ -373,7 +373,7 @@ function PaymentPageInner() {
                     disabled={isDownloading || !qrImageUrl}
                     className={`w-full py-3 px-4 rounded-xl font-bold text-[13px] flex items-center justify-center gap-2 transition-all ${
                         isDownloading || !qrImageUrl
-                        ? 'bg-[#e1e2e4] text-[#9a9ba5] cursor-not-allowed'
+                        ? 'bg-[#e1e2e4] text-[#6b6d78] cursor-not-allowed'
                         : 'bg-black text-white hover:opacity-90 active:scale-95'
                     }`}
                     >
@@ -526,7 +526,7 @@ function PaymentPageInner() {
                   </button>
                 ))}
                 {wallet && (
-                  <p className="text-[11px] text-[#9a9ba5] mt-[8px] px-1">
+                  <p className="text-[11px] text-[#6b6d78] mt-[8px] px-1">
                     You'll receive a payment prompt on {contactPhone || 'your registered number'} to confirm.
                   </p>
                 )}

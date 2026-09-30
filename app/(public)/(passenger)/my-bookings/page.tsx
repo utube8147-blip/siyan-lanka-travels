@@ -262,13 +262,13 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
         <div className="p-[24px] space-y-[20px]">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] font-bold text-[#9a9ba5] uppercase">{booking.from}</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase">{booking.from}</p>
               <p className="text-[24px] font-extrabold text-[#050a44]">{cityCode(booking.from)}</p>
               <p className="text-[12px] font-medium text-[#46464f]">{booking.departureTime}</p>
             </div>
             <span className="material-symbols-outlined text-[#050a44] text-[22px]">arrow_forward</span>
             <div className="text-right">
-              <p className="text-[10px] font-bold text-[#9a9ba5] uppercase">{booking.to}</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase">{booking.to}</p>
               <p className="text-[24px] font-extrabold text-[#050a44]">{cityCode(booking.to)}</p>
               <p className="text-[12px] font-medium text-[#46464f]">{booking.arrivalTime}</p>
             </div>
@@ -278,12 +278,12 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
 
           <div className="grid grid-cols-2 gap-[16px] text-[13px]">
             <div>
-              <p className="text-[10px] font-bold text-[#9a9ba5] uppercase mb-0.5">Date</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Date</p>
               <p className="font-bold text-[#050a44]">{booking.date}</p>
             </div>
             {booking.bikes.length > 0 ? (
               <div>
-                <p className="text-[10px] font-bold text-[#9a9ba5] uppercase mb-0.5">Luggage compartment</p>
+                <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Luggage compartment</p>
                 <p className="font-bold text-[#050a44] flex items-center gap-1">
                   <span className="material-symbols-outlined text-[16px] text-[#7c5800]">two_wheeler</span>
                   {booking.bikes.join(', ')}
@@ -291,24 +291,24 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
               </div>
             ) : (
               <div>
-                <p className="text-[10px] font-bold text-[#9a9ba5] uppercase mb-0.5">Operator</p>
+                <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Operator</p>
                 <p className="font-bold text-[#050a44]">{booking.operator}</p>
               </div>
             )}
             <div>
-              <p className="text-[10px] font-bold text-[#9a9ba5] uppercase mb-0.5">Seat{booking.seats.length > 1 ? 's' : ''}</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Seat{booking.seats.length > 1 ? 's' : ''}</p>
               <p className="font-bold text-[#050a44]">{booking.seats.join(', ')}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-[#9a9ba5] uppercase mb-0.5">Class</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Class</p>
               <p className="font-bold text-[#050a44]">{booking.travelClass}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-[#9a9ba5] uppercase mb-0.5">Bus</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Bus</p>
               <p className="font-bold text-[#050a44]">{booking.busNumber}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-[#9a9ba5] uppercase mb-0.5">Fare Paid</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Fare Paid</p>
               <p className="font-bold text-[#050a44]">{formatLKR(booking.totalPrice)}</p>
             </div>
           </div>
@@ -521,7 +521,7 @@ function PaymentSettleModal({
                 </button>
               ))}
               {wallet && (
-                <p className="text-[11px] text-[#9a9ba5] mt-[8px] px-1">
+                <p className="text-[11px] text-[#6b6d78] mt-[8px] px-1">
                   You'll receive a payment prompt on {contactPhone || 'your registered number'} to confirm.
                 </p>
               )}
@@ -839,12 +839,12 @@ export default function MyBookingsPage() {
                           >
                             {STATUS_BADGE[booking.status].label}
                           </span>
-                          <span className="text-[#9a9ba5] text-[11px] font-mono tracking-wide">{booking.bookingRef}</span>
+                          <span className="text-[#6b6d78] text-[11px] font-mono tracking-wide">{booking.bookingRef}</span>
                         </div>
 
                         <div className="flex justify-between items-center relative py-[8px]">
                           <div className="flex flex-col">
-                            <span className="text-[10px] text-[#9a9ba5] font-bold uppercase">{booking.from}</span>
+                            <span className="text-[10px] text-[#6b6d78] font-bold uppercase">{booking.from}</span>
                             <span className="text-[22px] font-extrabold text-[#050a44]">{cityCode(booking.from)}</span>
                             <span className="text-[12px] font-medium text-[#46464f]">{booking.departureTime}</span>
                           </div>
@@ -861,7 +861,7 @@ export default function MyBookingsPage() {
                           </div>
 
                           <div className="flex flex-col items-end">
-                            <span className="text-[10px] text-[#9a9ba5] font-bold uppercase">{booking.to}</span>
+                            <span className="text-[10px] text-[#6b6d78] font-bold uppercase">{booking.to}</span>
                             <span className="text-[22px] font-extrabold text-[#050a44]">{cityCode(booking.to)}</span>
                             <span className="text-[12px] font-medium text-[#46464f]">{booking.arrivalTime}</span>
                           </div>
@@ -881,14 +881,14 @@ export default function MyBookingsPage() {
                           {isPending ? (
                             <button
                               disabled
-                              className="bg-[#f2f4f6] text-[#9a9ba5] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                              className="bg-[#f2f4f6] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
                             >
                               Ticket Pending
                             </button>
                           ) : isCancelling ? (
                             <button
                               disabled
-                              className="bg-[#e1e2e4] text-[#9a9ba5] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                              className="bg-[#e1e2e4] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
                             >
                               Cancelling…
                             </button>

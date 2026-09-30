@@ -71,7 +71,7 @@ export default function SeatSelectionDrawer({
 
   const getSeatClass = (seatId: string) => {
     if (isBookedByMale(seatId)) {
-      return `${seatBaseClass} bg-[#e1e2e4] border-transparent text-[#777680] opacity-60 cursor-not-allowed`;
+      return `${seatBaseClass} bg-[#e1e2e4] border-transparent text-[#686873] opacity-60 cursor-not-allowed`;
     }
     if (isBookedByFemale(seatId)) {
       return `${seatBaseClass} bg-[#f4a6c6] border-transparent text-[#7a1d47] opacity-80 cursor-not-allowed`;
@@ -265,7 +265,7 @@ export default function SeatSelectionDrawer({
         <div className="px-6 py-5 border-t border-[#c7c5d1]/30 bg-white shrink-0">
           <div className="flex flex-wrap gap-2 min-h-[34px] mb-4">
             {selectedSeats.length === 0 ? (
-              <p className="text-[#9a9ba5] italic text-sm self-center">No seats selected yet.</p>
+              <p className="text-[#6b6d78] italic text-sm self-center">No seats selected yet.</p>
             ) : (
               selectedSeats.map((seat) => (
                 <div

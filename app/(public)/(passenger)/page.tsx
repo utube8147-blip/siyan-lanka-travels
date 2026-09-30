@@ -247,7 +247,7 @@ export default function LandingPage() {
                     </span>
                     <p className="text-[14px] sm:text-[16px] font-bold text-[#050a44] mt-3 sm:mt-4 leading-tight">{k.label}</p>
                     <p className="text-[13px] text-[#46464f] mt-1">Up to {formatLKR(k.fullRouteFee)}</p>
-                    <p className="text-[12px] text-[#777680] mt-0.5">Less for shorter trips</p>
+                    <p className="text-[12px] text-[#686873] mt-0.5">Less for shorter trips</p>
                   </div>
                 ))}
                 <p className="col-span-3 text-[12px] text-[#46464f]">

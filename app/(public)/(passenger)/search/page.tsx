@@ -525,7 +525,7 @@ function SearchPageInner() {
                       </span>
                       <span
                         className={`sm:hidden text-[9px] font-bold uppercase tracking-wide leading-none ${
-                          isSelected ? 'text-white/70' : 'text-[#9a9ba5]'
+                          isSelected ? 'text-white/70' : 'text-[#6b6d78]'
                         }`}
                       >
                         {stripWeekdayShort(d)}
@@ -655,7 +655,7 @@ function SearchPageInner() {
                         {s.trip.bikeSpaces > 0 && (
                           <span
                             className={`ml-2 inline-flex items-center gap-1 text-[12px] font-bold rounded-full px-2 py-0.5 ${
-                              s.trip.bikeSpacesLeft > 0 ? 'bg-[#feb700]/15 text-[#7c5800]' : 'bg-[#e1e2e4] text-[#777680]'
+                              s.trip.bikeSpacesLeft > 0 ? 'bg-[#feb700]/15 text-[#7c5800]' : 'bg-[#e1e2e4] text-[#686873]'
                             }`}
                             title="Space for bikes in the luggage compartment"
                           >

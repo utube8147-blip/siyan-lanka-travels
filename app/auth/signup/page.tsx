@@ -136,7 +136,7 @@ export default function SignupPage() {
                 className="w-full px-4 py-3 bg-white border border-outline/30 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
                 required
               />
-              <p className="text-xs text-[#777680] mt-1.5">We'll use this to verify your bookings — no need to re-enter it each time.</p>
+              <p className="text-xs text-[#686873] mt-1.5">We'll use this to verify your bookings — no need to re-enter it each time.</p>
             </div>
             
             <div>
@@ -149,7 +149,7 @@ export default function SignupPage() {
                 className="w-full px-4 py-3 bg-white border border-outline/30 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
                 required 
               />
-              <p className="text-xs text-[#777680] mt-1.5">Must be at least 8 characters.</p>
+              <p className="text-xs text-[#686873] mt-1.5">Must be at least 8 characters.</p>
             </div>
 
             <div className="pt-2">

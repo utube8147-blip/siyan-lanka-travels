@@ -296,7 +296,7 @@ function BookingPageInner() {
             <span className="material-symbols-outlined text-[16px] mx-1 text-[#46464f]">chevron_right</span>
           </div>
           <div className="flex items-center">
-            <span className="opacity-50">Payment</span>
+            <span className="text-[#6b6d78]">Payment</span>
           </div>
         </nav>
 
@@ -322,7 +322,7 @@ function BookingPageInner() {
               <span className="text-[12px] font-medium text-[#46464f]">Departure</span>
               <span className="text-[14px] font-bold">{formatTime12(trip.departure)}</span>
             </div>
-            <span className="material-symbols-outlined text-[#777680]">chevron_right</span>
+            <span className="material-symbols-outlined text-[#686873]">chevron_right</span>
             <div className="flex flex-col items-start">
               <span className="text-[12px] font-medium text-[#46464f]">Arrival</span>
               <span className="text-[14px] font-bold">{formatTime12(trip.arrival)}{trip.arrivalDayOffset ? ' (+1 day)' : ''}</span>
@@ -345,7 +345,7 @@ function BookingPageInner() {
                   <p className="text-[14px] font-bold">{pickup}</p>
                   {pickupTime && <p className="text-[12px] text-[#46464f]">{pickupTime}</p>}
                 </div>
-                <span className="material-symbols-outlined text-[#777680]">arrow_forward</span>
+                <span className="material-symbols-outlined text-[#686873]">arrow_forward</span>
                 <div className="text-right">
                   <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">Drop-off</p>
                   <p className="text-[14px] font-bold">{drop}</p>
@@ -377,7 +377,7 @@ function BookingPageInner() {
               </div>
 
               {bookingFor === 'other' && (
-                <p className="text-[11px] text-[#9a9ba5] mb-[16px] -mt-[8px]">
+                <p className="text-[11px] text-[#6b6d78] mb-[16px] -mt-[8px]">
                   This ticket is for someone else - your account details won't be used here, just theirs.
                 </p>
               )}
@@ -430,7 +430,7 @@ function BookingPageInner() {
                 </div>
               </div>
 
-              <p className="mt-[16px] text-[11px] text-[#9a9ba5]">
+              <p className="mt-[16px] text-[11px] text-[#6b6d78]">
                 Booking more than one seat (e.g. for family)? Pick as many seats as you need in the next step.
               </p>
             </div>
@@ -472,7 +472,7 @@ function BookingPageInner() {
                         disabled={otpCooldown > 0}
                         className={`px-4 rounded-lg font-bold text-[12px] whitespace-nowrap transition-colors ${
                           otpCooldown > 0
-                            ? 'bg-[#e1e2e4] text-[#9a9ba5] cursor-not-allowed'
+                            ? 'bg-[#e1e2e4] text-[#6b6d78] cursor-not-allowed'
                             : 'bg-[#050a44] text-white hover:opacity-90'
                         }`}
                       >
@@ -521,7 +521,7 @@ function BookingPageInner() {
                     }`}
                     type="email"
                   />
-                  <p className="mt-1 text-[11px] text-[#9a9ba5] px-1">Your e-ticket will be sent here.</p>
+                  <p className="mt-1 text-[11px] text-[#6b6d78] px-1">Your e-ticket will be sent here.</p>
                 </div>
               </div>
             </div>
