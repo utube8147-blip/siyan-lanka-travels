@@ -95,6 +95,41 @@ Same pages, two layouts, switched at the `md` breakpoint (768px):
   offline notice (`components/OfflineIndicator.tsx`) replace spinners and
   blank pages.
 
+## Staff area & roles
+- **Entrance:** `https://your-domain/staff/login`. It isn't linked anywhere on
+  the customer site (share it with staff yourself) and is hidden from Google.
+  Anyone who opens `/admin` without staff access is sent to this page, never
+  to the passenger sign-in.
+- **Roles** (set in Accounts & roles):
+  - *Passenger*: books and manages their own trips.
+  - *Staff*: Operations: departures & manifests, bookings, buses, routes &
+    timetable, and logging running costs (fuel, tolls, parking, cleaning).
+  - *Super admin*: everything, plus Business: Finance (P&L by month / bus /
+    departure, other income), Expenses (all categories), Fleet health (service
+    due, fuel efficiency, insurance / licence / permit expiry), Crew (licences,
+    payroll, one-tap salary run), Accounts & roles, Settings (booking fee,
+    promo, refund tiers, bike fees, resale switch).
+- The server (`proxy.ts`) and the database rules both enforce this: staff can't
+  open Business pages or read salaries, passengers can't read any of it.
+
+## Seat resale
+Runs on the database (`resale_listings`, `list_for_resale`, `buy_resale`):
+a passenger lists a booking for no more than they paid; a buyer pays the
+price + booking fee; in one transaction the seller's booking closes (they're
+paid the price) and the buyer gets a new booking for the same seats.
+**It's off.** Customers see "coming soon" and no links. To launch: Staff area
+→ Settings → Seat resale → On → Save. (Demo mode: `features.resale` in
+`config/operator.ts`.) Payouts to sellers still need a payment gateway.
+
+## Animation
+Built with Motion (`motion/react`); see `components/motion/` (BlurText and
+AnimatedNumber are adapted from React Bits, credit in that folder's README).
+Screens ease in on navigation (`app/(public)/(passenger)/template.tsx`), the
+phone tab highlight slides between tabs, the seat picker is a bottom sheet
+you can drag down to close, lists cascade in (`useStaggerIn`), numbers count
+(seats left, totals), and bookings end with an animated check. Everything
+respects the device's "Reduce motion" setting.
+
 ## Dark mode
 Follows the phone/computer setting until the visitor taps the sun/moon
 button in the header (then it's remembered). It works by swapping the app's
@@ -169,6 +204,8 @@ browser). To connect a real database:
    - `supabase/migrations/20261001000000_init.sql` — tables, security rules,
      booking functions, bike-photo storage
    - `supabase/seed.sql` — ND-2323, Route 48 both ways, the timetable
+   - `supabase/migrations/20261002000000_admin_erp_resale.sql` — super admin
+     role, expenses/income/documents/crew, seat resale (off by default)
    (or with the Supabase CLI: `supabase link` then `supabase db push`, then
    run `seed.sql`).
 3. **Keys:** Dashboard → Project Settings → API. Copy `.env.example` to
@@ -179,9 +216,10 @@ browser). To connect a real database:
 4. **Auth settings:** Authentication → URL Configuration: set Site URL to
    your domain (and add `http://localhost:3000` for testing). "Confirm email"
    is on by default: new passengers click a link before they can sign in.
-5. **Make yourself staff:** sign up on the site, then in the SQL Editor run
-   `update public.profiles set role = 'staff' where id = (select id from auth.users where email = 'you@example.com');`
-   Sign out and back in; `/admin` now opens.
+5. **Make yourself super admin:** sign up on the site, then in the SQL Editor run
+   `update public.profiles set role = 'admin' where id = (select id from auth.users where email = 'you@example.com');`
+   Then sign in at `/staff/login`. From then on, give other people access in
+   Staff area → Accounts & roles (no more SQL needed).
 
 What the database guarantees (tested, see `supabase/tests/`):
 - Prices, fees, promo and bike charges are calculated **in the database**
@@ -195,6 +233,24 @@ What the database guarantees (tested, see `supabase/tests/`):
 - Bike photos are private (bucket `bike-photos`); each passenger uploads into
   their own folder; staff can see all.
 - Seats update live on everyone's screen (Supabase Realtime).
+
+Sign-in & pages (with Supabase):
+- The Sign in button goes to the real sign-in page and returns you to where
+  you were. There is no pretend user in this mode.
+- Staying signed in: the session is kept in cookies for 400 days (the most
+  browsers allow) and renewed on every visit, so people stay signed in on
+  that device until they sign out or clear their browser data. The tokens are
+  signed by Supabase (can't be forged) and cookies are HTTPS-only in
+  production. Settings: `lib/features.ts` (`AUTH_COOKIE_MAX_AGE`).
+- `proxy.ts` checks the session on the server: My trips, Account, Payment
+  and Refund need a signed-in passenger; `/admin` needs a staff account.
+- Signed-in passengers skip the phone-code step (their account is the
+  verification). The account page shows real figures from their bookings;
+  editing name/phone saves to `profiles`.
+- Resale is on the database but switched off (see Seat resale).
+- Route pages (`/bus/...`) and the sitemap read the timetable from the
+  database, refreshed hourly; new routes get pages automatically.
+- Payment is still simulated in both modes until a gateway is added.
 
 Changing prices or rules later: the database copy lives in the
 `app_settings` table (booking fee, promo, refund policy, bike fees). Keep it in

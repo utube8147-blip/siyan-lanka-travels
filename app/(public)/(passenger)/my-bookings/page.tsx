@@ -7,6 +7,7 @@ import Link from 'next/link';
 import SeatSelectionDrawer, { type Gender } from '@/components/SeatSelectionDrawer';
 import { OPERATOR } from '@/config/operator';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
+import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { toBookingView, type BookingView, type ViewStatus } from '@/lib/bookingView';
@@ -564,7 +565,7 @@ function PaymentSettleModal({
 
 export default function MyBookingsPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, mode: authMode } = useAuth();
   const { data, ready, updateBooking } = useStore();
   const bookings = useMemo<Booking[]>(
     () =>
@@ -596,6 +597,7 @@ export default function MyBookingsPage() {
   } | null>(null);
 
   const upcoming = bookings.filter((b) => b.status === 'confirmed' || b.status === 'pending');
+  const tripsRef = useStaggerIn<HTMLDivElement>(ready && upcoming.length > 0);
   const cancelRefund = useMemo(() => {
     const raw = cancelTarget ? rawOf(cancelTarget.id) : undefined;
     if (!raw) return { percent: 0, amount: 0 };
@@ -763,57 +765,185 @@ export default function MyBookingsPage() {
         </div>
       )}
 
-      {/*
-        Shared 2-column grid. Row 1 holds the hero (left) and the Trip reminders +
-        Rewards stack (right), so the hero always stretches to the combined height
-        of the two right-hand cards. Row 2 holds Upcoming Journeys and Need Help.
-        On mobile the `order-*` classes give: hero, upcoming, reminders+rewards, help.
-      */}
-      <div className="bk-grid">
-        {/* 1. Hero — row 1, left */}
-        <section className="keep-navy relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1c1d22] to-[#111216] p-[32px] md:p-[40px] text-white shadow-lg bk-hero min-w-0 flex flex-col justify-center">
-          <div
-            className="absolute inset-0 opacity-[0.07] pointer-events-none"
-            style={{
-              backgroundImage: 'radial-gradient(circle, #ffffff 1.5px, transparent 1.5px)',
-              backgroundSize: '18px 18px',
-            }}
-          />
-          <div className="relative flex flex-col md:flex-row justify-between items-center gap-[24px]">
-            <div className="space-y-[12px] max-w-md text-center md:text-left">
-              <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-[#ffd54a]">
-                {OPERATOR.name}
-              </span>
-              <h1 className="hidden md:block text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Your Journeys</h1>
-              <p className="text-white/70 text-[14px] md:text-[15px]">
-                Change seats, move to another day or cancel. Show the ticket to the conductor when you board.
-              </p>
-              <div className="flex gap-[12px] pt-[8px] justify-center md:justify-start">
-                <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
-                  <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Upcoming</span>
-                  <span className="text-[18px] font-bold">{upcoming.length} Trips</span>
-                </div>
-                <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
-                  <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Rewards</span>
-                  <span className="text-[18px] font-bold">{(rewardsPoints / 1000).toFixed(1)}k pts</span>
+      <div className="flex flex-col lg:flex-row gap-[32px]">
+        {/* Main content */}
+        <div className="flex-1 space-y-[40px] min-w-0">
+          {/* Hero */}
+          <section className="keep-navy relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1c1d22] to-[#111216] p-[32px] md:p-[40px] text-white shadow-lg">
+            <div
+              className="absolute inset-0 opacity-[0.07] pointer-events-none"
+              style={{
+                backgroundImage: 'radial-gradient(circle, #ffffff 1.5px, transparent 1.5px)',
+                backgroundSize: '18px 18px',
+              }}
+            />
+            <div className="relative flex flex-col md:flex-row justify-between items-center gap-[24px]">
+              <div className="space-y-[12px] max-w-md text-center md:text-left">
+                <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-[#ffd54a]">
+                  {OPERATOR.name}
+                </span>
+                <h1 className="hidden md:block text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Your Journeys</h1>
+                <p className="text-white/70 text-[14px] md:text-[15px]">
+                  Change seats, move to another day or cancel. Show the ticket to the conductor when you board.
+                </p>
+                <div className="flex gap-[12px] pt-[8px] justify-center md:justify-start">
+                  <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
+                    <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Upcoming</span>
+                    <span className="text-[18px] font-bold">{upcoming.length} Trips</span>
+                  </div>
+                  {authMode === 'demo' && (
+<div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
+                    <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Rewards</span>
+                    <span className="text-[18px] font-bold">{(rewardsPoints / 1000).toFixed(1)}k pts</span>
+                  </div>
+)}
                 </div>
               </div>
+              <div className="relative hidden md:block w-full md:w-80 h-40 md:h-48 rounded-xl overflow-hidden shadow-xl border-4 border-white/10 flex-shrink-0">
+                <img
+                  alt="Siyan Lanka coach interior"
+                  className="w-full h-full object-cover"
+                  src="/brand/interior.jpg"
+                />
+              </div>
             </div>
-            <div className="relative hidden md:block w-full md:w-80 h-40 md:h-48 rounded-xl overflow-hidden shadow-xl border-4 border-white/10 flex-shrink-0">
-              <img
-                alt="Siyan Lanka coach interior"
-                className="w-full h-full object-cover"
-                src="/brand/interior.png"
-              />
-            </div>
-          </div>
-        </section>
+          </section>
 
-        {/* 2. Trip reminders + Rewards — row 1, right */}
-        <div className="bk-side flex flex-col gap-[20px]">
+          {/* Upcoming journeys */}
+          <section>
+            <div className="flex items-center justify-between mb-[16px]">
+              <h2 className="text-[18px] font-bold text-[#050a44] flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#feb700]">event_upcoming</span>
+                Upcoming Journeys
+              </h2>
+              {upcoming.length > 0 && (
+                <button className="text-[#050a44] font-bold text-[12px] hover:underline">View All</button>
+              )}
+            </div>
+
+            {upcoming.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm p-[32px] text-center">
+                <p className="text-[13px] text-[#46464f]">
+                  {user ? 'No upcoming trips on this account.' : 'Sign in to see trips booked with your account.'}
+                </p>
+                <Link href="/search" className="inline-block mt-4 px-5 py-2.5 bg-[#050a44] text-white rounded-xl text-[13px] font-bold">
+                  Book a seat
+                </Link>
+              </div>
+            ) : (
+              <div ref={tripsRef} className="grid grid-cols-1 md:grid-cols-2 gap-x-[16px] gap-y-[28px]">
+                {upcoming.map((booking) => {
+                  const isPending = booking.status === 'pending';
+                  const isCancelling = cancellingId === booking.id;
+
+                  return (
+                    <div
+                      key={booking.id}
+                      className="relative bg-white rounded-2xl shadow-sm hover:shadow-md border border-[#c7c5d1] transition-shadow"
+                    >
+                      <div className="p-[20px] pb-[16px]">
+                        <div className="flex justify-between items-start mb-[16px]">
+                          <span
+                            className={`px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider ${STATUS_BADGE[booking.status].className}`}
+                          >
+                            {STATUS_BADGE[booking.status].label}
+                          </span>
+                          <span className="text-[#6b6d78] text-[11px] font-mono tracking-wide">{booking.bookingRef}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center relative py-[8px]">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-[#6b6d78] font-bold uppercase">{booking.from}</span>
+                            <span className="text-[22px] font-extrabold text-[#050a44]">{cityCode(booking.from)}</span>
+                            <span className="text-[12px] font-medium text-[#46464f]">{booking.departureTime}</span>
+                          </div>
+
+                          <div className="flex-1 flex items-center justify-center px-4 relative">
+                            <div className="w-full h-px border-t border-dashed border-[#c7c5d1] absolute" />
+                            <span
+                              className={`material-symbols-outlined bg-white z-10 scale-125 ${
+                                isPending ? 'text-[#7c5800]' : 'text-[#050a44]'
+                              }`}
+                            >
+                              {isPending ? 'hourglass_empty' : 'directions_bus'}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] text-[#6b6d78] font-bold uppercase">{booking.to}</span>
+                            <span className="text-[22px] font-extrabold text-[#050a44]">{cityCode(booking.to)}</span>
+                            <span className="text-[12px] font-medium text-[#46464f]">{booking.arrivalTime}</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-[16px] flex justify-between items-center gap-[12px]">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <OperatorBadge operator={booking.operator} />
+                            <div className="min-w-0">
+                              <p className="text-[12px] text-[#46464f] font-medium">
+                                {booking.date} · Seat{booking.seats.length > 1 ? 's' : ''} {booking.seats.join(', ')}
+                              </p>
+                              <p className="text-[12px] text-[#050a44] font-bold truncate">{booking.travelClass}</p>
+                            </div>
+                          </div>
+
+                          {isPending ? (
+                            <button
+                              disabled
+                              className="bg-[#f2f4f6] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                            >
+                              Ticket Pending
+                            </button>
+                          ) : isCancelling ? (
+                            <button
+                              disabled
+                              className="bg-[#e1e2e4] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                            >
+                              Cancelling…
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setTicketTarget(booking)}
+                              className="bg-[#050a44] text-white px-4 py-2.5 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                            >
+                              View Ticket
+                              <span className="material-symbols-outlined text-[14px]">confirmation_number</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {booking.status === 'confirmed' && (
+                        <>
+                          {/* Perforation: this is a ticket stub, not a generic card */}
+                          <div className="relative">
+                            <div className="absolute -left-[9px] top-0 -translate-y-1/2 w-[18px] h-[18px] rounded-full bg-[#f7f8fa] border border-[#c7c5d1]" />
+                            <div className="absolute -right-[9px] top-0 -translate-y-1/2 w-[18px] h-[18px] rounded-full bg-[#f7f8fa] border border-[#c7c5d1]" />
+                            <div className="mx-[18px] border-t border-dashed border-[#c7c5d1]" />
+                          </div>
+                          <TicketActionBar
+                            booking={booking}
+                            onChangeSeats={() => openSeatChange(booking)}
+                            onReschedule={() => setRescheduleTarget(booking)}
+                            onCancel={() => setCancelTarget(booking)}
+                          />
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* Sidebar — informational only now; actions live on the booking they affect */}
+        <aside className="w-full lg:w-[300px] flex-shrink-0 space-y-[20px]">
           <NotificationOptIn />
-          <div className="flex-1 mt-2 bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
-            <div className="absolute left-0 top-0 w-1.5 h-full bg-gradient-to-b from-[#feb700] to-[#ffe08a]" />
+          <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
+            {authMode === 'demo' && (
+<div className="absolute left-0 top-0 w-1.5 h-full bg-gradient-to-b from-[#feb700] to-[#ffe08a]" />
+)}
             <h4 className="font-bold text-[#050a44] text-[14px]">{OPERATOR.shortName} Rewards</h4>
             <p className="text-[12px] text-[#46464f]">
               You're only <span className="font-bold text-[#050a44]">{pointsToNextReward} pts</span> away from a free Gold-class upgrade!
@@ -828,154 +958,26 @@ export default function MyBookingsPage() {
               Explore Perks →
             </button>
           </div>
-        </div>
 
-        {/* 3. Upcoming journeys — row 2, left */}
-        <section className="bk-upcoming min-w-0">
-          <div className="flex items-center justify-between mb-[16px]">
-            <h2 className="text-[18px] font-bold text-[#050a44] flex items-center gap-2">
-              <span className="material-symbols-outlined text-[#feb700]">event_upcoming</span>
-              Upcoming Journeys
-            </h2>
-            {upcoming.length > 0 && (
-              <button className="text-[#050a44] font-bold text-[12px] hover:underline">View All</button>
-            )}
-          </div>
 
-          {upcoming.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm p-[32px] text-center">
-              <p className="text-[13px] text-[#46464f]">
-                {user ? 'No upcoming trips on this account.' : 'Sign in to see trips booked with your account.'}
-              </p>
-              <Link href="/search" className="inline-block mt-4 px-5 py-2.5 bg-[#050a44] text-white rounded-xl text-[13px] font-bold">
-                Book a seat
-              </Link>
+          <div className="bg-[#f2f4f6] rounded-2xl p-[20px] border border-[#e1e2e4] space-y-[8px]">
+            <h4 className="font-bold text-[#050a44] text-[14px] flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">support_agent</span>
+              Need Help?
+            </h4>
+            <p className="text-[11px] text-[#46464f] leading-relaxed">
+              Contact us about changes, lost items or group bookings.
+            </p>
+            <div className="pt-[4px] space-y-1">
+              {OPERATOR.contact.phone ? (
+                <a className="text-[#050a44] font-bold text-[13px] block" href={OPERATOR.contact.phoneHref}>{OPERATOR.contact.phone}</a>
+              ) : null}
+              <a className="text-[#46464f] text-[11px] underline block" href={`mailto:${OPERATOR.contact.email}`}>
+                {OPERATOR.contact.email}
+              </a>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-[16px] gap-y-[28px]">
-              {upcoming.map((booking) => {
-                const isPending = booking.status === 'pending';
-                const isCancelling = cancellingId === booking.id;
-
-                return (
-                  <div
-                    key={booking.id}
-                    className="relative bg-white rounded-2xl shadow-sm hover:shadow-md border border-[#c7c5d1] transition-shadow"
-                  >
-                    <div className="p-[20px] pb-[16px]">
-                      <div className="flex justify-between items-start mb-[16px]">
-                        <span
-                          className={`px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider ${STATUS_BADGE[booking.status].className}`}
-                        >
-                          {STATUS_BADGE[booking.status].label}
-                        </span>
-                        <span className="text-[#6b6d78] text-[11px] font-mono tracking-wide">{booking.bookingRef}</span>
-                      </div>
-
-                      <div className="flex justify-between items-center relative py-[8px]">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] text-[#6b6d78] font-bold uppercase">{booking.from}</span>
-                          <span className="text-[22px] font-extrabold text-[#050a44]">{cityCode(booking.from)}</span>
-                          <span className="text-[12px] font-medium text-[#46464f]">{booking.departureTime}</span>
-                        </div>
-
-                        <div className="flex-1 flex items-center justify-center px-4 relative">
-                          <div className="w-full h-px border-t border-dashed border-[#c7c5d1] absolute" />
-                          <span
-                            className={`material-symbols-outlined bg-white z-10 scale-125 ${
-                              isPending ? 'text-[#7c5800]' : 'text-[#050a44]'
-                            }`}
-                          >
-                            {isPending ? 'hourglass_empty' : 'directions_bus'}
-                          </span>
-                        </div>
-
-                        <div className="flex flex-col items-end">
-                          <span className="text-[10px] text-[#6b6d78] font-bold uppercase">{booking.to}</span>
-                          <span className="text-[22px] font-extrabold text-[#050a44]">{cityCode(booking.to)}</span>
-                          <span className="text-[12px] font-medium text-[#46464f]">{booking.arrivalTime}</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-[16px] flex justify-between items-center gap-[12px]">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <OperatorBadge operator={booking.operator} />
-                          <div className="min-w-0">
-                            <p className="text-[12px] text-[#46464f] font-medium">
-                              {booking.date} · Seat{booking.seats.length > 1 ? 's' : ''} {booking.seats.join(', ')}
-                            </p>
-                            <p className="text-[12px] text-[#050a44] font-bold truncate">{booking.travelClass}</p>
-                          </div>
-                        </div>
-
-                        {isPending ? (
-                          <button
-                            disabled
-                            className="bg-[#f2f4f6] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
-                          >
-                            Ticket Pending
-                          </button>
-                        ) : isCancelling ? (
-                          <button
-                            disabled
-                            className="bg-[#e1e2e4] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
-                          >
-                            Cancelling…
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setTicketTarget(booking)}
-                            className="bg-[#050a44] text-white px-4 py-2.5 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
-                          >
-                            View Ticket
-                            <span className="material-symbols-outlined text-[14px]">confirmation_number</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {booking.status === 'confirmed' && (
-                      <>
-                        {/* Perforation: this is a ticket stub, not a generic card */}
-                        <div className="relative">
-                          <div className="absolute -left-[9px] top-0 -translate-y-1/2 w-[18px] h-[18px] rounded-full bg-[#f7f8fa] border border-[#c7c5d1]" />
-                          <div className="absolute -right-[9px] top-0 -translate-y-1/2 w-[18px] h-[18px] rounded-full bg-[#f7f8fa] border border-[#c7c5d1]" />
-                          <div className="mx-[18px] border-t border-dashed border-[#c7c5d1]" />
-                        </div>
-                        <TicketActionBar
-                          booking={booking}
-                          onChangeSeats={() => openSeatChange(booking)}
-                          onReschedule={() => setRescheduleTarget(booking)}
-                          onCancel={() => setCancelTarget(booking)}
-                        />
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* 4. Need Help — row 2, right. The negative top margin cancels the extra
-            row gap on desktop so it sits 20px under Rewards, like before. */}
-        <div className="bk-help self-start bg-[#f2f4f6] rounded-2xl p-[20px] border border-[#e1e2e4] space-y-[8px]">
-          <h4 className="font-bold text-[#050a44] text-[14px] flex items-center gap-2">
-            <span className="material-symbols-outlined text-[16px]">support_agent</span>
-            Need Help?
-          </h4>
-          <p className="text-[11px] text-[#46464f] leading-relaxed">
-            Contact us about changes, lost items or group bookings.
-          </p>
-          <div className="pt-[4px] space-y-1">
-            {OPERATOR.contact.phone ? (
-              <a className="text-[#050a44] font-bold text-[13px] block" href={OPERATOR.contact.phoneHref}>{OPERATOR.contact.phone}</a>
-            ) : null}
-            <a className="text-[#46464f] text-[11px] underline block" href={`mailto:${OPERATOR.contact.email}`}>
-              {OPERATOR.contact.email}
-            </a>
           </div>
-        </div>
+        </aside>
       </div>
 
       {cancelTarget && (
@@ -1031,31 +1033,6 @@ export default function MyBookingsPage() {
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Page layout: hero + right stack share row 1, so the hero always
-           matches the combined height of Trip reminders + Rewards. */
-        .bk-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr);
-          gap: 32px;
-        }
-        /* Mobile order: hero, upcoming, reminders + rewards, help */
-        .bk-hero { order: 1; }
-        .bk-upcoming { order: 2; }
-        .bk-side { order: 3; }
-        .bk-help { order: 4; }
-
-        @media (min-width: 1024px) {
-          .bk-grid {
-            grid-template-columns: minmax(0, 1fr) 300px;
-            column-gap: 32px;
-            row-gap: 20px;
-          }
-          .bk-hero { order: 0; grid-column: 1; grid-row: 1; }
-          .bk-side { order: 0; grid-column: 2; grid-row: 1; }
-          .bk-upcoming { order: 0; grid-column: 1; grid-row: 2; margin-top: 20px; }
-          .bk-help { order: 0; grid-column: 2; grid-row: 2; }
         }
       `}</style>
     </main>

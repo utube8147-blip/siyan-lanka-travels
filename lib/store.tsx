@@ -16,7 +16,7 @@ import { createSeedData, SEED_BUSES, SEED_ROUTES, SEED_SCHEDULES, STORE_VERSION 
 import { addDays, bikeSpacesFor, bikeSpacesUsed, genId, genRef, isLiveBooking, takenSeats, todayISO } from './trips';
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
 import { bookingFromRow, busFromRow, busToRow, routeFromRow, routeToRow, scheduleFromRow, scheduleToRow } from './supabase/mappers';
-import { useAuth } from '@/contexts/AuthContext';
+import { isStaffRole, useAuth } from '@/contexts/AuthContext';
 
 const STORAGE_KEY = 'vivid-demo-data';
 
@@ -154,7 +154,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const mode: 'supabase' | 'demo' = isSupabaseConfigured ? 'supabase' : 'demo';
   const { user, isLoading: authLoading } = useAuth();
   const userId = user?.id ?? null;
-  const staff = user?.role === 'operator';
+  const staff = isStaffRole(user?.role);
   const [data, setData] = useState<StoreData>(EMPTY);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -432,7 +432,7 @@ export function StoreLoading() {
 }
 
 export function PageSkeleton() {
-  const bar = 'rounded-lg bg-[#e1e2e4] animate-pulse';
+  const bar = 'rounded-lg skeleton';
   return (
     <div className="max-w-[1440px] mx-auto px-4 md:px-[64px] py-6 md:py-8 space-y-5" role="status" aria-label="Loading">
       <div className={`${bar} h-7 w-48`} />

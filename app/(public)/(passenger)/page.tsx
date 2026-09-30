@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, ArrowLeftRight, Calendar, MapPin, Navigation, Phone, MessageCircle, Wind, Armchair, Usb, Wifi, ShieldCheck, Lightbulb, Mail } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
+import BlurText from '@/components/motion/BlurText';
+import AnimatedNumber from '@/components/motion/AnimatedNumber';
+import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { useStore } from '@/lib/store';
 import { addDays, allStopNames, busCapacity, findTrips, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route } from '@/lib/types';
@@ -13,8 +16,8 @@ import type { Route } from '@/lib/types';
 const HERO_IMAGE = '/brand/bus.jpg';
 
 const INTERIOR_CARDS = [
-  { image: '/brand/interior.png', title: 'Reclining leather seats', subtitle: 'Room to sleep on the overnight run east' },
-  { image: '/brand/bus.jpg', title: 'ND 2323, Siyan Lanka Travels', subtitle: 'Your coach, every trip' },
+  { image: '/brand/interior.jpg', title: 'Reclining leather seats', subtitle: 'Room to sleep on the overnight run east' },
+  { image: '/brand/poster.jpg', title: 'ND 2323, Siyan Lanka Travels', subtitle: 'Your coach, every trip' },
 ];
 
 const AMENITY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -52,6 +55,8 @@ export default function LandingPage() {
     return () => clearInterval(id);
   }, [paused]);
 
+  const stopsRef = useStaggerIn<HTMLOListElement>();
+  const bikesRef = useStaggerIn<HTMLDivElement>();
   const weeklyDepartures = data.schedules.filter((s) => s.active).reduce((n, s) => n + s.days.length, 0);
   const activeBuses = data.buses.filter((b) => b.status === 'active');
 
@@ -92,15 +97,15 @@ export default function LandingPage() {
                 <ShieldCheck className="w-4 h-4 text-[#feb700]" />
                 {weeklyDepartures} overnight departures a week
               </p>
-              <h1 className="text-[30px] sm:text-[44px] lg:text-[54px] font-bold mb-4 lg:mb-6 leading-[1.05] tracking-tight text-white text-shadow-premium">
-                {firstRoute ? (
-                  <>
-                    {firstRoute.stops[0].name} to {firstRoute.stops[firstRoute.stops.length - 1].name}, with a seat that&apos;s yours.
-                  </>
-                ) : (
-                  <>Book your seat before you leave home.</>
-                )}
-              </h1>
+              <BlurText
+                as="h1"
+                className="text-[30px] sm:text-[44px] lg:text-[54px] font-bold mb-4 lg:mb-6 leading-[1.05] tracking-tight text-white text-shadow-premium justify-center lg:justify-start flex flex-wrap"
+                text={
+                  firstRoute
+                    ? `${firstRoute.stops[0].name} to ${firstRoute.stops[firstRoute.stops.length - 1].name}, with a seat that's yours.`
+                    : 'Book your seat before you leave home.'
+                }
+              />
               <p className="text-[16px] leading-[1.6] max-w-xl mx-auto lg:mx-0 text-white/90 text-shadow-premium">
                 Board in Colombo at night, wake up in the East. Pick your seat, pay online and show the ticket on your phone.
               </p>
@@ -197,7 +202,7 @@ export default function LandingPage() {
                 Get on or off at any of these. Fares shown from {firstRoute.stops[0].name}; you only pay for the part you ride.
               </p>
               <div className="overflow-x-auto no-scrollbar -mx-4 px-4">
-                <ol className="relative flex min-w-[1080px]">
+                <ol ref={stopsRef} className="relative flex min-w-[1080px]">
                   <div className="absolute left-3 right-3 top-[11px] h-[3px] bg-[#050a44]/15 rounded-full" aria-hidden />
                   {firstRoute.stops.map((stop, i) => {
                     const ends = i === 0 || i === firstRoute.stops.length - 1;
@@ -239,7 +244,7 @@ export default function LandingPage() {
                   Book a seat and a bike space <ArrowRight className="w-5 h-5" />
                 </Link>
               </div>
-              <div className="grid grid-cols-3 gap-3 sm:gap-4">
+              <div ref={bikesRef} className="grid grid-cols-3 gap-3 sm:gap-4">
                 {Object.values(OPERATOR.bikes.kinds).map((k) => (
                   <div key={k.label} className="rounded-2xl border border-[#c7c5d1] p-3 sm:p-5 bg-[#fcfcfd]">
                     <span className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#050a44] text-[#feb700] flex items-center justify-center">
@@ -404,6 +409,7 @@ function TimetableCard({ route }: { route: Route }) {
     trips.push(...findTrips(data, from, to, d).filter((t) => t.routeId === route.id && !t.closed));
   }
   const shown = trips.slice(0, 3);
+  const listRef = useStaggerIn<HTMLUListElement>(shown.length > 0);
   return (
     <div className="rounded-2xl border border-[#c7c5d1] overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 bg-[#f2f4f6]">
@@ -413,7 +419,7 @@ function TimetableCard({ route }: { route: Route }) {
       {shown.length === 0 ? (
         <p className="px-5 py-6 text-[14px] text-[#46464f]">No departures in the next three weeks.</p>
       ) : (
-        <ul className="divide-y divide-[#edeef0]">
+        <ul ref={listRef} className="divide-y divide-[#edeef0]">
           {shown.map((t) => {
             const href = `/seats/${t.scheduleId}?${new URLSearchParams({ from, to, date: t.date }).toString()}`;
             return (
@@ -427,7 +433,7 @@ function TimetableCard({ route }: { route: Route }) {
                     Arrives {formatTime12(t.arrival)}{t.arrivalDayOffset ? ' next morning' : ''} · {formatDuration(t.durationMin)}
                   </span>
                   <span className={`text-[13px] font-bold whitespace-nowrap ${t.seatsLeft <= 5 ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>
-                    {t.seatsLeft === 0 ? 'Full' : `${t.seatsLeft} seats left`}
+                    {t.seatsLeft === 0 ? 'Full' : <><AnimatedNumber value={t.seatsLeft} /> seats left</>}
                   </span>
                 </Link>
               </li>

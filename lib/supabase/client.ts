@@ -7,15 +7,26 @@
 
 import { createBrowserClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { AUTH_COOKIE_MAX_AGE, HAS_DB } from '../features';
 
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 export const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_KEY);
+export const isSupabaseConfigured = HAS_DB;
 
 let client: SupabaseClient | null = null;
 export function supabase(): SupabaseClient {
   if (!isSupabaseConfigured) throw new Error('Supabase is not configured');
-  client ??= createBrowserClient(SUPABASE_URL, SUPABASE_KEY);
+  client ??= createBrowserClient(SUPABASE_URL, SUPABASE_KEY, {
+    // Session lives in cookies (readable by the server, so /admin etc. can be
+    // checked before the page loads). The tokens inside are signed by Supabase,
+    // so they can't be forged; the refresh token rotates on each renewal.
+    cookieOptions: {
+      maxAge: AUTH_COOKIE_MAX_AGE,
+      sameSite: 'lax',
+      secure: typeof window !== 'undefined' && window.location.protocol === 'https:',
+      path: '/',
+    },
+  });
   return client;
 }
 

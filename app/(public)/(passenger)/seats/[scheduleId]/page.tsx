@@ -6,6 +6,7 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import SeatSelectionDrawer, { formatTime, type Gender } from '@/components/SeatSelectionDrawer';
 import { OPERATOR } from '@/config/operator';
+import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { BikeAddon, bikesProblem } from '@/components/BikeAddon';
 import type { BikeItem } from '@/lib/types';
 import { useStore, StoreLoading } from '@/lib/store';
@@ -110,6 +111,10 @@ function BookingPageInner() {
   const [phone, setPhone] = useState(isLoggedIn && user ? user.phone ?? '' : '');
   const [isVerified, setIsVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
+  // With real accounts, the signed-in account is the verification.
+  useEffect(() => {
+    if (authMode === 'supabase' && user) setIsVerified(true);
+  }, [authMode, user]);
   const [otpValue, setOtpValue] = useState('');
   const [otpCooldown, setOtpCooldown] = useState(0);
 
@@ -603,7 +608,7 @@ function BookingPageInner() {
                   <div className="bg-[#f2f4f6] rounded-xl p-[20px] mb-[24px]">
                     <div className="flex justify-between items-center">
                       <span className="text-[16px] font-semibold">Total</span>
-                      <span className="text-[20px] font-semibold text-[#000000]">{formatLKR(totalPrice)}</span>
+                      <span className="text-[20px] font-semibold text-[#000000]"><AnimatedNumber value={totalPrice} format={formatLKR} duration={0.5} /></span>
                     </div>
                   </div>
 

@@ -1,8 +1,12 @@
 import type { MetadataRoute } from 'next';
 import { OPERATOR } from '@/config/operator';
-import { allRoutePages } from '@/lib/seo';
+import { isResaleOn } from '@/lib/resale-server';
+import { allRoutePages, loadTimetable } from '@/lib/seo';
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export const revalidate = 3600;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const tt = await loadTimetable();
   const now = new Date();
   const base = OPERATOR.siteUrl;
   return [
@@ -10,8 +14,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/bus`, lastModified: now, changeFrequency: 'weekly', priority: 0.9 },
     { url: `${base}/legal`, lastModified: now, changeFrequency: 'yearly', priority: 0.2 },
     { url: `${base}/search`, lastModified: now, changeFrequency: 'daily', priority: 0.8 },
-    ...(OPERATOR.features.resale ? [{ url: `${base}/marketplace`, lastModified: now, changeFrequency: 'daily' as const, priority: 0.5 }] : []),
-    ...allRoutePages().map((p) => ({
+    ...((await isResaleOn()) ? [{ url: `${base}/marketplace`, lastModified: now, changeFrequency: 'daily' as const, priority: 0.5 }] : []),
+    ...allRoutePages(tt).map((p) => ({
       url: `${base}/bus/${p.slug}`,
       lastModified: now,
       changeFrequency: 'weekly' as const,

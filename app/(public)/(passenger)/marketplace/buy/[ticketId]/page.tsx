@@ -7,7 +7,9 @@ import Link from 'next/link';
 import { OPERATOR } from '@/config/operator';
 import { formatLKR } from '@/lib/trips';
 import { useAuth } from '@/contexts/AuthContext';
-import { findResaleTicket, genResaleRef } from '@/data/resale-tickets';
+import { useResaleListings, buyResale } from '@/lib/resale';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { PageSkeleton } from '@/lib/store';
 
 // ---------------------------------------------------------------------------
 // Resale checkout — the buying half of the Marketplace. A resale ticket
@@ -43,7 +45,8 @@ export default function MarketplaceBuyPage() {
   const params = useParams<{ ticketId: string }>();
   const { user, isLoggedIn } = useAuth();
 
-  const ticket = useMemo(() => findResaleTicket(params.ticketId), [params.ticketId]);
+  const { listings, ready: listingsReady } = useResaleListings();
+  const ticket = useMemo(() => listings.find((t) => t.id === params.ticketId), [listings, params.ticketId]);
 
   const savings = ticket ? ticket.originalPrice - ticket.listedPrice : 0;
   const totalPrice = ticket ? ticket.listedPrice + SERVICE_FEE : 0;
@@ -51,6 +54,7 @@ export default function MarketplaceBuyPage() {
   const [buyerName, setBuyerName] = useState(isLoggedIn && user ? user.user_metadata?.full_name ?? '' : '');
   const [buyerEmail, setBuyerEmail] = useState(isLoggedIn && user ? user.email ?? '' : '');
   const [buyerPhone, setBuyerPhone] = useState(isLoggedIn && user ? user.phone ?? '' : '');
+  const [buyerGender, setBuyerGender] = useState<'Male' | 'Female' | ''>('');
 
   const [method, setMethod] = useState<PaymentMethod>('card');
   const [cardNumber, setCardNumber] = useState('');
@@ -85,10 +89,22 @@ export default function MarketplaceBuyPage() {
       return;
     }
     setPurchaseState('processing');
-    setTimeout(() => {
-      setPurchaseRef(genResaleRef());
+    // Mock card payment, then the real hand-over in the database.
+    setTimeout(async () => {
+      if (!isSupabaseConfigured) {
+        setPurchaseRef(`RS-${Math.random().toString(36).slice(2, 10).toUpperCase()}`);
+        setPurchaseState('success');
+        return;
+      }
+      const r = await buyResale(ticket.id, { name: buyerName.trim(), gender: buyerGender, phone: buyerPhone.trim() }, { email: buyerEmail.trim(), phone: buyerPhone.trim() });
+      if (!r.ok) {
+        setPurchaseState('idle');
+        setError(r.reason);
+        return;
+      }
+      setPurchaseRef(r.data!.ref);
       setPurchaseState('success');
-    }, 1600);
+    }, 1200);
   };
 
   const qrPayload = useMemo(() => {
@@ -126,6 +142,8 @@ export default function MarketplaceBuyPage() {
       setIsDownloading(false);
     }
   };
+
+  if (!listingsReady) return <PageSkeleton />;
 
   if (!ticket) {
     return (
@@ -417,6 +435,17 @@ export default function MarketplaceBuyPage() {
                   className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
                   type="text"
                 />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-[#46464f] px-1">Gender (for ladies-only seats)</label>
+                <div className="flex gap-2 mt-1">
+                  {(['Male', 'Female'] as const).map((g) => (
+                    <button key={g} type="button" onClick={() => setBuyerGender(g)} aria-pressed={buyerGender === g}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold border ${buyerGender === g ? 'bg-[#050a44] text-white border-[#050a44]' : 'bg-white border-[#c7c5d1] text-[#46464f]'}`}>
+                      {g}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-[12px]">
                 <div>

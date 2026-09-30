@@ -1,9 +1,41 @@
-// lib/seo.ts — helpers for search-engine pages (server-side, static data).
-// Route pages are generated from the starting timetable in lib/seed.ts. When
-// you move to a real database, read routes/schedules from there instead.
+// lib/seo.ts — helpers for search-engine pages (server-side).
+// With Supabase connected, the timetable is read from the database (public
+// tables, cached for an hour). Otherwise it uses lib/seed.ts.
 
 import { OPERATOR } from '@/config/operator';
 import { SEED_BUSES, SEED_ROUTES, SEED_SCHEDULES } from './seed';
+import type { Bus, Route, Schedule } from './types';
+import { HAS_DB } from './features';
+import { busFromRow, routeFromRow, scheduleFromRow } from './supabase/mappers';
+
+export interface Timetable {
+  buses: Bus[];
+  routes: Route[];
+  schedules: Schedule[];
+}
+const SEED_TIMETABLE: Timetable = { buses: SEED_BUSES, routes: SEED_ROUTES, schedules: SEED_SCHEDULES };
+
+/** Timetable for server pages: database when connected (refreshed hourly), else the seed. */
+export async function loadTimetable(): Promise<Timetable> {
+  if (!HAS_DB) return SEED_TIMETABLE;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)!;
+  const get = async (table: string) => {
+    const res = await fetch(`${url}/rest/v1/${table}?select=*`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      next: { revalidate: 3600, tags: ['timetable'] },
+    });
+    if (!res.ok) throw new Error(`${table}: ${res.status}`);
+    return res.json();
+  };
+  try {
+    const [b, r, s] = await Promise.all([get('buses'), get('routes'), get('schedules')]);
+    return { buses: b.map(busFromRow), routes: r.map(routeFromRow), schedules: s.map(scheduleFromRow) };
+  } catch (e) {
+    console.warn('SEO pages: using built-in timetable (database not reachable)', e);
+    return SEED_TIMETABLE;
+  }
+}
 import { formatDuration, formatTime12, fromMinutes, toMinutes } from './trips';
 
 export const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -25,9 +57,9 @@ export interface RoutePage {
 }
 
 /** Every Colombo ⇄ stop pair, plus the big-town pairs people search for. */
-export function allRoutePages(): RoutePage[] {
+export function allRoutePages(tt: Timetable = SEED_TIMETABLE): RoutePage[] {
   const pages = new Map<string, RoutePage>();
-  for (const route of SEED_ROUTES.filter((r) => r.active)) {
+  for (const route of tt.routes.filter((r) => r.active)) {
     const stops = route.stops;
     for (let i = 0; i < stops.length; i++) {
       for (let j = i + 1; j < stops.length; j++) {
@@ -38,9 +70,9 @@ export function allRoutePages(): RoutePage[] {
         if (!endsAtColombo && !(bigTowns.includes(from.name) && bigTowns.includes(to.name))) continue;
         const slug = `${slugify(from.name)}-to-${slugify(to.name)}`;
         if (pages.has(slug)) continue;
-        const schedules = SEED_SCHEDULES.filter((s) => s.routeId === route.id && s.active);
+        const schedules = tt.schedules.filter((s) => s.routeId === route.id && s.active);
         if (!schedules.length) continue;
-        const bus = SEED_BUSES.find((b) => b.id === schedules[0].busId);
+        const bus = tt.buses.find((b) => b.id === schedules[0].busId);
         pages.set(slug, {
           slug,
           from: from.name,
@@ -71,8 +103,8 @@ export function allRoutePages(): RoutePage[] {
   return [...pages.values()];
 }
 
-export function findRoutePage(slug: string) {
-  return allRoutePages().find((p) => p.slug === slug);
+export function findRoutePage(slug: string, tt: Timetable = SEED_TIMETABLE) {
+  return allRoutePages(tt).find((p) => p.slug === slug);
 }
 
 export function routeSummary(p: RoutePage) {

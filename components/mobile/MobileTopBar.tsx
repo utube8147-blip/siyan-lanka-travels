@@ -29,7 +29,7 @@ function Bar() {
 
   return (
     <header
-      className={`keep-navy md:hidden sticky top-0 z-40 bg-[#111216]/95 backdrop-blur-md text-white border-b border-[#feb700]/15 pt-[env(safe-area-inset-top)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
+      className={`md:hidden sticky top-0 z-40 bg-white/90 backdrop-blur-md text-[#050a44] border-b border-[#edeef0] pt-[env(safe-area-inset-top)] transition-transform duration-300 ease-out motion-reduce:transition-none ${
         hidden ? '-translate-y-full' : 'translate-y-0'
       }`}
     >
@@ -41,7 +41,7 @@ function Bar() {
         ) : (
           <>
             {!isRoot && (
-              <button onClick={back} aria-label="Back" className="w-10 h-10 -ml-0.5 rounded-full flex items-center justify-center hover:bg-white/10 active:bg-white/15">
+              <button onClick={back} aria-label="Back" className="w-10 h-10 -ml-0.5 rounded-full flex items-center justify-center hover:bg-[#f2f4f6] active:bg-[#edeef0]">
                 <ChevronLeft className="w-6 h-6" />
               </button>
             )}
@@ -56,7 +56,7 @@ function Bar() {
 
 export function MobileTopBar() {
   return (
-    <Suspense fallback={<div className="md:hidden h-14 bg-[#111216]" />}>
+    <Suspense fallback={<div className="md:hidden h-14 bg-white" />}>
       <Bar />
     </Suspense>
   );

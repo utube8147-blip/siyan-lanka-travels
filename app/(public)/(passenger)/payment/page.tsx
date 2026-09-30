@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { OPERATOR } from '@/config/operator';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
+import { SuccessCheck } from '@/components/motion/SuccessCheck';
 import { notify } from '@/lib/pwa';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
@@ -232,8 +233,8 @@ function PaymentPageInner() {
         <main className="max-w-[1200px] mx-auto px-4 md:px-[64px] py-[40px]">
             {/* Success Banner */}
             <div className="flex flex-col items-center justify-center text-center mb-[32px]">
-            <div className="w-16 h-16 bg-[#e8f6ea] rounded-full flex items-center justify-center mb-[12px]">
-                <span className="material-symbols-outlined text-[#006e1c] text-[32px]">check</span>
+            <div className="mb-[14px]">
+                <SuccessCheck size={68} />
             </div>
             <h1 className="text-[24px] font-bold mb-[4px]">Booking Confirmed!</h1>
             <p className="text-[14px] text-[#46464f]">

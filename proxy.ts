@@ -6,6 +6,13 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { AUTH_COOKIE_MAX_AGE } from '@/lib/features';
+
+/** Business pages: super admins only. */
+const ADMIN_ONLY = ['/admin/finance', '/admin/fleet-health', '/admin/crew', '/admin/accounts', '/admin/settings'];
+
+/** Pages that need a signed-in passenger (with Supabase connected). */
+const SIGNED_IN_ONLY = ['/my-bookings', '/dashboard', '/payment', '/refund', '/marketplace/buy'];
 
 export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -14,6 +21,7 @@ export async function proxy(request: NextRequest) {
 
   let response = NextResponse.next({ request });
   const sb = createServerClient(url, key, {
+    cookieOptions: { maxAge: AUTH_COOKIE_MAX_AGE, sameSite: 'lax', secure: request.nextUrl.protocol === 'https:', path: '/' },
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (list) => {
@@ -28,15 +36,30 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await sb.auth.getUser();
 
-  if (request.nextUrl.pathname.startsWith('/admin')) {
-    const to = (path: string) => {
-      const r = NextResponse.redirect(new URL(path, request.url));
-      response.cookies.getAll().forEach((c) => r.cookies.set(c));
-      return r;
-    };
-    if (!user) return to(`/auth/login?next=${encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)}`);
+  const path = request.nextUrl.pathname;
+  const to = (dest: string) => {
+    const r = NextResponse.redirect(new URL(dest, request.url));
+    response.cookies.getAll().forEach((c) => r.cookies.set(c));
+    return r;
+  };
+  const signIn = () => to(`/auth/login?next=${encodeURIComponent(path + request.nextUrl.search)}`);
+
+  if (SIGNED_IN_ONLY.some((p) => path === p || path.startsWith(`${p}/`)) && !user) return signIn();
+  // Signed in already? Skip the sign-in / sign-up pages.
+  if (user && (path === '/auth/login' || path === '/auth/signup')) {
+    const next = request.nextUrl.searchParams.get('next');
+    return to(next && next.startsWith('/') && !next.startsWith('//') ? next : '/my-bookings');
+  }
+
+  if (path === '/staff/login') return response;
+
+  if (path.startsWith('/admin')) {
+    // Staff have their own sign-in page, separate from passengers.
+    if (!user) return to(`/staff/login?next=${encodeURIComponent(path + request.nextUrl.search)}`);
     const { data: profile } = await sb.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    if (profile?.role !== 'staff') return to('/profile');
+    const role = profile?.role;
+    if (role !== 'staff' && role !== 'admin') return to('/');
+    if (role !== 'admin' && ADMIN_ONLY.some((p) => path.startsWith(p))) return to('/admin');
   }
   return response;
 }

@@ -12,7 +12,7 @@ export const THEME_KEY = 'theme';
 /** Runs in <head> before React loads. Keep it tiny and dependency-free. */
 export const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
 
-export function ThemeToggle({ className = '' }: { className?: string }) {
+export function ThemeToggle({ className = '', onDark = false }: { className?: string; onDark?: boolean }) {
   const [dark, setDark] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       onClick={toggle}
       aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
       title={dark ? 'Light mode' : 'Dark mode'}
-      className={`w-10 h-10 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors ${className}`}
+      className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${onDark ? 'text-white/80 hover:text-white hover:bg-white/10' : 'text-[#46464f] hover:text-[#050a44] hover:bg-[#f2f4f6]'} ${className}`}
     >
       {dark === null ? <span className="w-5 h-5" /> : dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
     </button>

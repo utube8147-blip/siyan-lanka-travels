@@ -7,17 +7,19 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowRight, Clock, MapPin, Ticket, Bus, ChevronRight } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
-import { absoluteUrl, allRoutePages, findRoutePage, routeSummary } from '@/lib/seo';
+import { absoluteUrl, allRoutePages, findRoutePage, loadTimetable, routeSummary } from '@/lib/seo';
 import { formatDuration, formatLKR } from '@/lib/trips';
 
-export const dynamicParams = false;
+// New routes added in the dashboard get pages on first visit; all refresh hourly.
+export const dynamicParams = true;
+export const revalidate = 3600;
 
-export function generateStaticParams() {
-  return allRoutePages().map((p) => ({ slug: p.slug }));
+export async function generateStaticParams() {
+  return allRoutePages(await loadTimetable()).map((p) => ({ slug: p.slug }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const p = findRoutePage((await params).slug);
+  const p = findRoutePage((await params).slug, await loadTimetable());
   if (!p) return {};
   const title = `${p.from} to ${p.to} bus: timetable, fare & online booking`;
   const description = routeSummary(p);
@@ -31,9 +33,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function RoutePage({ params }: { params: Promise<{ slug: string }> }) {
-  const p = findRoutePage((await params).slug);
+  const tt = await loadTimetable();
+  const p = findRoutePage((await params).slug, tt);
   if (!p) notFound();
-  const others = allRoutePages().filter((o) => o.slug !== p.slug && (o.from === p.from || o.to === p.to)).slice(0, 8);
+  const others = allRoutePages(tt).filter((o) => o.slug !== p.slug && (o.from === p.from || o.to === p.to)).slice(0, 8);
   const bookHref = `/search?${new URLSearchParams({ from: p.from, to: p.to }).toString()}`;
   const first = p.departures[0];
   const bikeFrom = Math.min(...Object.values(OPERATOR.bikes.kinds).map((k) => k.fullRouteFee));

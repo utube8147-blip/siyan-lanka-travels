@@ -9,6 +9,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { toBookingView, type BookingView, type ViewStatus } from '@/lib/bookingView';
 import { cityCode, formatLKR } from '@/lib/trips';
+import AnimatedNumber from '@/components/motion/AnimatedNumber';
+import { listForResale, useMyListings, useResaleEnabled, withdrawListing } from '@/lib/resale';
+import { supabase } from '@/lib/supabase/client';
 
 type BookingStatus = ViewStatus;
 type Booking = BookingView;
@@ -399,7 +402,7 @@ function ReceiptModal({ booking, onClose }: { booking: Booking; onClose: () => v
 export default function Dashboard() {
   const router = useRouter();
 
-  const { user } = useAuth();
+  const { user, mode: authMode } = useAuth();
   const { data, ready } = useStore();
   const bookings = useMemo<Booking[]>(
     () =>
@@ -409,7 +412,13 @@ export default function Dashboard() {
         .sort((a, b) => a.sortKey - b.sortKey),
     [data, user],
   );
-  const [listings, setListings] = useState<ResaleListing[]>(INITIAL_RESALE_LISTINGS);
+  const resaleOn = useResaleEnabled();
+  const [listings, setListings] = useState<ResaleListing[]>(authMode === 'demo' ? INITIAL_RESALE_LISTINGS : []);
+  const my = useMyListings(authMode === 'supabase' ? user?.id : null);
+  useEffect(() => {
+    if (authMode === 'supabase') setListings(my.listings);
+  }, [authMode, my.listings]);
+  const db = authMode === 'supabase';
   const [walletBalance, setWalletBalance] = useState(12500);
   const [transactions, setTransactions] = useState<Transaction[]>([
     { id: 't1', label: 'Trip: Colombo → Akkaraipattu', date: 'Sep 12, 2026', amount: -2850 },
@@ -546,10 +555,12 @@ export default function Dashboard() {
               <div className="w-10 h-10 rounded-full bg-[#f2f4f6] flex items-center justify-center text-[#46464f]">
                 <span className="material-symbols-outlined text-[20px]">badge</span>
               </div>
-              <div>
+              {authMode === 'demo' && (
+<div>
                 <p className="text-[11px] font-bold text-[#6b6d78] uppercase tracking-wide">National ID</p>
                 <p className="text-[14px] font-bold text-[#050a44]">ID-8849-2024-X</p>
               </div>
+)}
             </div>
           </div>
 
@@ -571,7 +582,8 @@ export default function Dashboard() {
 
         {/* Wallet & Rewards */}
         <div className="md:col-span-8 flex flex-col gap-[24px]">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-[24px]">
+          {authMode === 'demo' ? (
+<div className="grid grid-cols-1 md:grid-cols-2 gap-[24px]">
             {/* Wallet */}
             <div className="keep-navy relative h-[200px] rounded-2xl p-[24px] text-white shadow-[0_10px_28px_-8px_rgba(0,0,0,0.55)] overflow-hidden bg-[#111216] ring-1 ring-[#feb700]/25">
               <div className="absolute inset-0 bg-gradient-to-br from-[#2a2b31] via-[#17181c] to-[#0b0c0e]" />
@@ -643,6 +655,23 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-[16px]">
+              {[
+                { label: 'Upcoming trips', value: upcoming.length, icon: 'event_upcoming' },
+                { label: 'Trips taken', value: bookings.filter((b) => b.status === 'completed').length, icon: 'directions_bus' },
+                { label: 'Spent with us', value: bookings.filter((b) => b.status !== 'cancelled').reduce((n, b) => n + b.totalPrice, 0), icon: 'payments', money: true },
+              ].map((c) => (
+                <div key={c.label} className="bg-white border border-[#c7c5d1] rounded-2xl p-[20px] shadow-sm">
+                  <span className="material-symbols-outlined text-[22px] text-[#7c5800]">{c.icon}</span>
+                  <p className="text-[12px] font-bold text-[#6b6d78] uppercase tracking-wide mt-2">{c.label}</p>
+                  <p className="text-[26px] font-semibold text-[#050a44] mt-1">
+                    <AnimatedNumber value={c.value} format={c.money ? formatLKR : undefined} />
+                  </p>
+                </div>
+              ))}
+            </div>
+)}
 
           {/* Upcoming Journeys — now sourced from the real bookings list */}
           <div className="bg-white border border-[#c7c5d1] p-[24px] rounded-2xl shadow-sm">
@@ -706,7 +735,8 @@ export default function Dashboard() {
         {/* Resale Listings & Booking History */}
         <div className="md:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-[24px]">
           {/* My Resale Listings */}
-          <div className="md:col-span-1 bg-white border border-[#c7c5d1] p-[24px] rounded-2xl shadow-sm h-full flex flex-col">
+          {resaleOn && (
+<div className="md:col-span-1 bg-white border border-[#c7c5d1] p-[24px] rounded-2xl shadow-sm h-full flex flex-col">
             <div className="flex justify-between items-start mb-[20px]">
               <h2 className="text-[16px] font-semibold text-[#050a44]">My Resale Listings</h2>
               {totalResaleEarned > 0 && (
@@ -757,7 +787,14 @@ export default function Dashboard() {
                     )}
                     {listing.status === 'expired' && (
                       <button
-                        onClick={() => setListings((prev) => prev.map((l) => (l.id === listing.id ? { ...l, status: 'active' } : l)))}
+                        onClick={async () => {
+                          if (db) {
+                            const r = await listForResale(listing.bookingId, listing.listedPrice);
+                            if (!r.ok) return setToast(r.reason);
+                            return my.reload();
+                          }
+                          setListings((prev) => prev.map((l) => (l.id === listing.id ? { ...l, status: 'active' } : l)));
+                        }}
                         className="text-[#050a44] font-bold text-[11px] hover:underline"
                       >
                         Relist
@@ -777,9 +814,10 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+)}
 
           {/* Full Booking History — sourced from the real bookings list */}
-          <div className="md:col-span-2 bg-white border border-[#c7c5d1] rounded-2xl shadow-sm overflow-hidden">
+          <div className={`${resaleOn ? 'md:col-span-2' : 'md:col-span-3'} bg-white border border-[#c7c5d1] rounded-2xl shadow-sm overflow-hidden`}>
             <div className="flex justify-between items-center px-[24px] pt-[24px] pb-[16px]">
               <h2 className="text-[16px] font-semibold text-[#050a44]">Booking History</h2>
               <div className="flex gap-[8px] relative">
@@ -880,7 +918,7 @@ export default function Dashboard() {
         <img
           alt="Travel Banner"
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-          src="/brand/interior.png"
+          src="/brand/interior.jpg"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-black/75 to-transparent flex flex-col justify-center px-[32px] md:px-[48px]">
           <h2 className="text-white text-[32px] md:text-[34px] font-extrabold max-w-lg mb-4 leading-tight tracking-tight">
@@ -900,7 +938,11 @@ export default function Dashboard() {
         <EditPersonalDetailsModal
           details={details}
           onClose={() => setEditingDetails(false)}
-          onSave={(d) => {
+          onSave={async (d) => {
+            if (authMode === 'supabase' && user) {
+              const { error } = await supabase().from('profiles').update({ full_name: d.name, phone: d.phone }).eq('id', user.id);
+              if (error) return setToast("Couldn't save your details. Please try again.");
+            }
             setDetails(d);
             setEditingDetails(false);
             setToast('Personal details updated.');
@@ -926,7 +968,14 @@ export default function Dashboard() {
         <ListNewListingModal
           eligibleBookings={eligibleForListing}
           onClose={() => setAddingListing(false)}
-          onSubmit={(booking, price) => {
+          onSubmit={async (booking, price) => {
+            if (db) {
+              const r = await listForResale(booking.id, price);
+              if (!r.ok) return setToast(r.reason);
+              await my.reload();
+              setAddingListing(false);
+              return setToast('Ticket listed for resale.');
+            }
             setListings((prev) => [
               {
                 id: `RL-${Math.floor(Math.random() * 9000 + 1000)}`,
@@ -950,7 +999,15 @@ export default function Dashboard() {
         <EditListingPriceModal
           listing={editingListing}
           onClose={() => setEditingListing(null)}
-          onSave={(price) => {
+          onSave={async (price) => {
+            if (db) {
+              const w = await withdrawListing(editingListing.id);
+              const r = w.ok ? await listForResale(editingListing.bookingId, price) : w;
+              if (!r.ok) return setToast(r.reason);
+              await my.reload();
+              setEditingListing(null);
+              return setToast('Asking price updated.');
+            }
             setListings((prev) => prev.map((l) => (l.id === editingListing.id ? { ...l, listedPrice: price } : l)));
             setEditingListing(null);
             setToast('Asking price updated.');
@@ -965,7 +1022,14 @@ export default function Dashboard() {
           confirmLabel="Cancel Listing"
           destructive
           onClose={() => setCancellingListing(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
+            if (db) {
+              const r = await withdrawListing(cancellingListing.id);
+              if (!r.ok) return setToast(r.reason);
+              await my.reload();
+              setCancellingListing(null);
+              return setToast('Listing cancelled.');
+            }
             setListings((prev) => prev.filter((l) => l.id !== cancellingListing.id));
             setCancellingListing(null);
             setToast('Listing cancelled.');

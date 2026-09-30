@@ -18,7 +18,7 @@ export default function LoginPage() {
   const { login, signIn, resetPassword, mode } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [role, setRole] = useState<'passenger' | 'operator'>('passenger');
+  const role = 'passenger' as const;
   // Accepts an email OR a phone number. AuthContext.login() figures out
   // which one it is.
   const [identifier, setIdentifier] = useState('');
@@ -29,7 +29,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setInfo(null);
-    const dest = nextPath(role === 'operator' ? '/admin' : '/my-bookings');
+    const dest = nextPath('/my-bookings');
     if (mode === 'demo') {
       // Demo mode: no real accounts; any details sign you in.
       const namePart = identifier ? identifier.split('@')[0] : 'Alex Ham';
@@ -62,23 +62,10 @@ export default function LoginPage() {
 
           <h2 className="text-3xl font-bold text-primary mb-2 text-center">Welcome back</h2>
           <p className="text-[#46464f] text-center mb-8">
-            {role === 'operator' ? 'Staff sign-in for the operator dashboard.' : 'Sign in to see and manage your trips.'}
+            Sign in to see and manage your trips.
           </p>
 
-          <div className="flex p-1 bg-surface-variant/30 rounded-xl mb-8 border border-outline-variant/30 flex-wrap">
-            <button
-              onClick={() => setRole('passenger')}
-              className={`flex-1 min-w-20 py-2 text-sm font-bold rounded-lg transition-all ${role === 'passenger' ? 'bg-white shadow-sm text-primary border border-outline/10' : 'text-on-surface-variant'}`}
-            >
-              Passenger
-            </button>
-            <button
-              onClick={() => setRole('operator')}
-              className={`flex-1 min-w-20 py-2 text-sm font-bold rounded-lg transition-all ${role === 'operator' ? 'bg-white shadow-sm text-primary border border-outline/10' : 'text-on-surface-variant'}`}
-            >
-              Staff
-            </button>
-          </div>
+          
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
@@ -134,7 +121,7 @@ export default function LoginPage() {
       <div className="hidden md:flex flex-1 bg-primary relative overflow-hidden items-center justify-center">
         <div className="absolute inset-0 z-0">
           <img
-            src="/brand/interior.png"
+            src="/brand/interior.jpg"
             alt="Travel abstract"
             className="w-full h-full object-cover opacity-40"
           />
@@ -148,9 +135,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-4xl font-bold mb-4 leading-tight">Your journey starts here.</h1>
           <p className="text-lg opacity-80 leading-relaxed">
-            {role === 'passenger'
-              ? 'Sign in to see your tickets, change seats or dates, and book your next trip.'
-              : 'Departures, passenger lists, counter sales and bike loading in one place.'}
+            Sign in to see your tickets, change seats or dates, and book your next trip.
           </p>
 
           {/* Testimonial preview */}

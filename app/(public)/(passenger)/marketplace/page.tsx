@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { formatLKR } from '@/lib/trips';
-import { FLEET_PARTNERS, RESALE_TICKETS } from '@/data/resale-tickets';
+import { FLEET_PARTNERS } from '@/data/resale-tickets';
+import { useResaleListings } from '@/lib/resale';
 import { ArrowUpDown, ChevronDown, SlidersHorizontal, Shield } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,7 @@ function OperatorBadge({ initials }: { initials: string }) {
 type DropdownKey = 'operators' | null;
 
 export default function TicketResaleMarketplace() {
+  const { listings } = useResaleListings();
   const [fromQuery, setFromQuery] = useState('');
   const [toQuery, setToQuery] = useState('');
   const [dateQuery, setDateQuery] = useState('');
@@ -106,7 +108,7 @@ export default function TicketResaleMarketplace() {
   }, [openDropdown]);
 
   const filteredTickets = useMemo(() => {
-    let result = RESALE_TICKETS;
+    let result = listings;
     if (operatorFilter.length > 0) {
       result = result.filter((t) => operatorFilter.includes(t.direction));
     }
@@ -116,7 +118,7 @@ export default function TicketResaleMarketplace() {
       );
     }
     return result;
-  }, [operatorFilter, sortByPrice, sortAsc]);
+  }, [listings, operatorFilter, sortByPrice, sortAsc]);
 
   const operatorsLabel =
     operatorFilter.length === 0
@@ -158,7 +160,7 @@ export default function TicketResaleMarketplace() {
             <img
               alt="Siyan Lanka coach interior"
               className="w-full h-full object-cover"
-              src="/brand/interior.png"
+              src="/brand/interior.jpg"
             />
           </div>
         </div>
@@ -322,7 +324,7 @@ export default function TicketResaleMarketplace() {
               >
                 <img
                   className="absolute inset-0 w-full h-full object-cover opacity-10"
-                  src="/brand/interior.png"
+                  src="/brand/interior.jpg"
                   alt="Coach interior"
                 />
                 <div className="relative z-10 flex-1">

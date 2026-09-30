@@ -10,11 +10,11 @@ import {
   LayoutDashboard,
   Store,
   Search,
-  Building2,
   Settings,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { OPERATOR } from '@/config/operator';
+import { useResaleEnabled } from '@/lib/resale';
 import { Wordmark } from './Wordmark';
 import { ThemeToggle } from './ThemeToggle';
 import { InstallAppButton } from './InstallAppButton';
@@ -23,15 +23,17 @@ import { InstallAppButton } from './InstallAppButton';
 // a slim top bar and a bottom tab bar, like a native app.
 // Header links = where you go to travel. Account things live only in the
 // avatar menu, so nothing appears twice.
-const NAV_LINKS = [
+const BASE_LINKS = [
   { href: '/search', label: 'Book', icon: Search },
   { href: '/my-bookings', label: 'My trips', icon: Ticket },
-  ...(OPERATOR.features.resale ? [{ href: '/marketplace', label: 'Resale', icon: Store }] : []),
 ];
+const RESALE_LINK = { href: '/marketplace', label: 'Resale', icon: Store };
 
 export function TopNav() {
   const pathname = usePathname();
-  const { user, isLoggedIn, login, logout } = useAuth();
+  const { user, isLoggedIn, logout } = useAuth();
+  const resaleOn = useResaleEnabled();
+  const NAV_LINKS = resaleOn ? [...BASE_LINKS, RESALE_LINK] : BASE_LINKS;
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Hide the header while scrolling down (more room to read), bring it back
@@ -65,7 +67,7 @@ export function TopNav() {
   return (
     <>
       {/* Top bar — desktop nav lives here, mobile just shows logo + avatar/bell */}
-      <nav className={`hidden md:flex sticky top-0 z-40 bg-[#111216]/95 backdrop-blur-md h-20 w-full px-4 md:px-[64px] justify-between items-center border-b border-[#feb700]/20 shadow-[0_4px_20px_-8px_rgba(5,10,68,0.5)] transition-transform duration-300 ease-out motion-reduce:transition-none ${headerHidden ? '-translate-y-full' : 'translate-y-0'}`}
+      <nav className={`hidden md:flex sticky top-0 z-40 bg-white/90 backdrop-blur-md h-20 w-full px-4 md:px-[64px] justify-between items-center border-b border-[#edeef0] transition-transform duration-300 ease-out motion-reduce:transition-none ${headerHidden ? '-translate-y-full' : 'translate-y-0'}`}
         onFocusCapture={() => setHidden(false)}
       >
         <Link href="/" aria-label={`${OPERATOR.name} home`}>
@@ -80,8 +82,8 @@ export function TopNav() {
               aria-current={isActive(link.href) ? 'page' : undefined}
               className={`relative h-full flex items-center text-[15px] tracking-[0.01em] transition-colors duration-200 after:absolute after:left-0 after:right-0 after:bottom-0 after:h-[3px] after:rounded-t-full after:transition-colors ${
                 isActive(link.href)
-                  ? 'text-white font-bold after:bg-[#feb700]'
-                  : 'text-white/70 font-medium hover:text-white after:bg-transparent'
+                  ? 'text-[#050a44] font-bold after:bg-[#feb700]'
+                  : 'text-[#46464f] font-medium hover:text-[#050a44] after:bg-transparent'
               }`}
             >
               {link.label}
@@ -97,12 +99,12 @@ export function TopNav() {
             <div className="relative">
               <button
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-white/10 transition-colors"
+                className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-[#f2f4f6] transition-colors"
               >
                 <div className="cursor-pointer w-10 h-10 rounded-full bg-[#feb700] text-[#050a44] flex items-center justify-center text-[13px] font-bold shadow-sm" aria-label={user.user_metadata.full_name}>
                   {user.user_metadata.full_name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
                 </div>
-                <ChevronDown className="w-4 h-4 text-white/70 hidden md:block" />
+                <ChevronDown className="w-4 h-4 text-[#46464f] hidden md:block" />
               </button>
 
               {menuOpen && (
@@ -129,15 +131,7 @@ export function TopNav() {
                       <Settings className="w-4 h-4" />
                       Settings
                     </Link>
-                    <InstallAppButton variant="menu" className="border-t border-[#edeef0]" onDone={() => setMenuOpen(false)} />
-                    <Link
-                      href="/admin"
-                      onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[#050a44] hover:bg-[#f2f4f6] transition-all border-t border-[#edeef0]"
-                    >
-                      <Building2 className="w-4 h-4" />
-                      Operator dashboard
-                    </Link>
+                    <InstallAppButton variant="menu" onDone={() => setMenuOpen(false)} />
                     {/* Mock auth reset — signs the mock user out in place, no
                         real login page needed. Swap for a real sign-out call
                         (and keep the redirect) once auth is wired for real. */}
@@ -156,16 +150,12 @@ export function TopNav() {
               )}
             </div>
           ) : (
-            // Mock auth reset — instantly restores the mock user instead of
-            // sending you to a real /auth/login page (which doesn't do
-            // anything yet). Swap for <Link href="/auth/login"> once a real
-            // login flow exists.
-            <button
-              onClick={() => login()}
+            <Link
+              href={`/auth/login?next=${encodeURIComponent(pathname || '/')}`}
               className="px-5 py-2.5 bg-[#feb700] text-[#050a44] rounded-xl text-[14px] font-bold hover:brightness-105 transition-all"
             >
-              Sign In
-            </button>
+              Sign in
+            </Link>
           )}
         </div>
       </nav>

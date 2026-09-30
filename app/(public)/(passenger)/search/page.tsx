@@ -6,6 +6,8 @@ import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { OPERATOR } from '@/config/operator';
+import AnimatedNumber from '@/components/motion/AnimatedNumber';
+import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { useStore } from '@/lib/store';
 import { addDays, allStopNames, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, todayISO } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
@@ -132,6 +134,7 @@ function SearchPageInner() {
     return null;
   }, [ready, data, query, date, schedules.length]);
 
+  const resultsRef = useStaggerIn<HTMLDivElement>(ready && schedules.length > 0);
   const runSearch = (next = { from, to }) => {
     setQuery(next);
     const qs = new URLSearchParams({ from: next.from, to: next.to, date });
@@ -586,7 +589,7 @@ function SearchPageInner() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <div ref={resultsRef} className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                 {filteredSchedules.map((s) => (
                   <div
                     key={s.id}
@@ -650,7 +653,7 @@ function SearchPageInner() {
                       <div className="flex items-center gap-[6px]">
                         <Armchair className="w-[18px] h-[18px] text-[#46464f]" />
                         <span className={`text-[13px] font-bold ${s.seatsRemaining <= 5 ? 'text-[#ba1a1a]' : 'text-[#46464f]'}`}>
-                          {s.seatsRemaining === 0 ? 'Full' : `${s.seatsRemaining} seats left`}
+                          {s.seatsRemaining === 0 ? 'Full' : <><AnimatedNumber value={s.seatsRemaining} /> seats left</>}
                         </span>
                         {s.trip.bikeSpaces > 0 && (
                           <span

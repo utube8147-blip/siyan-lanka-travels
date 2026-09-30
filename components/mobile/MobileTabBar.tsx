@@ -6,6 +6,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { House, Search, Ticket, UserRound } from 'lucide-react';
+import { motion } from 'motion/react';
 import { isFocused } from './routes';
 
 const TABS = [
@@ -33,10 +34,15 @@ export function MobileTabBar() {
                 <Link
                   href={href}
                   aria-current={active ? 'page' : undefined}
-                  className="h-full flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform"
+                  className="h-full flex flex-col items-center justify-center gap-1"
                 >
-                  <span className={`w-14 h-8 rounded-full flex items-center justify-center transition-colors ${active ? 'bg-[#feb700]' : ''}`}>
-                    <Icon className={`w-[22px] h-[22px] ${active ? 'text-[#14120a]' : 'text-[#46464f]'}`} strokeWidth={active ? 2.3 : 1.9} />
+                  <span className="relative w-14 h-8 rounded-full flex items-center justify-center">
+                    {active && (
+                      <motion.span layoutId="tab-pill" className="absolute inset-0 rounded-full bg-[#feb700]" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />
+                    )}
+                    <motion.span className="relative" animate={{ scale: active ? 1.06 : 1 }} whileTap={{ scale: 0.86 }}>
+                      <Icon className={`w-[22px] h-[22px] ${active ? 'text-[#14120a]' : 'text-[#46464f]'}`} strokeWidth={active ? 2.3 : 1.9} />
+                    </motion.span>
                   </span>
                   <span className={`text-[11px] ${active ? 'font-semibold text-[#050a44]' : 'font-medium text-[#46464f]'}`}>{label}</span>
                 </Link>

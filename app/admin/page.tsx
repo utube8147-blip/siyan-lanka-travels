@@ -6,10 +6,38 @@ import { useMemo, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatLKR, formatTime12, listRuns, netRevenue, routeLabel, todayISO } from '@/lib/trips';
 import { Badge, Button, Card, Modal, PageHeader, useToast } from '@/components/admin/ui';
+import { useAuth } from '@/contexts/AuthContext';
+import { DOCUMENT_LABEL, daysUntil, latestOdometer, nextService, useErp } from '@/lib/erp';
+import { AlertTriangle } from 'lucide-react';
 
 export default function AdminOverview() {
   const { data, resetDemo, mode } = useStore();
   const { toast, Toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const erp = useErp({ admin: isAdmin });
+  const alerts = useMemo(() => {
+    if (!isAdmin || !erp.data) return [];
+    const out: { text: string; href: string; bad: boolean }[] = [];
+    for (const d of erp.data.documents) {
+      const n = daysUntil(d.expiresOn);
+      const bus = data.buses.find((b) => b.id === d.busId)?.regNo ?? '';
+      if (n < 0) out.push({ text: `${DOCUMENT_LABEL[d.kind]} for ${bus} expired ${-n} days ago`, href: '/admin/fleet-health', bad: true });
+      else if (n <= 30) out.push({ text: `${DOCUMENT_LABEL[d.kind]} for ${bus} expires in ${n} days`, href: '/admin/fleet-health', bad: n <= 7 });
+    }
+    for (const b of data.buses) {
+      const svc = nextService(erp.data.expenses, b.id);
+      const odo = latestOdometer(erp.data.expenses, b.id);
+      if (svc?.nextDueKm && odo && svc.nextDueKm - odo < 1500)
+        out.push({ text: svc.nextDueKm - odo <= 0 ? `${b.regNo} service is overdue` : `${b.regNo} service due in ${(svc.nextDueKm - odo).toLocaleString()} km`, href: '/admin/fleet-health', bad: svc.nextDueKm - odo <= 0 });
+    }
+    for (const c of erp.data.crew) {
+      if (c.role !== 'driver' || !c.licenseExpires || !c.active) continue;
+      const n = daysUntil(c.licenseExpires);
+      if (n <= 30) out.push({ text: n < 0 ? `${c.fullName}'s driving licence has expired` : `${c.fullName}'s driving licence expires in ${n} days`, href: '/admin/crew', bad: n < 0 });
+    }
+    return out.sort((a, b) => Number(b.bad) - Number(a.bad));
+  }, [isAdmin, erp.data, data.buses]);
   const [confirmReset, setConfirmReset] = useState(false);
   const today = todayISO();
   const now = new Date();
@@ -55,6 +83,23 @@ export default function AdminOverview() {
           </>
         }
       />
+
+      {alerts.length > 0 && (
+        <Card className="p-4 mb-6 border-[#feb700]/50">
+          <p className="flex items-center gap-2 text-[14px] font-semibold text-[#050a44] mb-2">
+            <AlertTriangle className="w-4 h-4 text-[#7c5800]" /> Needs attention
+          </p>
+          <ul className="space-y-1.5">
+            {alerts.map((a) => (
+              <li key={a.text}>
+                <Link href={a.href} className={`text-[13px] font-medium hover:underline ${a.bad ? 'text-[#ba1a1a]' : 'text-[#7c5800]'}`}>
+                  {a.text}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {stats.map((s) => (

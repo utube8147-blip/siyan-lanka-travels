@@ -1,6 +1,7 @@
 // /components/SeatSelectionDrawer.tsx
 'use client';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { motion, useDragControls } from 'motion/react';
 
 import { formatLKR } from '@/lib/trips';
 
@@ -64,6 +65,16 @@ export default function SeatSelectionDrawer({
   const seatBaseClass =
     'h-11 w-11 rounded-lg text-[11px] font-bold flex items-center justify-center border-[1.5px] transition-all duration-150 select-none shrink-0';
 
+  const dragControls = useDragControls();
+  // Decide before the first frame (the sheet only opens after a tap, so
+  // window exists): phones get a bottom sheet, wider screens a side panel.
+  const [isPhone, setIsPhone] = useState(() => typeof window === 'undefined' || !window.matchMedia('(min-width: 640px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 640px)');
+    const on = () => setIsPhone(!mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
   const FEMALE_ONLY_SEATS = layout.ladiesSeats;
   const isBookedByMale = (id: string) => taken.has(id) && taken.get(id) !== 'Female';
   const isBookedByFemale = (id: string) => taken.get(id) === 'Female';
@@ -107,35 +118,61 @@ export default function SeatSelectionDrawer({
     }
 
     return (
-      <button
+      <motion.button
         key={seatId}
         type="button"
         className={getSeatClass(seatId)}
+        whileTap={{ scale: 0.86 }}
+        animate={selectedSeats.includes(seatId) ? 'on' : 'off'}
+        variants={{ on: { scale: [1, 1.16, 1], transition: { duration: 0.3 } }, off: { scale: 1 } }}
         onClick={() => onToggleSeat(seatId)}
         title={FEMALE_ONLY_SEATS.includes(seatId) ? 'Reserved for female passengers' : `${seatId} - available`}
       >
         {seatId}
-      </button>
+      </motion.button>
     );
   };
 
   const drawerPositionClass =
-    'absolute inset-x-0 bottom-0 w-full rounded-t-3xl max-h-[88vh] sm:inset-x-auto sm:top-0 sm:right-0 sm:bottom-auto sm:h-full sm:max-h-none sm:rounded-none sm:w-[420px] bg-white shadow-2xl flex flex-col overflow-hidden animate-[slideUp_0.25s_ease-out] sm:animate-[slideIn_0.25s_ease-out]';
+    'absolute inset-x-0 bottom-0 w-full rounded-t-3xl max-h-[88vh] sm:inset-x-auto sm:top-0 sm:right-0 sm:bottom-auto sm:h-full sm:max-h-none sm:rounded-none sm:w-[420px] bg-white shadow-2xl flex flex-col overflow-hidden';
 
   return (
     <div className="fixed inset-0 z-[90]">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-[fadeIn_0.2s_ease-out]"
+      <motion.div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         onClick={onClose}
       />
 
       {/* Drawer: bottom sheet on mobile, right-side panel from sm: up.
           No fixed pixel width, sizes itself to content, never forces
           horizontal scrolling. */}
-      <div className={drawerPositionClass}>
+      <motion.div
+        className={drawerPositionClass}
+        initial={isPhone ? { y: '100%' } : { x: '100%' }}
+        animate={{ x: 0, y: 0 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+        drag={isPhone ? 'y' : false}
+        dragControls={dragControls}
+        dragListener={false}
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={{ top: 0, bottom: 0.7 }}
+        onDragEnd={(_, info) => {
+          if (info.offset.y > 110 || info.velocity.y > 600) onClose();
+        }}
+      >
+        {/* Drag handle (phones): pull down to close */}
+        <div
+          className="sm:hidden pt-2.5 pb-1 flex justify-center touch-none cursor-grab active:cursor-grabbing"
+          onPointerDown={(e) => dragControls.start(e)}
+          aria-hidden
+        >
+          <span className="w-10 h-1.5 rounded-full bg-[#c7c5d1]" />
+        </div>
         {/* Drawer header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#c7c5d1]/30 shrink-0">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#c7c5d1]/30 shrink-0 touch-none sm:touch-auto" onPointerDown={(e) => isPhone && dragControls.start(e)}>
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 shrink-0 rounded-full bg-[#0f144c]/10 flex items-center justify-center text-[#050a44]">
               <span className="material-symbols-outlined text-[20px]">event_seat</span>
@@ -315,7 +352,7 @@ export default function SeatSelectionDrawer({
             {confirmLabel ?? (isEditingExisting ? (deltaCount > 0 ? `Pay ${formatLKR(deltaAmount)} & confirm` : 'Confirm Change') : 'Done')}
           </button>
         </div>
-      </div>
+      </motion.div>
 
       <style jsx global>{`
         @keyframes fadeIn {

@@ -91,8 +91,8 @@ export const OPERATOR = {
   },
 
   features: {
-    /** Passenger-to-passenger ticket resale. Hide it from the nav with false. */
-    resale: true,
+    /** Demo mode only: passenger resale on/off. With Supabase, use Staff area → Settings. */
+    resale: false,
   },
 } as const;
 

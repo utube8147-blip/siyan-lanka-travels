@@ -5,7 +5,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  Building2,
   ChevronRight,
   FileText,
   LogOut,
@@ -20,6 +19,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
+import { useResaleEnabled } from '@/lib/resale';
 import { useAuth } from '@/contexts/AuthContext';
 import { ThemeSegmented } from '@/components/ThemeToggle';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
@@ -65,6 +65,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
+  const resaleOn = useResaleEnabled();
   const router = useRouter();
   const name = user?.user_metadata.full_name ?? 'Guest';
   const initials = name
@@ -101,7 +102,7 @@ export default function ProfilePage() {
       <Group title="Travel">
         <Row href="/my-bookings" icon={Ticket} label="My trips" hint="Tickets, seat changes, cancellations" />
         <Row href="/dashboard" icon={Wallet} label="Wallet & rewards" hint="Credits, points, booking history" />
-        {OPERATOR.features.resale && <Row href="/marketplace" icon={Store} label="Resale tickets" hint="Buy or sell a seat" />}
+        {resaleOn && <Row href="/marketplace" icon={Store} label="Resale tickets" hint="Buy or sell a seat" />}
         <Row href="/bus" icon={RouteIcon} label="Routes & timetables" hint="Stops, times and fares" />
       </Group>
 
@@ -129,10 +130,6 @@ export default function ProfilePage() {
         <Row href="/legal#terms" icon={FileText} label="Terms of travel" />
         <Row href="/legal#privacy" icon={ShieldCheck} label="Privacy policy" />
         <Row href="/legal#refunds" icon={Undo2} label="Cancellation & refund policy" />
-      </Group>
-
-      <Group title="Staff">
-        <Row href="/admin" icon={Building2} label="Operator dashboard" hint="For Siyan Lanka staff" />
       </Group>
 
       {user && (

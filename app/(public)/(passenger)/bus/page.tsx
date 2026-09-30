@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
-import { allRoutePages } from '@/lib/seo';
+import { allRoutePages, loadTimetable } from '@/lib/seo';
 import { formatDuration, formatLKR } from '@/lib/trips';
 
 export const metadata: Metadata = {
@@ -12,8 +12,10 @@ export const metadata: Metadata = {
   alternates: { canonical: '/bus' },
 };
 
-export default function RoutesIndex() {
-  const pages = allRoutePages();
+export const revalidate = 3600;
+
+export default async function RoutesIndex() {
+  const pages = allRoutePages(await loadTimetable());
   const groups = [
     { title: 'From Colombo', items: pages.filter((p) => p.from === 'Colombo') },
     { title: 'To Colombo', items: pages.filter((p) => p.to === 'Colombo') },

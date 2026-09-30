@@ -14,7 +14,7 @@ export function Wordmark({ size = 'md', badge = false }: { size?: 'sm' | 'md'; b
       alt={OPERATOR.name}
       width={900}
       height={211}
-      className={`${size === 'md' ? 'h-9 md:h-11' : 'h-7'} w-auto select-none`}
+      className={`logo-img ${size === 'md' ? 'h-9 md:h-11' : 'h-7'} w-auto select-none`}
       draggable={false}
     />
   );

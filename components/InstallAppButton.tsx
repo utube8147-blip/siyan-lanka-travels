@@ -55,7 +55,7 @@ export function InstallAppButton({ variant = 'footer', className = '', onDone }:
         onClick={go}
         aria-label="Install the app"
         title="Install the app"
-        className={`w-10 h-10 rounded-full flex items-center justify-center text-[#feb700] hover:bg-white/10 transition-colors ${className}`}
+        className={`w-10 h-10 rounded-full flex items-center justify-center text-[#7c5800] hover:bg-[#f2f4f6] transition-colors ${className}`}
       >
         <Download className="w-5 h-5" />
       </button>

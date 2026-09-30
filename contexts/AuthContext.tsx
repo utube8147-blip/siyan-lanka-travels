@@ -8,8 +8,13 @@ import { createContext, useCallback, useContext, useEffect, useState, ReactNode 
 import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase, friendlyError } from '@/lib/supabase/client';
 
-/** 'operator' = staff of the bus company (can open /admin). */
-export type UserRole = 'passenger' | 'operator';
+/**
+ * 'operator' = staff (operations: departures, bookings, fleet, timetable).
+ * 'admin'    = super admin (everything staff can do + finance, expenses,
+ *              crew, accounts, settings).
+ */
+export type UserRole = 'passenger' | 'operator' | 'admin';
+export const isStaffRole = (r?: UserRole | null) => r === 'operator' || r === 'admin';
 
 export type MockUser = {
   id: string;
@@ -65,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       id: u.id,
       email: u.email ?? '',
       phone: prof?.phone ?? u.phone ?? '',
-      role: prof?.role === 'staff' ? 'operator' : 'passenger',
+      role: prof?.role === 'admin' ? 'admin' : prof?.role === 'staff' ? 'operator' : 'passenger',
       user_metadata: {
         full_name: prof?.full_name || (u.user_metadata?.full_name as string) || (u.email ?? 'Traveller').split('@')[0],
         avatar_url: '',
@@ -76,6 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (mode === 'supabase') {
+      try {
+        window.sessionStorage.removeItem(DEMO_KEY); // clear any old demo session
+      } catch {
+        /* ignore */
+      }
       const sb = supabase();
       sb.auth.getSession().then(({ data }) => applySession(data.session));
       // Don't await Supabase calls inside this callback (can deadlock); defer.
@@ -104,11 +114,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const login = (params: LoginParams = {}) => {
+    if (mode === 'supabase') return; // real accounts only
     const { identifier, email, phone, role = 'passenger' } = params;
-    const fullName = params.fullName || (role === 'operator' ? 'Operations Desk' : DEMO_USER.user_metadata.full_name);
+    const fullName = params.fullName || (role === 'admin' ? 'Owner (super admin)' : role === 'operator' ? 'Operations Desk' : DEMO_USER.user_metadata.full_name);
     const looksLikeEmail = (identifier ?? '').includes('@');
     setDemoUser({
-      id: role === 'operator' ? 'mock-staff-1' : DEMO_USER.id,
+      id: role === 'admin' ? 'mock-admin-1' : role === 'operator' ? 'mock-staff-1' : DEMO_USER.id,
       email: email || (looksLikeEmail ? identifier! : DEMO_USER.email),
       phone: phone || (!looksLikeEmail && identifier ? identifier : DEMO_USER.phone),
       role,
