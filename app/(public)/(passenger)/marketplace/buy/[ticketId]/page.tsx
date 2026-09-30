@@ -332,7 +332,7 @@ export default function MarketplaceBuyPage() {
   // -------------------------------------------------------------------------
   return (
     <main className="max-w-[1200px] mx-auto px-4 md:px-[64px] py-[32px]">
-      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
+      <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
         <div className="flex items-center">
           <Link href="/marketplace" className="hover:text-[#000000] transition-colors">
             Marketplace

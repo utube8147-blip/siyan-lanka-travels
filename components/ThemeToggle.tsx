@@ -5,7 +5,7 @@
 // there's no white flash.
 
 import { useEffect, useState } from 'react';
-import { Moon, Sun } from 'lucide-react';
+import { Monitor, Moon, Sun } from 'lucide-react';
 
 export const THEME_KEY = 'theme';
 
@@ -29,7 +29,12 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       setDark(e.matches);
     };
     mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
+    const sync = () => setDark(document.documentElement.classList.contains('dark'));
+    window.addEventListener('themechange', sync);
+    return () => {
+      mq.removeEventListener('change', onChange);
+      window.removeEventListener('themechange', sync);
+    };
   }, []);
 
   const toggle = () => {
@@ -53,5 +58,58 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
     >
       {dark === null ? <span className="w-5 h-5" /> : dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
     </button>
+  );
+}
+
+export type ThemeChoice = 'light' | 'dark' | 'system';
+
+export function applyTheme(choice: ThemeChoice) {
+  try {
+    if (choice === 'system') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, choice);
+  } catch {
+    /* ignore */
+  }
+  const dark = choice === 'dark' || (choice === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', dark);
+  window.dispatchEvent(new Event('themechange'));
+}
+
+/** Light / Dark / System picker (Profile screen). */
+export function ThemeSegmented() {
+  const [choice, setChoice] = useState<ThemeChoice | null>(null);
+  useEffect(() => {
+    try {
+      const t = localStorage.getItem(THEME_KEY);
+      setChoice(t === 'light' || t === 'dark' ? t : 'system');
+    } catch {
+      setChoice('system');
+    }
+  }, []);
+  const opts: { v: ThemeChoice; label: string; Icon: typeof Sun }[] = [
+    { v: 'light', label: 'Light', Icon: Sun },
+    { v: 'dark', label: 'Dark', Icon: Moon },
+    { v: 'system', label: 'Auto', Icon: Monitor },
+  ];
+  return (
+    <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#f2f4f6]">
+      {opts.map(({ v, label, Icon }) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={choice === v}
+          onClick={() => {
+            applyTheme(v);
+            setChoice(v);
+          }}
+          className={`flex items-center justify-center gap-1.5 h-9 rounded-lg text-[13px] font-semibold transition-colors ${
+            choice === v ? 'bg-white text-[#050a44] shadow-sm' : 'text-[#46464f]'
+          }`}
+        >
+          <Icon className="w-4 h-4" /> {label}
+        </button>
+      ))}
+    </div>
   );
 }

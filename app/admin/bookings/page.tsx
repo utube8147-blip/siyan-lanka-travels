@@ -71,8 +71,8 @@ export default function BookingsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const cancel = (b: Booking) => {
-    const res = updateBooking(b.id, { status: 'cancelled', refund: { amount: b.total - b.fee, at: new Date().toISOString() } });
+  const cancel = async (b: Booking) => {
+    const res = await updateBooking(b.id, { status: 'cancelled', refund: { amount: b.total - b.fee, at: new Date().toISOString() } });
     toast(res.ok ? `${b.ref} cancelled, ${formatLKR(b.total - b.fee)} to refund` : res.reason ?? 'Could not cancel', res.ok ? 'ok' : 'error');
     setConfirmCancel(false);
     setOpen(null);

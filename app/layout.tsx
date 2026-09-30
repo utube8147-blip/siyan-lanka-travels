@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import '@fontsource-variable/plus-jakarta-sans';
+import '@fontsource-variable/bricolage-grotesque';
 import 'material-symbols/outlined.css';
 import { Providers } from '../components/Providers';
 import { ServiceWorker } from '../components/ServiceWorker';
@@ -33,8 +34,11 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', title, description, images: ['/og.jpg'] },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large' } },
   icons: {
+    // /favicon.ico is served automatically from app/favicon.ico
     icon: [
+      { url: '/icons/favicon-16.png', sizes: '16x16', type: 'image/png' },
       { url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/favicon-48.png', sizes: '48x48', type: 'image/png' },
       { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
     ],
     apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],

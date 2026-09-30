@@ -3,8 +3,8 @@
 Booking site and operator dashboard for Siyan Lanka Travels (Route 48,
 Colombo ⇄ Akkaraipattu). Next.js 16 + Tailwind 4.
 
-**This is a working demo.** Data is kept in the browser (localStorage), and
-payments and phone codes are simulated. See "Going live" below.
+**Two modes.** With Supabase keys set it uses a real database and accounts (see "Database"). Without them it runs as a demo with data in the browser (localStorage), and
+payments and phone codes are simulated in both modes. See "Going live" below.
 
 ## Run it
 
@@ -75,6 +75,26 @@ Dambulla, Habarana, Polonnaruwa, Welikanda, Valaichchenai, Batticaloa and
 Kalmunai. One bus runs out Mon/Wed/Fri and back Tue/Thu/Sat. Edit any of it
 in `/admin`.
 
+## Phone (app) layout vs desktop (website) layout
+Same pages, two layouts, switched at the `md` breakpoint (768px):
+- **Desktop/tablet:** website header (`components/TopNav.tsx`) and footer.
+- **Phones:** app layout in `components/mobile/`:
+  - `MobileTopBar` — slim bar: logo on Home, back arrow + screen title
+    elsewhere; hides while scrolling down; clears the notch.
+  - `MobileTabBar` — Home · Book · Trips · Profile, above the gesture bar.
+    Hidden in focused flows (seat picking, payment, sign-in).
+  - `Fab` — floating "Book a seat" on screens where booking isn't already
+    the main action.
+  - `PullToRefresh` — only in the installed app (browsers have their own).
+  - Screen titles, back targets and which screens hide the tab bar or show
+    the button: `components/mobile/routes.ts`.
+- The website footer's content lives in **Profile** (`/profile`): account,
+  theme, reminders, install, help, legal links, staff login. Legal text is at
+  `/legal` (placeholder wording; have it reviewed before going live).
+- Loading skeletons (`PageSkeleton` in `lib/store.tsx`, `loading.tsx`) and an
+  offline notice (`components/OfflineIndicator.tsx`) replace spinners and
+  blank pages.
+
 ## Dark mode
 Follows the phone/computer setting until the visitor taps the sun/moon
 button in the header (then it's remembered). It works by swapping the app's
@@ -91,6 +111,39 @@ element with the `keep-navy` class (header, footer, admin sidebar) is left as is
   runs in production builds (`npm run build && npm start`). After changing
   `sw.js`, bump `VERSION` in it so phones refresh.
 
+### Installing the app
+Where people see it: the download icon in the header, "Install the app" in
+the account menu and footer, and a small banner that appears a few seconds
+after arriving (hidden for 14 days if they tap ×). These only show when the
+browser can actually install the site. Chrome/Edge/Samsung Internet show
+their own install prompt. On iPhone, the button explains Share → Add to Home
+Screen. Chrome also shows its own install icon in the address bar.
+The service worker is registered in `npm run dev` too (with caching off), so
+you can test installing locally.
+
+## Notifications
+- Passengers turn on **Trip reminders** from My trips or the booking
+  confirmation screen. Chrome only allows asking after a tap, so there's no
+  automatic pop-up.
+- They get a "Booking confirmed" notification after paying, and a reminder
+  3 hours before departure while the site/app is open
+  (`components/TripReminders.tsx`).
+- If notifications are blocked, the card explains how to re-allow them in
+  Chrome's site settings. On iPhone, notifications only work after adding the
+  app to the Home Screen (iOS 16.4+).
+- **Reminders when the app is closed** need a server: generate VAPID keys
+  (`npx web-push generate-vapid-keys`), put the public key in
+  `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, save each browser's subscription (see
+  `subscribeToPush` in `lib/pwa.ts`) in your database, and send reminders
+  from a scheduled job with the `web-push` package. `public/sw.js` already
+  shows them and opens My trips when tapped.
+
+## Typography
+Headings use Bricolage Grotesque; everything else uses Plus Jakarta Sans. Both
+are self-hosted (no Google Fonts). Weights are set centrally in
+`app/globals.css` (`--font-weight-*` in `@theme`), a step lighter than
+Tailwind's defaults.
+
 ## SEO
 - **Set your domain**: copy `.env.example` to `.env` and set
   `NEXT_PUBLIC_SITE_URL`. Canonical links, sitemap and share previews use it.
@@ -106,14 +159,54 @@ element with the `keep-navy` class (header, footer, admin sidebar) is left as is
   `https://your-domain/sitemap.xml`; create a Google Business Profile for the
   Bastian Mawatha counter.
 
+## Database (Supabase)
+Without Supabase keys the app runs in **demo mode** (sample data in the
+browser). To connect a real database:
+
+1. **Create a project** at supabase.com (region: Mumbai / `ap-south-1` is
+   closest to Sri Lanka).
+2. **Run the SQL** (Dashboard → SQL Editor → New query), in this order:
+   - `supabase/migrations/20261001000000_init.sql` — tables, security rules,
+     booking functions, bike-photo storage
+   - `supabase/seed.sql` — ND-2323, Route 48 both ways, the timetable
+   (or with the Supabase CLI: `supabase link` then `supabase db push`, then
+   run `seed.sql`).
+3. **Keys:** Dashboard → Project Settings → API. Copy `.env.example` to
+   `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL` and the **publishable**
+   key (`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; the older "anon" key also
+   works as `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Never put the secret /
+   service_role key in a `NEXT_PUBLIC_` variable. Restart `npm run dev`.
+4. **Auth settings:** Authentication → URL Configuration: set Site URL to
+   your domain (and add `http://localhost:3000` for testing). "Confirm email"
+   is on by default: new passengers click a link before they can sign in.
+5. **Make yourself staff:** sign up on the site, then in the SQL Editor run
+   `update public.profiles set role = 'staff' where id = (select id from auth.users where email = 'you@example.com');`
+   Sign out and back in; `/admin` now opens.
+
+What the database guarantees (tested, see `supabase/tests/`):
+- Prices, fees, promo and bike charges are calculated **in the database**
+  (`create_booking`); whatever the browser sends is ignored.
+- A seat can't be sold twice (unique index on live seats per departure),
+  bikes can't overfill the compartment, ladies seats need a female passenger,
+  closed/past departures can't be booked.
+- Passengers only see their own bookings; the public seat map shows which
+  seats are taken, never who. Only staff can edit buses, routes, timetable and
+  sell counter tickets. Passengers can't change their own role.
+- Bike photos are private (bucket `bike-photos`); each passenger uploads into
+  their own folder; staff can see all.
+- Seats update live on everyone's screen (Supabase Realtime).
+
+Changing prices or rules later: the database copy lives in the
+`app_settings` table (booking fee, promo, refund policy, bike fees). Keep it in
+step with `config/operator.ts`, which the pages use for display.
+
 ## Going live — still to do
-1. **Backend + database** (e.g. Supabase/Postgres): move `lib/store.tsx` actions
-   to server routes; enforce seat and bike-space checks in the database so two
-   people can't book the same seat.
-2. **Real auth** for passengers and staff; protect `/admin` on the server.
+1. ~~Database~~ and ~~real sign-in~~: done with Supabase (see Database).
+2. Optional: phone-number sign-in with SMS codes (Supabase supports it with
+   an SMS provider such as Twilio, or a local gateway like Dialog/Notify.lk).
 3. **Payments**: a Sri Lankan gateway (e.g. PayHere); create the booking from
    the gateway's server callback, not the browser.
 4. **SMS** for phone verification and e-tickets (e.g. Dialog/Mobitel APIs).
-5. **Bike photos** to file storage (not the database), with a size limit.
+5. ~~Bike photos to file storage~~: done (Supabase Storage, private bucket).
 6. The QR code on tickets uses api.qrserver.com; generate it locally instead so
    booking details aren't sent to a third party.

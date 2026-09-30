@@ -11,21 +11,23 @@ import {
   Store,
   Search,
   Building2,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { OPERATOR } from '@/config/operator';
 import { Wordmark } from './Wordmark';
 import { ThemeToggle } from './ThemeToggle';
+import { InstallAppButton } from './InstallAppButton';
 
+// Desktop/tablet header (md and up). Phones use components/mobile/* instead:
+// a slim top bar and a bottom tab bar, like a native app.
 // Header links = where you go to travel. Account things live only in the
-// avatar menu, so nothing appears twice. The phone tab bar has no avatar
-// menu room, so it also carries Account.
+// avatar menu, so nothing appears twice.
 const NAV_LINKS = [
   { href: '/search', label: 'Book', icon: Search },
   { href: '/my-bookings', label: 'My trips', icon: Ticket },
   ...(OPERATOR.features.resale ? [{ href: '/marketplace', label: 'Resale', icon: Store }] : []),
 ];
-const MOBILE_LINKS = [...NAV_LINKS, { href: '/dashboard', label: 'Account', icon: LayoutDashboard }];
 
 export function TopNav() {
   const pathname = usePathname();
@@ -63,7 +65,7 @@ export function TopNav() {
   return (
     <>
       {/* Top bar — desktop nav lives here, mobile just shows logo + avatar/bell */}
-      <nav className={`sticky top-0 z-40 bg-[#111216]/95 backdrop-blur-md h-20 w-full px-4 md:px-[64px] flex justify-between items-center border-b border-[#feb700]/20 shadow-[0_4px_20px_-8px_rgba(5,10,68,0.5)] transition-transform duration-300 ease-out motion-reduce:transition-none ${headerHidden ? '-translate-y-full' : 'translate-y-0'}`}
+      <nav className={`hidden md:flex sticky top-0 z-40 bg-[#111216]/95 backdrop-blur-md h-20 w-full px-4 md:px-[64px] justify-between items-center border-b border-[#feb700]/20 shadow-[0_4px_20px_-8px_rgba(5,10,68,0.5)] transition-transform duration-300 ease-out motion-reduce:transition-none ${headerHidden ? '-translate-y-full' : 'translate-y-0'}`}
         onFocusCapture={() => setHidden(false)}
       >
         <Link href="/" aria-label={`${OPERATOR.name} home`}>
@@ -88,6 +90,7 @@ export function TopNav() {
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
+          <InstallAppButton variant="icon" />
           <ThemeToggle />
 
           {isLoggedIn && user ? (
@@ -118,6 +121,15 @@ export function TopNav() {
                       <UserIcon className="w-4 h-4" />
                       Account
                     </Link>
+                    <Link
+                      href="/profile"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[#050a44] hover:bg-[#f2f4f6] transition-all"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Settings
+                    </Link>
+                    <InstallAppButton variant="menu" className="border-t border-[#edeef0]" onDone={() => setMenuOpen(false)} />
                     <Link
                       href="/admin"
                       onClick={() => setMenuOpen(false)}
@@ -157,46 +169,6 @@ export function TopNav() {
           )}
         </div>
       </nav>
-
-      {/* Mobile bottom tab bar */}
-      <div
-        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md border-t border-[#edeef0] shadow-[0_-4px_24px_rgba(0,0,0,0.05)]"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        <div className="flex items-center justify-around px-2 pt-2 pb-2">
-          {MOBILE_LINKS.map((link) => {
-            const active = isActive(link.href);
-            const Icon = link.icon;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="flex flex-col items-center justify-center gap-1 flex-1 py-1"
-              >
-                <div
-                  className={`flex items-center justify-center w-11 h-8 rounded-full transition-all duration-200 ${
-                    active ? 'bg-[#050a44]' : 'bg-transparent'
-                  }`}
-                >
-                  <Icon
-                    className={`w-5 h-5 transition-colors ${
-                      active ? 'text-white' : 'text-[#46464f]'
-                    }`}
-                    strokeWidth={active ? 2.4 : 2}
-                  />
-                </div>
-                <span
-                  className={`text-[10px] leading-none tracking-[0.01em] transition-colors ${
-                    active ? 'text-[#050a44] font-bold' : 'text-[#46464f] font-medium'
-                  }`}
-                >
-                  {link.label}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
     </>
   );
 }

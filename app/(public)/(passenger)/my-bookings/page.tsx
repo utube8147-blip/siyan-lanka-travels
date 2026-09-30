@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import SeatSelectionDrawer, { type Gender } from '@/components/SeatSelectionDrawer';
 import { OPERATOR } from '@/config/operator';
+import { NotificationOptIn } from '@/components/NotificationOptIn';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { toBookingView, type BookingView, type ViewStatus } from '@/lib/bookingView';
@@ -660,10 +661,14 @@ export default function MyBookingsPage() {
     const id = booking.id;
     setCancellingId(id);
     const refund = cancelRefund;
-    setTimeout(() => {
-      updateBooking(id, { status: 'cancelled', refund: { amount: refund.amount, at: new Date().toISOString() } });
+    setTimeout(async () => {
+      const res = await updateBooking(id, { status: 'cancelled', refund: { amount: refund.amount, at: new Date().toISOString() } });
       setCancellingId(null);
       setCancelTarget(null);
+      if (!res.ok) {
+        setToast(res.reason ?? 'Could not cancel.');
+        return;
+      }
       goToRefund(booking, refund.amount, 'cancelled');
     }, 900);
   };
@@ -677,8 +682,8 @@ export default function MyBookingsPage() {
     const delta = option.priceDelta;
 
     void newDeparture;
-    const applyChange = () => {
-      const res = updateBooking(id, { date: option.isoDate, total: booking.totalPrice + delta });
+    const applyChange = async () => {
+      const res = await updateBooking(id, { date: option.isoDate, total: booking.totalPrice + delta });
       if (!res.ok) setToast(res.reason ?? 'Could not reschedule.');
     };
 
@@ -716,8 +721,8 @@ export default function MyBookingsPage() {
     const newSeats = draftSeats;
     const delta = (draftSeats.length - booking.seats.length) * booking.seatPrice;
 
-    const applyChange = () => {
-      const res = updateBooking(id, { seats: newSeats, total: booking.totalPrice + delta });
+    const applyChange = async () => {
+      const res = await updateBooking(id, { seats: newSeats, total: booking.totalPrice + delta });
       if (!res.ok) setToast(res.reason ?? 'Could not change seats.');
     };
 
@@ -775,7 +780,7 @@ export default function MyBookingsPage() {
                 <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-[#ffd54a]">
                   {OPERATOR.name}
                 </span>
-                <h1 className="text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Your Journeys</h1>
+                <h1 className="hidden md:block text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Your Journeys</h1>
                 <p className="text-white/70 text-[14px] md:text-[15px]">
                   Change seats, move to another day or cancel. Show the ticket to the conductor when you board.
                 </p>
@@ -790,7 +795,7 @@ export default function MyBookingsPage() {
                   </div>
                 </div>
               </div>
-              <div className="relative w-full md:w-80 h-40 md:h-48 rounded-xl overflow-hidden shadow-xl border-4 border-white/10 flex-shrink-0">
+              <div className="relative hidden md:block w-full md:w-80 h-40 md:h-48 rounded-xl overflow-hidden shadow-xl border-4 border-white/10 flex-shrink-0">
                 <img
                   alt="Siyan Lanka coach interior"
                   className="w-full h-full object-cover"
@@ -930,6 +935,7 @@ export default function MyBookingsPage() {
 
         {/* Sidebar — informational only now; actions live on the booking they affect */}
         <aside className="w-full lg:w-[300px] flex-shrink-0 space-y-[20px]">
+          <NotificationOptIn />
           <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
             <div className="absolute left-0 top-0 w-1.5 h-full bg-gradient-to-b from-[#feb700] to-[#ffe08a]" />
             <h4 className="font-bold text-[#050a44] text-[14px]">{OPERATOR.shortName} Rewards</h4>

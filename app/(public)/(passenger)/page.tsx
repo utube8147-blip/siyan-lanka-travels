@@ -92,7 +92,7 @@ export default function LandingPage() {
                 <ShieldCheck className="w-4 h-4 text-[#feb700]" />
                 {weeklyDepartures} overnight departures a week
               </p>
-              <h1 className="text-[36px] sm:text-[52px] lg:text-[64px] font-bold mb-4 lg:mb-6 leading-[1.05] tracking-tight text-white text-shadow-premium">
+              <h1 className="text-[30px] sm:text-[44px] lg:text-[54px] font-bold mb-4 lg:mb-6 leading-[1.05] tracking-tight text-white text-shadow-premium">
                 {firstRoute ? (
                   <>
                     {firstRoute.stops[0].name} to {firstRoute.stops[firstRoute.stops.length - 1].name}, with a seat that&apos;s yours.
@@ -169,7 +169,7 @@ export default function LandingPage() {
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 mb-8">
               <div>
-                <h2 className="text-[28px] md:text-[36px] font-bold text-[#050a44] leading-[1.2]">Next departures</h2>
+                <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2]">Next departures</h2>
                 <p className="text-[15px] text-[#46464f] mt-2 max-w-xl">Seats left update as people book. Tap a departure to choose your seat.</p>
               </div>
               <Link href="/search" className="text-[14px] font-bold text-[#050a44] hover:underline">
@@ -192,7 +192,7 @@ export default function LandingPage() {
         {firstRoute && (
           <section className="py-[56px] bg-[#fcfcfd]">
             <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
-              <h2 className="text-[28px] md:text-[36px] font-bold text-[#050a44] leading-[1.2] mb-2">Where we stop</h2>
+              <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-2">Where we stop</h2>
               <p className="text-[15px] text-[#46464f] mb-10 max-w-xl">
                 Get on or off at any of these. Fares shown from {firstRoute.stops[0].name}; you only pay for the part you ride.
               </p>
@@ -228,7 +228,7 @@ export default function LandingPage() {
                   <span className="material-symbols-outlined text-[16px]">new_releases</span>
                   New
                 </p>
-                <h2 className="text-[28px] md:text-[40px] font-bold text-[#050a44] leading-[1.15] mb-4">Bring your bike with you</h2>
+                <h2 className="text-[28px] md:text-[34px] font-bold text-[#050a44] leading-[1.15] mb-4">Bring your bike with you</h2>
                 <p className="text-[16px] leading-[1.7] text-[#46464f] max-w-lg">
                   Book a space in the luggage compartment when you book your seat. Upload a photo of the bike, and the crew will load it at your stop and have it ready when you get off.
                 </p>
@@ -262,7 +262,7 @@ export default function LandingPage() {
         <section className="py-[56px] bg-white overflow-hidden">
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-[48px] items-center">
             <div>
-              <h2 className="text-[28px] md:text-[40px] font-bold text-[#050a44] leading-[1.15] mb-4">
+              <h2 className="text-[28px] md:text-[34px] font-bold text-[#050a44] leading-[1.15] mb-4">
                 {activeBuses.length === 1 ? 'Our coach' : `Our ${activeBuses.length} coaches`}
               </h2>
               <p className="text-[16px] leading-[1.7] text-[#46464f] mb-8 max-w-lg">
@@ -343,7 +343,7 @@ export default function LandingPage() {
         {/* How it works — a real sequence, so numbering earns its place */}
         <section className="keep-navy py-[56px] bg-[#141519] text-white">
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
-            <h2 className="text-[28px] md:text-[36px] font-bold leading-[1.2] mb-10">Booking takes about two minutes</h2>
+            <h2 className="text-[28px] md:text-[30px] font-bold leading-[1.2] mb-10">Booking takes about two minutes</h2>
             <ol className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
                 ['Choose a departure', 'Pick where you get on and off and the time that suits you.'],
@@ -351,7 +351,7 @@ export default function LandingPage() {
                 ['Show your ticket', 'Pay online and show the QR ticket to the conductor at Bastian Mawatha or your stop.'],
               ].map(([title, body], i) => (
                 <li key={title} className="rounded-2xl bg-white/5 border border-white/10 p-6">
-                  <span className="text-[40px] font-black text-[#feb700] leading-none">{i + 1}</span>
+                  <span className="text-[34px] font-black text-[#feb700] leading-none">{i + 1}</span>
                   <h3 className="text-[18px] font-bold mt-4 mb-2">{title}</h3>
                   <p className="text-[14px] leading-[1.6] text-[#bdc2ff]">{body}</p>
                 </li>
@@ -365,7 +365,7 @@ export default function LandingPage() {
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
             <div className="rounded-[2.5rem] border border-[#edeef0] premium-shadow p-8 md:p-14 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
               <div className="max-w-xl">
-                <h2 className="text-[28px] md:text-[36px] font-bold text-[#050a44] leading-[1.2] mb-3">Questions, or booking for a group?</h2>
+                <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-3">Questions, or booking for a group?</h2>
                 <p className="text-[16px] leading-[1.7] text-[#46464f]">
                   Get in touch and we&apos;ll hold seats for you. You can also buy tickets from our conductor at {OPERATOR.contact.address.split(',')[0]}.
                 </p>

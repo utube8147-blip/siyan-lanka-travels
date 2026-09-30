@@ -10,6 +10,36 @@
   --color-outline: #e1e2e4;
   --color-outline-variant: #c7c5d1;
   --font-sans: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /* Typography weights. The app uses font-bold a lot, so these are set a
+     step lighter than Tailwind's defaults to keep text from looking heavy. */
+  --font-weight-normal: 400;
+  --font-weight-medium: 480;
+  --font-weight-semibold: 560;
+  --font-weight-bold: 620;
+  --font-weight-extrabold: 680;
+  --font-weight-black: 720;
+}
+
+/* Headings use the display face; body copy stays in Plus Jakarta Sans. */
+@layer base {
+  body {
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    font-optical-sizing: auto;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  h1 { letter-spacing: -0.025em; }
+  p { text-wrap: pretty; }
+  /* Times, prices and seat counts line up in tables and lists */
+  .tabular-nums, td, time { font-variant-numeric: tabular-nums; }
 }
 
 .material-symbols-outlined {
@@ -96,6 +126,17 @@
     border: 1px solid rgba(255, 255, 255, 0.4);
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
 }
+/* App feel on phones */
+html { -webkit-tap-highlight-color: transparent; }
+button, a { touch-action: manipulation; }
+@media (display-mode: standalone) {
+  /* Installed app: our own pull-to-refresh, no browser bounce/reload */
+  html, body { overscroll-behavior-y: contain; }
+}
+
+@keyframes slideUp { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .animate-\[slideUp_\.35s_ease-out\] { animation: none; } }
+
 .hero-glass-widget {
     /* Mostly-solid charcoal so the hero photo (e.g. the sign on the bus
        windscreen) never shows through the form, even in browsers where
@@ -352,3 +393,8 @@ html.dark .bg-\[\#0f144c\] { background-color: #feb700; }
 html.dark .bg-\[\#0f144c\] .text-\[\#7a7fbb\], html.dark .text-\[\#7a7fbb\] { color: #14120a; }
 html.dark .bg-\[\#bdc2ff\] { background-color: rgba(255,255,255,.14); }
 html.dark ::selection { background: rgba(254,183,0,.35); color: #fff; }
+
+/* Headings: one consistent, lighter weight in the display face (outside any
+   layer so it wins over font-bold / font-extrabold on the elements). */
+h1, h2, h3 { font-weight: 600; }
+h4, h5, h6 { font-weight: 600; }

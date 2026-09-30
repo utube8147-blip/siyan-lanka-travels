@@ -112,8 +112,8 @@ function Manifest({ run }: { run: Run }) {
     setSelected((p) => (p.includes(seat) ? p.filter((s) => s !== seat) : [...p, seat]));
   };
 
-  const setStatus = (b: Booking, status: Booking['status']) => {
-    const res = updateBooking(b.id, { status, ...(status === 'cancelled' ? { refund: { amount: b.total - b.fee, at: new Date().toISOString() } } : {}) });
+  const setStatus = async (b: Booking, status: Booking['status']) => {
+    const res = await updateBooking(b.id, { status, ...(status === 'cancelled' ? { refund: { amount: b.total - b.fee, at: new Date().toISOString() } } : {}) });
     toast(res.ok ? `${b.passenger.name}: ${status.replace('-', ' ')}` : res.reason ?? 'Could not update', res.ok ? 'ok' : 'error');
     setViewing(null);
   };
@@ -250,8 +250,8 @@ function Manifest({ run }: { run: Run }) {
           run={run}
           seats={selected}
           onClose={() => setSelling(false)}
-          onSell={(input) => {
-            const res = createBooking(input);
+          onSell={async (input) => {
+            const res = await createBooking(input);
             if (!res.ok) {
               toast(res.reason, 'error');
               return;

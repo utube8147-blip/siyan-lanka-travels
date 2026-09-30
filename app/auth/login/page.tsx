@@ -6,9 +6,18 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Wordmark } from '@/components/Wordmark';
 
+
+/** Where to go after signing in: ?next=/some/path (same-site paths only). */
+function nextPath(fallback: string) {
+  const n = new URLSearchParams(window.location.search).get('next');
+  return n && n.startsWith('/') && !n.startsWith('//') ? n : fallback;
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, signIn, resetPassword, mode } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [role, setRole] = useState<'passenger' | 'operator'>('passenger');
   // Accepts an email OR a phone number. AuthContext.login() figures out
   // which one it is.
@@ -16,24 +25,32 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
-    // Simulate a network round-trip, then actually set the mock user so
-    // isLoggedIn flips to true everywhere useAuth() is consulted (header,
-    // booking flow, etc). Swap this whole handler for a real Supabase
-    // sign-in call later — the redirect logic below can stay as-is.
-    setTimeout(() => {
-      setIsLoading(false);
+    setError(null);
+    setInfo(null);
+    const dest = nextPath(role === 'operator' ? '/admin' : '/my-bookings');
+    if (mode === 'demo') {
+      // Demo mode: no real accounts; any details sign you in.
       const namePart = identifier ? identifier.split('@')[0] : 'Alex Ham';
       login({ identifier, role, fullName: namePart });
+      router.push(dest);
+      return;
+    }
+    setIsLoading(true);
+    const r = await signIn(identifier, password);
+    setIsLoading(false);
+    if (!r.ok) return setError(r.reason);
+    router.push(dest);
+  };
 
-      if (role === 'operator') {
-        router.push('/admin');
-      } else {
-        router.push('/dashboard');
-      }
-    }, 1500);
+  const handleForgot = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!identifier.includes('@')) return setError('Type your email above first, then tap "Forgot password?".');
+    const r = await resetPassword(identifier);
+    if (!r.ok) return setError(r.reason);
+    setInfo(`We've emailed a password reset link to ${identifier}.`);
   };
 
   return (
@@ -65,12 +82,13 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <label className="block text-sm font-bold text-primary mb-2">Email or Phone Number</label>
+              <label className="block text-sm font-bold text-primary mb-2">{mode === 'demo' ? 'Email or Phone Number' : 'Email'}</label>
               <input
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 type="text"
-                placeholder="hello@example.com or +94 77 123 4567"
+                placeholder={mode === 'demo' ? 'hello@example.com or +94 77 123 4567' : 'hello@example.com'}
+                autoComplete="email"
                 className="w-full px-4 py-3 bg-white border border-outline/30 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
                 required
               />
@@ -78,7 +96,7 @@ export default function LoginPage() {
             <div>
               <div className="flex justify-between mb-2">
                 <label className="block text-sm font-bold text-primary">Password</label>
-                <a href="#" className="text-sm font-bold text-primary opacity-80 hover:opacity-100">Forgot password?</a>
+                <a href="#" onClick={handleForgot} className="text-sm font-bold text-primary opacity-80 hover:opacity-100">Forgot password?</a>
               </div>
               <input
                 value={password}
@@ -101,6 +119,9 @@ export default function LoginPage() {
                 "Sign In"
               )}
             </button>
+            {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
+            {info && <p role="status" className="text-sm font-semibold text-[#006e1c]">{info}</p>}
+            {mode === 'demo' && <p className="text-xs text-on-surface-variant">Demo mode: any details sign you in. Connect Supabase for real accounts.</p>}
           </form>
 
           <p className="text-center mt-8 text-sm text-[#46464f]">

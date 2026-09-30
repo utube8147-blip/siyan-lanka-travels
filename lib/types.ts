@@ -129,6 +129,13 @@ export interface Trip {
   closed: boolean;
 }
 
+/** What a page passes to createBooking. Prices here are for display only:
+ *  with Supabase the server recalculates everything. */
+export type NewBooking = Omit<Booking, 'id' | 'ref' | 'createdAt' | 'status'> & Partial<Pick<Booking, 'status'>> & { promo?: string };
+
+export type ActionResult = { ok: boolean; reason?: string };
+export type BookingResult = { ok: true; booking: Booking } | { ok: false; reason: string };
+
 export interface StoreData {
   version: number;
   buses: Bus[];

@@ -6,9 +6,18 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Wordmark } from '@/components/Wordmark';
 
+
+/** Where to go after signing in: ?next=/some/path (same-site paths only). */
+function nextPath(fallback: string) {
+  const n = new URLSearchParams(window.location.search).get('next');
+  return n && n.startsWith('/') && !n.startsWith('//') ? n : fallback;
+}
+
 export default function SignupPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, signUp, mode } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const role = 'passenger' as const;
   const [isLoading, setIsLoading] = useState(false);
 
@@ -19,19 +28,24 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    const fullName = `${firstName} ${lastName}`.trim();
+    const dest = nextPath('/my-bookings');
+    if (mode === 'demo') {
+      login({ email, phone, role, fullName: fullName || 'Alex Ham' });
+      router.push(dest);
+      return;
+    }
+    if (!fullName) return setError('Please enter your name.');
+    if (password.length < 8) return setError('Use at least 8 characters for your password.');
     setIsLoading(true);
-    // Simulate signup, then actually set the mock user via login() so
-    // AuthContext reflects the new account (matches login page's pattern).
-    // Swap this whole handler for a real Supabase sign-up call later.
-    setTimeout(() => {
-      setIsLoading(false);
-      const fullName = `${firstName} ${lastName}`.trim() || 'Alex Ham';
-      login({ email, phone, role, fullName });
-
-      router.push('/dashboard');
-    }, 1500);
+    const r = await signUp({ email, password, fullName, phone });
+    setIsLoading(false);
+    if (!r.ok) return setError(r.reason);
+    if (r.needsEmailConfirmation) return setInfo(`Almost done: we've sent a confirmation link to ${email}. Open it, then sign in.`);
+    router.push(dest);
   };
 
   return (
@@ -178,6 +192,8 @@ export default function SignupPage() {
                 "Create Account"
               )}
             </button>
+            {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
+            {info && <p role="status" className="text-sm font-semibold text-[#006e1c]">{info}</p>}
           </form>
 
           <p className="text-center mt-8 text-sm text-[#46464f]">

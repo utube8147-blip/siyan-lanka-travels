@@ -70,7 +70,7 @@ function BookingPageInner() {
   const params = useParams<{ scheduleId: string }>();
   const searchParams = useSearchParams();
   const { addToast, ToastHost } = useLocalToast();
-  const { user, isLoggedIn } = useAuth();
+  const { user, isLoggedIn, mode: authMode } = useAuth();
 
   const { data, ready } = useStore();
   const date = searchParams.get('date') || todayISO();
@@ -275,7 +275,12 @@ function BookingPageInner() {
     } catch {
       /* storage full: payment page will show no bikes */
     }
-    router.push(`/payment?${qs.toString()}&passengers=${passengersPayload}`);
+    const paymentUrl = `/payment?${qs.toString()}&passengers=${passengersPayload}`;
+    if (authMode === 'supabase' && !user) {
+      router.push(`/auth/login?next=${encodeURIComponent(paymentUrl)}`);
+      return;
+    }
+    router.push(paymentUrl);
   };
 
   if (!ready) return <StoreLoading />;
@@ -284,7 +289,7 @@ function BookingPageInner() {
   return (
     <React.Fragment>
       <main className="max-w-[1440px] mx-auto px-4 md:px-[64px] py-[32px]">
-        <nav aria-label="Breadcrumb" className="flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
+        <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
           <div className="flex items-center">
             <span className="hover:text-[#000000] cursor-pointer transition-colors" onClick={() => router.push(backToSearchHref)}>
               Search Results
@@ -304,7 +309,7 @@ function BookingPageInner() {
           <div>
             <button
               onClick={() => router.push(backToSearchHref)}
-              className="flex items-center text-[#000000] font-bold mb-[4px] group"
+              className="hidden md:flex items-center text-[#000000] font-bold mb-[4px] group"
             >
               <span className="material-symbols-outlined mr-[4px] group-hover:-translate-x-1 transition-transform">arrow_back</span>
               <span className="text-[14px]">Modify Search</span>

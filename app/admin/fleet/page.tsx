@@ -102,8 +102,8 @@ export default function FleetPage() {
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={() => {
-                    const res = deleteBus(bus.id);
+                  onClick={async () => {
+                    const res = await deleteBus(bus.id);
                     toast(res.ok ? `${bus.name} removed` : res.reason ?? 'Could not delete', res.ok ? 'ok' : 'error');
                   }}
                 >
@@ -120,8 +120,9 @@ export default function FleetPage() {
           bus={editing}
           isNew={isNew}
           onClose={() => setEditing(null)}
-          onSave={(b) => {
-            saveBus(b);
+          onSave={async (b) => {
+            const res = await saveBus(b);
+            if (!res.ok) return toast(res.reason ?? 'Could not save', 'error');
             setEditing(null);
             toast(isNew ? `${b.name} added. Now give it a departure in Routes & timetable.` : `${b.name} saved`);
           }}

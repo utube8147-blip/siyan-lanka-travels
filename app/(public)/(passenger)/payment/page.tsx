@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { OPERATOR } from '@/config/operator';
+import { NotificationOptIn } from '@/components/NotificationOptIn';
+import { notify } from '@/lib/pwa';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, todayISO } from '@/lib/trips';
@@ -44,7 +46,13 @@ function PaymentPageInner() {
   const to = searchParams.get('to') || '';
   const date = searchParams.get('date') || todayISO();
   const { data, ready, createBooking } = useStore();
-  const { user } = useAuth();
+  const { user, mode: authMode, isLoading: authLoading } = useAuth();
+  // With real accounts, bookings belong to a signed-in passenger.
+  useEffect(() => {
+    if (authMode === 'supabase' && !authLoading && !user) {
+      router.replace(`/auth/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    }
+  }, [authMode, authLoading, user, router]);
   const scheduleId = searchParams.get('scheduleId') || '';
   const seats = (searchParams.get('seats') || '').split(',').filter(Boolean);
   const pickup = searchParams.get('pickup') || from;
@@ -118,10 +126,10 @@ function PaymentPageInner() {
     setPayState('processing');
     // Mock payment gateway: wait, then save the booking. Swap for a real
     // gateway (e.g. PayHere) and create the booking from its server callback.
-    setTimeout(() => {
+    setTimeout(async () => {
       if (!trip) return;
       const lead = passengers[0];
-      const result = createBooking({
+      const result = await createBooking({
         scheduleId: trip.scheduleId,
         date,
         from: trip.from,
@@ -141,6 +149,7 @@ function PaymentPageInner() {
         bikeFee: bikeTotal || undefined,
         discount,
         total: totalPrice,
+        promo: promo || undefined,
       });
       if (!result.ok) {
         setPayState('idle');
@@ -148,6 +157,11 @@ function PaymentPageInner() {
         return;
       }
       setPaidTrip(trip);
+      notify('Booking confirmed', {
+        body: `${trip.from} → ${trip.to}, ${formatDateLabel(trip.boardingDate)} at ${formatTime12(trip.departure)} · Seat ${seats.join(', ')} · ${result.booking.ref}`,
+        tag: `booking-${result.booking.id}`,
+        url: '/my-bookings',
+      });
       try {
         window.sessionStorage.removeItem(`bikes:${scheduleId}:${date}`);
       } catch {
@@ -393,6 +407,7 @@ function PaymentPageInner() {
                     >
                     Back to Home
                     </button>
+                    <NotificationOptIn compact />
                 </div>
                 </div>
 
@@ -414,7 +429,7 @@ function PaymentPageInner() {
 
   return (
     <main className="max-w-[1200px] mx-auto px-4 md:px-[64px] py-[32px]">
-      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
+      <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
         <div className="flex items-center">
           <span className="cursor-default">Search Results</span>
           <span className="material-symbols-outlined text-[16px] mx-1">chevron_right</span>

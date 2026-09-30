@@ -5,20 +5,38 @@ import { TopNav } from './TopNav';
 import { OPERATOR } from '@/config/operator';
 import { Wordmark } from './Wordmark';
 import { InstallAppButton } from './InstallAppButton';
+import { InstallBanner } from './InstallBanner';
+import { TripReminders } from './TripReminders';
+import { OfflineIndicator } from './OfflineIndicator';
+import { MobileTopBar } from './mobile/MobileTopBar';
+import { MobileTabBar } from './mobile/MobileTabBar';
+import { Fab } from './mobile/Fab';
+import { PullToRefresh } from './mobile/PullToRefresh';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col min-h-screen">
+      {/* Desktop/tablet: website header + footer. Phones: app bars. */}
       <TopNav />
-      <div className="flex-1">{children}</div>
-      <SiteFooter />
+      <MobileTopBar />
+      <OfflineIndicator />
+      <PullToRefresh>
+        <div className="flex-1">{children}</div>
+      </PullToRefresh>
+      <div className="hidden md:block">
+        <SiteFooter />
+      </div>
+      <MobileTabBar />
+      <Fab />
+      <InstallBanner />
+      <TripReminders />
     </div>
   );
 }
 
 export function SiteFooter() {
   return (
-    <footer className="keep-navy bg-[#0d0e11] border-t-2 border-[#feb700]/40 w-full pt-12 pb-28 md:pb-12">
+    <footer className="keep-navy bg-[#0d0e11] border-t-2 border-[#feb700]/40 w-full pt-12 pb-12">
       <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between gap-10">
         <div className="space-y-3 max-w-sm">
           <Wordmark />
@@ -63,9 +81,9 @@ export function SiteFooter() {
       <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto mt-10 pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-between gap-3 text-[12px] font-semibold text-white/50">
         <p>© {new Date().getFullYear()} {OPERATOR.name}. All rights reserved.</p>
         <div className="flex flex-wrap gap-x-6 gap-y-2">
-          <a className="hover:text-white" href="#">Terms of travel</a>
-          <a className="hover:text-white" href="#">Privacy</a>
-          <a className="hover:text-white" href="#">Refund policy</a>
+          <Link className="hover:text-white" href="/legal#terms">Terms of travel</Link>
+          <Link className="hover:text-white" href="/legal#privacy">Privacy</Link>
+          <Link className="hover:text-white" href="/legal#refunds">Refund policy</Link>
         </div>
       </div>
     </footer>

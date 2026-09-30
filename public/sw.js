@@ -4,13 +4,16 @@
  *   under the same URL).
  * Bump VERSION to force every phone to refresh its cache.
  */
-const VERSION = 'v2';
+const VERSION = 'v4';
+// Registered as /sw.js?dev=1 during `npm run dev`: no caching, so you never
+// see stale files while developing (install + notifications still work).
+const DEV = new URL(self.location.href).searchParams.has('dev');
 const STATIC_CACHE = `sl-static-${VERSION}`;
 const PAGE_CACHE = `sl-pages-${VERSION}`;
 const PRECACHE = ['/offline.html', '/logo.png', '/icons/icon-192.png', '/icons/icon-512.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(STATIC_CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+  event.waitUntil((DEV ? Promise.resolve() : caches.open(STATIC_CACHE).then((c) => c.addAll(PRECACHE))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -30,7 +33,7 @@ const isStatic = (url) =>
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET') return;
+  if (DEV || request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
@@ -64,4 +67,44 @@ self.addEventListener('fetch', (event) => {
       ),
     );
   }
+});
+
+/* ---------------------------------------------------------------- push ----
+ * Server push (for reminders when the app is closed). Your backend sends a
+ * JSON payload like {"title":"...","body":"...","url":"/my-bookings"} to the
+ * subscription saved by lib/pwa.ts → subscribeToPush().
+ */
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data && event.data.text() };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Siyan Lanka Travels', {
+      body: data.body || '',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/favicon-48.png',
+      tag: data.tag,
+      data: { url: data.url || '/my-bookings' },
+    }),
+  );
+});
+
+// Tapping a notification opens (or focuses) the right page.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if (w.url.startsWith(self.location.origin)) {
+          w.focus();
+          return w.navigate(target);
+        }
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
 });

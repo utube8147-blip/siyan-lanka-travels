@@ -23,7 +23,7 @@ const NAV = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, login, logout, isLoading } = useAuth();
+  const { user, login, logout, isLoading, mode } = useAuth();
   const { ready } = useStore();
   const isStaff = user?.role === 'operator';
   const active = (href: string) => (href === '/admin' ? pathname === '/admin' : pathname?.startsWith(href));
@@ -41,9 +41,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <h1 className="text-[20px] font-bold text-[#050a44]">Operator dashboard</h1>
             <p className="text-[14px] text-[#46464f] mt-1">Staff only. Sign in with a staff account to manage buses, departures and bookings.</p>
           </div>
-          <Button className="w-full" onClick={() => login({ role: 'operator' })}>
-            Continue as staff (demo)
-          </Button>
+          {mode === 'demo' ? (
+            <Button className="w-full" onClick={() => login({ role: 'operator' })}>
+              Continue as staff (demo)
+            </Button>
+          ) : user ? (
+            <p className="text-[13px] text-[#46464f] bg-[#f2f4f6] rounded-xl p-3">
+              You&apos;re signed in as {user.email}, which isn&apos;t a staff account. Ask the owner to make it staff (see README → Database).
+            </p>
+          ) : (
+            <Link href="/auth/login?next=/admin" className="block">
+              <Button className="w-full">Sign in with your staff account</Button>
+            </Link>
+          )}
           <Link href="/" className="block text-[13px] font-bold text-[#050a44] hover:underline">
             Back to the booking site
           </Link>

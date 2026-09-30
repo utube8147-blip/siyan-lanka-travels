@@ -646,7 +646,7 @@ function SearchPageInner() {
 
                     {/* Footer: seats + price + CTA, same button treatment as
                         Buy Now / Grab Now / Select Seats elsewhere in the app */}
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-wrap justify-between items-center gap-y-3">
                       <div className="flex items-center gap-[6px]">
                         <Armchair className="w-[18px] h-[18px] text-[#46464f]" />
                         <span className={`text-[13px] font-bold ${s.seatsRemaining <= 5 ? 'text-[#ba1a1a]' : 'text-[#46464f]'}`}>
@@ -664,7 +664,7 @@ function SearchPageInner() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-[16px]">
+                      <div className="flex items-center gap-[16px] ml-auto">
                         <p className="text-[22px] font-extrabold text-[#050a44]">{formatLKR(s.fare)}</p>
                         {s.closed || s.seatsRemaining === 0 ? (
                           <span className="bg-[#e1e2e4] text-[#46464f] rounded-xl px-6 py-2.5 text-[13px] font-bold whitespace-nowrap">

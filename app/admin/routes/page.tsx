@@ -96,15 +96,18 @@ export default function RoutesPage() {
                             <Button size="sm" variant="secondary" onClick={() => setEditingSchedule(structuredClone(s))}>
                               Edit
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => saveSchedule({ ...s, active: !s.active })}>
+                            <Button size="sm" variant="ghost" onClick={async () => {
+                                const res = await saveSchedule({ ...s, active: !s.active });
+                                if (!res.ok) toast(res.reason ?? 'Could not update', 'error');
+                              }}>
                               {s.active ? 'Pause' : 'Resume'}
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
                               aria-label="Delete departure"
-                              onClick={() => {
-                                const res = deleteSchedule(s.id);
+                              onClick={async () => {
+                                const res = await deleteSchedule(s.id);
                                 toast(res.ok ? 'Departure deleted' : res.reason ?? 'Could not delete', res.ok ? 'ok' : 'error');
                               }}
                             >
@@ -150,8 +153,9 @@ export default function RoutesPage() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => {
-                  saveRoute(reverseOf(r));
+                onClick={async () => {
+                  const res = await saveRoute(reverseOf(r));
+                  if (!res.ok) return toast(res.reason ?? 'Could not create route', 'error');
                   toast('Return route created. Check the times and fares, then add a departure.');
                 }}
               >
@@ -160,8 +164,8 @@ export default function RoutesPage() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => {
-                  const res = deleteRoute(r.id);
+                onClick={async () => {
+                  const res = await deleteRoute(r.id);
                   toast(res.ok ? 'Route deleted' : res.reason ?? 'Could not delete', res.ok ? 'ok' : 'error');
                 }}
               >
@@ -176,8 +180,9 @@ export default function RoutesPage() {
         <RouteForm
           route={editingRoute}
           onClose={() => setEditingRoute(null)}
-          onSave={(r) => {
-            saveRoute(r);
+          onSave={async (r) => {
+            const res = await saveRoute(r);
+            if (!res.ok) return toast(res.reason ?? 'Could not save', 'error');
             setEditingRoute(null);
             toast(`${routeLabel(r)} saved`);
           }}
@@ -187,8 +192,9 @@ export default function RoutesPage() {
         <ScheduleForm
           schedule={editingSchedule}
           onClose={() => setEditingSchedule(null)}
-          onSave={(s) => {
-            saveSchedule(s);
+          onSave={async (s) => {
+            const res = await saveSchedule(s);
+            if (!res.ok) return toast(res.reason ?? 'Could not save', 'error');
             setEditingSchedule(null);
             toast('Timetable updated');
           }}

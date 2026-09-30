@@ -79,7 +79,7 @@ export default async function RoutePage({ params }: { params: Promise<{ slug: st
     <main className="max-w-[1100px] mx-auto px-4 md:px-[48px] py-[32px]">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-[13px] font-medium text-[#46464f] mb-6">
+      <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center gap-1 text-[13px] font-medium text-[#46464f] mb-6">
         <Link href="/" className="hover:text-[#050a44]">Home</Link>
         <ChevronRight className="w-4 h-4" />
         <Link href="/bus" className="hover:text-[#050a44]">Bus routes</Link>
@@ -89,7 +89,7 @@ export default async function RoutePage({ params }: { params: Promise<{ slug: st
 
       <section className="keep-navy rounded-[2rem] bg-gradient-to-br from-[#1c1d22] to-[#111216] text-white p-7 md:p-10 mb-8">
         <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[#feb700]">{OPERATOR.name}</p>
-        <h1 className="text-[32px] md:text-[44px] font-extrabold leading-[1.1] tracking-tight mt-2">
+        <h1 className="text-[32px] md:text-[38px] font-extrabold leading-[1.1] tracking-tight mt-2">
           {p.from} to {p.to} bus
         </h1>
         <p className="text-[16px] text-white/80 mt-3 max-w-2xl">{routeSummary(p)}</p>

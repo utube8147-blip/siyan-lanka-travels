@@ -8,7 +8,7 @@ import { addDays, formatDateLabel, formatLKR, formatTime12, listRuns, netRevenue
 import { Badge, Button, Card, Modal, PageHeader, useToast } from '@/components/admin/ui';
 
 export default function AdminOverview() {
-  const { data, resetDemo } = useStore();
+  const { data, resetDemo, mode } = useStore();
   const { toast, Toast } = useToast();
   const [confirmReset, setConfirmReset] = useState(false);
   const today = todayISO();
@@ -47,9 +47,11 @@ export default function AdminOverview() {
             <Link href="/admin/departures">
               <Button variant="gold">Sell a seat</Button>
             </Link>
-            <Button variant="secondary" onClick={() => setConfirmReset(true)}>
-              Reset demo data
-            </Button>
+            {mode === 'demo' && (
+              <Button variant="secondary" onClick={() => setConfirmReset(true)}>
+                Reset demo data
+              </Button>
+            )}
           </>
         }
       />

@@ -883,7 +883,7 @@ export default function Dashboard() {
           src="/brand/interior.jpg"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-black/75 to-transparent flex flex-col justify-center px-[32px] md:px-[48px]">
-          <h2 className="text-white text-[32px] md:text-[40px] font-extrabold max-w-lg mb-4 leading-tight tracking-tight">
+          <h2 className="text-white text-[32px] md:text-[34px] font-extrabold max-w-lg mb-4 leading-tight tracking-tight">
             Travel more, earn more.
           </h2>
           <button

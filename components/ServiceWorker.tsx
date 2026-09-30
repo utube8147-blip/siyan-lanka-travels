@@ -1,27 +1,23 @@
 'use client';
-// Registers the service worker (production only, so it never caches your
-// dev server) and remembers the browser's "install app" prompt so the
-// Install button can show it later.
+// Registers the service worker and remembers Chrome's install prompt so our
+// Install buttons can show it. In development the worker is registered with
+// ?dev=1, which switches its caching off (so it never serves stale dev files)
+// but keeps install and notifications working for testing.
 
 import { useEffect } from 'react';
 
-type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
-declare global {
-  interface Window {
-    __installPrompt?: InstallEvent | null;
-  }
-}
-
 export function ServiceWorker() {
   useEffect(() => {
-    if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {
+    if ('serviceWorker' in navigator) {
+      const url = process.env.NODE_ENV === 'production' ? '/sw.js' : '/sw.js?dev=1';
+      navigator.serviceWorker.register(url).catch(() => {
         /* offline support is a bonus; ignore failures */
       });
     }
     const onPrompt = (e: Event) => {
+      // Stop Chrome's mini-infobar; we show our own button/banner instead.
       e.preventDefault();
-      window.__installPrompt = e as InstallEvent;
+      window.__installPrompt = e as typeof window.__installPrompt;
       window.dispatchEvent(new Event('installable'));
     };
     const onInstalled = () => {
