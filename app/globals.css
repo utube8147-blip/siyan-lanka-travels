@@ -1,0 +1,343 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #050a44;
+  --color-secondary: #feb700;
+  --color-surface-container: #edeef0;
+  --color-surface-variant: #f1f3f9;
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #46464f;
+  --color-outline: #e1e2e4;
+  --color-outline-variant: #c7c5d1;
+  --font-sans: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
+}
+
+.material-symbols-outlined {
+    font-family: 'Material Symbols Outlined', sans-serif !important;
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    vertical-align: middle;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+}
+
+.seat-grid-new {
+    display: grid;
+    grid-template-columns: 24px 44px 44px 32px 44px 44px;
+    gap: 12px;
+    align-items: center;
+}
+.seat-btn {
+    height: 44px;
+    width: 44px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    transition: all 0.2s;
+}
+.seat-available {
+    border: 1.5px solid #c7c5d1;
+    color: #46464f;
+    background: transparent;
+}
+.seat-available:hover {
+    border-color: #ff5263;
+    background: rgba(255, 82, 99, 0.1);
+}
+.seat-selected {
+    background-color: #ff5263 !important;
+    border-color: #ff5263 !important;
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(255, 82, 99, 0.3);
+}
+.seat-booked {
+    background-color: #e1e2e4;
+    border: 1.5px solid transparent;
+    color: #777680;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+.seat-pending {
+    background-color: #ffba20;
+    border: 1.5px solid transparent;
+    color: #271900;
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+.glass-card {
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
+}
+.hero-glass-widget {
+    /* Mostly-solid navy so the hero photo (e.g. the sign on the bus
+       windscreen) never shows through the form, even in browsers where
+       backdrop blur is off. The blur is a bonus on top. */
+    background: rgba(5, 10, 68, 0.9);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+@keyframes float-widget {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-15px); }
+}
+.hero-mesh {
+    background-color: #f8f9fb;
+    background-image: 
+        radial-gradient(at 100% 0%, #dfe0ff 0%, transparent 40%),
+        radial-gradient(at 0% 100%, #fff7e6 0%, transparent 40%),
+        radial-gradient(at 80% 80%, #e1e2e4 0%, transparent 50%);
+}
+.premium-shadow {
+    box-shadow: 0 10px 30px -10px rgba(0, 10, 68, 0.1);
+}
+.bento-glow {
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    filter: blur(60px);
+    opacity: 0.15;
+    pointer-events: none;
+}
+.text-shadow-premium {
+    text-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+
+/* ===== Custom scrollbar (site-wide) ===== */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #050a44 #f2f4f6;
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: #f2f4f6;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #050a44;
+  border-radius: 999px;
+  border: 3px solid #f2f4f6;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #feb700;
+}
+::-webkit-scrollbar-corner {
+  background: #f2f4f6;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.seat-female {
+  background-color: #fce4ec;
+  border: 1px solid rgba(194, 24, 91, 0.3);
+  color: #050a44;
+}
+
+
+/* ==========================================================================
+   Dark mode
+   Neutral charcoal with gold accents (the logo's own colours), not navy.
+   The app uses a small fixed palette of Tailwind colour classes, so dark mode
+   swaps those colours here instead of adding `dark:` to every element.
+   - Turned on by the `dark` class on <html> (components/ThemeToggle.tsx and
+     the early script in app/layout.tsx).
+   - Navy brand blocks are marked `keep-navy`; in dark mode they turn charcoal
+     but their contents keep their light-on-dark styling.
+   - Primary (navy) buttons become light with dark text; selected/focused
+     things get gold.
+   ========================================================================== */
+html.dark { color-scheme: dark; }
+html.dark body { background-color: #0e0f12; color: #f2f2f4; }
+html.dark .bg-\[\#f8f9fb\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#f2f4f7\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#fcfcfd\]:not(.keep-navy, .keep-navy *) { background-color: #0e0f12; }
+html.dark .hover\:bg-\[\#f8f9fb\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-\[\#f2f4f7\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-\[\#fcfcfd\]:hover:not(.keep-navy, .keep-navy *) { background-color: #0e0f12; }
+html.dark .focus\:bg-\[\#f8f9fb\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-\[\#f2f4f7\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-\[\#fcfcfd\]:focus:not(.keep-navy, .keep-navy *) { background-color: #0e0f12; }
+html.dark .bg-white:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#ffffff\]:not(.keep-navy, .keep-navy *) { background-color: #17181c; }
+html.dark .hover\:bg-white:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-\[\#ffffff\]:hover:not(.keep-navy, .keep-navy *) { background-color: #17181c; }
+html.dark .focus\:bg-white:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-\[\#ffffff\]:focus:not(.keep-navy, .keep-navy *) { background-color: #17181c; }
+html.dark .bg-white\/90:not(.keep-navy, .keep-navy *),
+html.dark .bg-white\/85:not(.keep-navy, .keep-navy *) { background-color: rgba(23,24,28,.94); }
+html.dark .bg-\[\#f2f4f6\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#f1f3f9\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#edeef0\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#f7f8fa\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-surface-variant\/30:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#f1f3f9\]\/60:not(.keep-navy, .keep-navy *) { background-color: #202127; }
+html.dark .hover\:bg-\[\#f2f4f6\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-\[\#f1f3f9\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-\[\#edeef0\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-\[\#f7f8fa\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-surface-variant\/30:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-\[\#f1f3f9\]\/60:hover:not(.keep-navy, .keep-navy *) { background-color: #202127; }
+html.dark .focus\:bg-\[\#f2f4f6\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-\[\#f1f3f9\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-\[\#edeef0\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-\[\#f7f8fa\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-surface-variant\/30:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-\[\#f1f3f9\]\/60:focus:not(.keep-navy, .keep-navy *) { background-color: #202127; }
+html.dark .bg-\[\#e1e2e4\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#c7c5d1\]:not(.keep-navy, .keep-navy *) { background-color: #2b2d34; }
+html.dark .hover\:bg-\[\#e1e2e4\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-\[\#c7c5d1\]:hover:not(.keep-navy, .keep-navy *) { background-color: #2b2d34; }
+html.dark .focus\:bg-\[\#e1e2e4\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-\[\#c7c5d1\]:focus:not(.keep-navy, .keep-navy *) { background-color: #2b2d34; }
+html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-primary:not(.keep-navy, .keep-navy *) { background-color: #ededf0; }
+html.dark .hover\:bg-\[\#050a44\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:bg-primary:hover:not(.keep-navy, .keep-navy *) { background-color: #ededf0; }
+html.dark .focus\:bg-\[\#050a44\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:bg-primary:focus:not(.keep-navy, .keep-navy *) { background-color: #ededf0; }
+html.dark .bg-\[\#050a44\]\/5:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#050a44\]\/10:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#dfe0ff\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#dfe0ff\]\/40:not(.keep-navy, .keep-navy *) { background-color: rgba(255,255,255,.06); }
+html.dark .bg-\[\#e8f6ea\]:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#006e1c\]\/10:not(.keep-navy, .keep-navy *) { background-color: rgba(91,217,122,.13); }
+html.dark .bg-\[\#ffdad6\]\/50:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#ba1a1a\]\/5:not(.keep-navy, .keep-navy *),
+html.dark .bg-\[\#ba1a1a\]\/10:not(.keep-navy, .keep-navy *) { background-color: rgba(255,138,128,.13); }
+html.dark .text-\[\#050a44\]:not(.keep-navy, .keep-navy *),
+html.dark .text-\[\#191c1e\]:not(.keep-navy, .keep-navy *),
+html.dark .text-\[\#000000\]:not(.keep-navy, .keep-navy *),
+html.dark .text-black:not(.keep-navy, .keep-navy *),
+html.dark .text-\[\#0f144c\]:not(.keep-navy, .keep-navy *),
+html.dark .text-primary:not(.keep-navy, .keep-navy *),
+html.dark .text-on-surface:not(.keep-navy, .keep-navy *) { color: #f2f2f4; }
+html.dark .hover\:text-\[\#050a44\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:text-\[\#191c1e\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:text-\[\#000000\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:text-black:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:text-\[\#0f144c\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:text-primary:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:text-on-surface:hover:not(.keep-navy, .keep-navy *) { color: #f2f2f4; }
+html.dark .focus\:text-\[\#050a44\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:text-\[\#191c1e\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:text-\[\#000000\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:text-black:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:text-\[\#0f144c\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:text-primary:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:text-on-surface:focus:not(.keep-navy, .keep-navy *) { color: #f2f2f4; }
+html.dark .text-\[\#46464f\]:not(.keep-navy, .keep-navy *),
+html.dark .text-on-surface-variant:not(.keep-navy, .keep-navy *) { color: #a6a8b0; }
+html.dark .hover\:text-\[\#46464f\]:hover:not(.keep-navy, .keep-navy *),
+html.dark .hover\:text-on-surface-variant:hover:not(.keep-navy, .keep-navy *) { color: #a6a8b0; }
+html.dark .focus\:text-\[\#46464f\]:focus:not(.keep-navy, .keep-navy *),
+html.dark .focus\:text-on-surface-variant:focus:not(.keep-navy, .keep-navy *) { color: #a6a8b0; }
+html.dark .text-\[\#777680\]:not(.keep-navy, .keep-navy *),
+html.dark .text-\[\#9a9ba5\]:not(.keep-navy, .keep-navy *),
+html.dark .text-\[\#c7c5d1\]:not(.keep-navy, .keep-navy *) { color: #75777f; }
+html.dark .text-\[\#006e1c\]:not(.keep-navy, .keep-navy *) { color: #5bd97a; }
+html.dark .text-\[\#ba1a1a\]:not(.keep-navy, .keep-navy *),
+html.dark .text-\[\#93000a\]:not(.keep-navy, .keep-navy *),
+html.dark .text-red-600:not(.keep-navy, .keep-navy *) { color: #ff8a80; }
+html.dark .text-\[\#7c5800\]:not(.keep-navy, .keep-navy *),
+html.dark .text-\[\#6b4b00\]:not(.keep-navy, .keep-navy *) { color: #ffcf5c; }
+html.dark .border-\[\#c7c5d1\]:not(.keep-navy, .keep-navy *),
+html.dark .border-\[\#e1e2e4\]:not(.keep-navy, .keep-navy *),
+html.dark .border-\[\#edeef0\]:not(.keep-navy, .keep-navy *),
+html.dark .border-\[\#e1e2e4\]\/60:not(.keep-navy, .keep-navy *),
+html.dark .border-\[\#c7c5d1\]\/30:not(.keep-navy, .keep-navy *),
+html.dark .border-outline\/30:not(.keep-navy, .keep-navy *),
+html.dark .border-outline\/10:not(.keep-navy, .keep-navy *),
+html.dark .border-outline\/50:not(.keep-navy, .keep-navy *),
+html.dark .border-outline-variant\/30:not(.keep-navy, .keep-navy *) { border-color: #2c2e35; }
+html.dark .border-\[\#050a44\]:not(.keep-navy, .keep-navy *) { border-color: #feb700; }
+html.dark .hover\:border-\[\#050a44\]:hover:not(.keep-navy, .keep-navy *) { border-color: #feb700; }
+html.dark .focus\:border-\[\#050a44\]:focus:not(.keep-navy, .keep-navy *) { border-color: #feb700; }
+html.dark .ring-\[\#050a44\]:not(.keep-navy, .keep-navy *),
+html.dark .ring-primary:not(.keep-navy, .keep-navy *),
+html.dark .focus\:ring-\[\#050a44\]:not(.keep-navy, .keep-navy *) { --tw-ring-color: #feb700; }
+html.dark .divide-\[\#edeef0\]:not(.keep-navy, .keep-navy *) > :not(:last-child) { border-color: #2c2e35; }
+html.dark .divide-\[\#e1e2e4\]:not(.keep-navy, .keep-navy *) > :not(:last-child) { border-color: #2c2e35; }
+
+/* Primary buttons & solid chips: light surface, dark text */
+html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *).text-white,
+html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *) .text-white,
+html.dark .bg-primary:not(.keep-navy, .keep-navy *).text-white,
+html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *).text-white *,
+html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *) .material-symbols-outlined { color: #0e0f12; }
+html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *) .text-white\/70,
+html.dark .bg-\[\#050a44\]:not(.keep-navy, .keep-navy *) .text-white\/60 { color: rgba(14,15,18,.65); }
+
+/* Gold stays gold, with dark text, in both themes */
+html.dark .bg-\[\#feb700\], html.dark .bg-\[\#feb700\] * { color: #14120a; }
+html.dark .bg-\[\#feb700\] .text-white\/70 { color: rgba(20,18,10,.7); }
+
+/* Brand blocks (header, footer, sidebar, navy sections): charcoal */
+html.dark .keep-navy.bg-\[\#050a44\] { background-color: #131418; }
+html.dark .keep-navy.bg-gradient-to-br { --tw-gradient-from: #1d1e23; --tw-gradient-to: #16171b; }
+html.dark .bg-\[\#050a44\]\/95 { background-color: rgba(19,20,24,.94); }
+html.dark footer.keep-navy { background-color: #0b0c0e; }
+html.dark .text-\[\#bdc2ff\] { color: #a6a8b0; }
+html.dark .keep-navy .bg-white\/10 { background-color: rgba(255,255,255,.06); }
+
+/* Photo overlays: neutral shade instead of blue tint */
+html.dark .from-\[\#050a44\]\/90 { --tw-gradient-from: rgba(10,10,12,.9); }
+html.dark .via-\[\#050a44\]\/65 { --tw-gradient-via: rgba(10,10,12,.62); }
+html.dark .to-\[\#050a44\]\/25 { --tw-gradient-to: rgba(10,10,12,.25); }
+html.dark .from-\[\#050a44\]\/75 { --tw-gradient-from: rgba(10,10,12,.72); }
+html.dark .via-\[\#050a44\]\/70 { --tw-gradient-via: rgba(10,10,12,.68); }
+html.dark .to-\[\#050a44\]\/90 { --tw-gradient-to: rgba(10,10,12,.9); }
+html.dark .from-\[\#050a44\]\/85 { --tw-gradient-from: rgba(10,10,12,.85); }
+
+/* Custom classes from this stylesheet */
+html.dark .hero-glass-widget { background: rgba(23,24,28,.94); border-color: rgba(255,255,255,.1); }
+html.dark .premium-shadow { box-shadow: 0 10px 30px -12px rgba(0,0,0,.7); }
+html.dark .seat-available { border-color: #2c2e35; color: #a6a8b0; }
+html.dark .seat-booked { background-color: #2b2d34; color: #75777f; }
+html.dark .seat-female { background-color: rgba(244,166,198,.16); color: #f9c6dc; }
+html.dark .hero-mesh { background: #0e0f12; }
+html.dark ::placeholder { color: #75777f; }
+html.dark * { scrollbar-color: #2b2d34 #0e0f12; }
+/* Leftover blue accents */
+html.dark .bg-\[\#0f144c\] { background-color: #feb700; }
+html.dark .bg-\[\#0f144c\] .text-\[\#7a7fbb\], html.dark .text-\[\#7a7fbb\] { color: #14120a; }
+html.dark .bg-\[\#bdc2ff\] { background-color: rgba(255,255,255,.14); }
+html.dark ::selection { background: rgba(254,183,0,.35); color: #fff; }
