@@ -130,7 +130,7 @@ export default function TicketResaleMarketplace() {
   return (
     <main className="max-w-[1440px] mx-auto px-4 md:px-[64px] py-[32px]">
       {/* Hero / Sell CTA — same gradient-navy hero treatment as my-bookings */}
-      <section className="keep-navy relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#050a44] to-[#0a146b] p-[32px] md:p-[40px] text-white shadow-lg mb-[32px]">
+      <section className="keep-navy relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1c1d22] to-[#111216] p-[32px] md:p-[40px] text-white shadow-lg mb-[32px]">
         <div
           className="absolute inset-0 opacity-[0.07] pointer-events-none"
           style={{
@@ -318,7 +318,7 @@ export default function TicketResaleMarketplace() {
             ticket.featured ? (
               <div
                 key={ticket.id}
-                className="keep-navy relative overflow-hidden rounded-xl bg-gradient-to-br from-[#050a44] to-[#0a146b] text-white p-[24px] flex flex-col md:flex-row items-center gap-[24px] shadow-sm"
+                className="keep-navy relative overflow-hidden rounded-xl bg-gradient-to-br from-[#1c1d22] to-[#111216] text-white p-[24px] flex flex-col md:flex-row items-center gap-[24px] shadow-sm"
               >
                 <img
                   className="absolute inset-0 w-full h-full object-cover opacity-10"

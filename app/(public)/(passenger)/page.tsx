@@ -78,14 +78,14 @@ export default function LandingPage() {
         <section className="relative w-full lg:min-h-[560px] lg:h-[calc(100dvh-80px)]">
           <div className="hidden lg:block absolute inset-0 z-0 overflow-hidden">
             <img alt="" className="w-full h-full object-cover object-[65%_center]" src={HERO_IMAGE} />
-            <div className="absolute inset-0 bg-gradient-to-r from-[#050a44]/90 via-[#050a44]/65 to-[#050a44]/25" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/15" />
           </div>
 
           <div className="relative z-10 h-full lg:px-16 lg:py-6 grid grid-cols-1 lg:grid-cols-2 lg:gap-[48px] items-center max-w-[1440px] mx-auto">
             <div className="relative overflow-hidden lg:overflow-visible text-center lg:text-left px-6 md:px-12 lg:px-0 pt-14 pb-14 md:pt-20 md:pb-20 lg:py-0">
               <div className="lg:hidden absolute inset-0" aria-hidden>
                 <img alt="" className="w-full h-full object-cover object-[60%_center]" src={HERO_IMAGE} />
-                <div className="absolute inset-0 bg-gradient-to-b from-[#050a44]/75 via-[#050a44]/70 to-[#050a44]/90" />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/55 to-black/80" />
               </div>
               <div className="relative">
               <p className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-full mb-5 text-[13px] font-semibold">
@@ -341,7 +341,7 @@ export default function LandingPage() {
         </section>
 
         {/* How it works — a real sequence, so numbering earns its place */}
-        <section className="keep-navy py-[56px] bg-[#050a44] text-white">
+        <section className="keep-navy py-[56px] bg-[#141519] text-white">
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
             <h2 className="text-[28px] md:text-[36px] font-bold leading-[1.2] mb-10">Booking takes about two minutes</h2>
             <ol className="grid grid-cols-1 md:grid-cols-3 gap-6">

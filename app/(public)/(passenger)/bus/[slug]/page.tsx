@@ -87,7 +87,7 @@ export default async function RoutePage({ params }: { params: Promise<{ slug: st
         <span className="text-[#050a44] font-bold">{p.from} to {p.to}</span>
       </nav>
 
-      <section className="keep-navy rounded-[2rem] bg-gradient-to-br from-[#050a44] to-[#0a146b] text-white p-7 md:p-10 mb-8">
+      <section className="keep-navy rounded-[2rem] bg-gradient-to-br from-[#1c1d22] to-[#111216] text-white p-7 md:p-10 mb-8">
         <p className="text-[12px] font-bold uppercase tracking-[0.18em] text-[#feb700]">{OPERATOR.name}</p>
         <h1 className="text-[32px] md:text-[44px] font-extrabold leading-[1.1] tracking-tight mt-2">
           {p.from} to {p.to} bus

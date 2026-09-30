@@ -18,7 +18,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
 export function SiteFooter() {
   return (
-    <footer className="keep-navy bg-[#050a44] border-t-2 border-[#feb700]/40 w-full pt-12 pb-28 md:pb-12">
+    <footer className="keep-navy bg-[#0d0e11] border-t-2 border-[#feb700]/40 w-full pt-12 pb-28 md:pb-12">
       <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between gap-10">
         <div className="space-y-3 max-w-sm">
           <Wordmark />

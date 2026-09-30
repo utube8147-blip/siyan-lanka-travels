@@ -245,7 +245,7 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
         onClick={onClose}
       />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden print:shadow-none print:rounded-none print:max-w-none">
-        <div className="keep-navy bg-gradient-to-br from-[#050a44] to-[#0a146b] p-[24px] text-white flex items-center justify-between print:hidden">
+        <div className="keep-navy bg-gradient-to-br from-[#1c1d22] to-[#111216] p-[24px] text-white flex items-center justify-between print:hidden">
           <div>
             <p className="text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">E-Ticket</p>
             <h3 className="text-[18px] font-bold">{booking.bookingRef}</h3>
@@ -762,7 +762,7 @@ export default function MyBookingsPage() {
         {/* Main content */}
         <div className="flex-1 space-y-[40px] min-w-0">
           {/* Hero */}
-          <section className="keep-navy relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#050a44] to-[#0a146b] p-[32px] md:p-[40px] text-white shadow-lg">
+          <section className="keep-navy relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1c1d22] to-[#111216] p-[32px] md:p-[40px] text-white shadow-lg">
             <div
               className="absolute inset-0 opacity-[0.07] pointer-events-none"
               style={{

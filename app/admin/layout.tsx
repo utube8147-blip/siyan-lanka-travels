@@ -56,7 +56,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-[#f2f4f7] lg:grid lg:grid-cols-[248px_1fr]">
       <title>Operator dashboard | Siyan Lanka Travels</title>
       <meta name="robots" content="noindex, nofollow" />
-      <aside className="keep-navy hidden lg:flex flex-col bg-[#050a44] text-white sticky top-0 h-screen p-5">
+      <aside className="keep-navy hidden lg:flex flex-col bg-[#111216] text-white sticky top-0 h-screen p-5">
         <Link href="/admin" className="mb-8 block">
           <Wordmark />
           <span className="block text-[11px] font-semibold text-[#bdc2ff] mt-2">Operator dashboard</span>
@@ -90,7 +90,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Mobile / tablet top bar */}
-      <div className="keep-navy lg:hidden sticky top-0 z-40 bg-[#050a44] text-white">
+      <div className="keep-navy lg:hidden sticky top-0 z-40 bg-[#111216] text-white">
         <div className="flex items-center justify-between px-4 h-14">
           <Wordmark size="sm" />
           <div className="flex items-center gap-1">

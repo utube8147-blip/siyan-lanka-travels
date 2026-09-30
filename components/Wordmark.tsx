@@ -20,7 +20,7 @@ export function Wordmark({ size = 'md', badge = false }: { size?: 'sm' | 'md'; b
   );
   if (!badge) return img;
   return (
-    <span className="keep-navy inline-flex items-center rounded-2xl bg-[#050a44] px-5 py-3 shadow-[0_8px_24px_-8px_rgba(5,10,68,0.45)] ring-1 ring-[#feb700]/30">
+    <span className="keep-navy inline-flex items-center rounded-2xl bg-[#111216] px-5 py-3 shadow-[0_8px_24px_-8px_rgba(5,10,68,0.45)] ring-1 ring-[#feb700]/30">
       {img}
     </span>
   );
