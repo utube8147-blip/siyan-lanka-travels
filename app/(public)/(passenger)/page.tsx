@@ -17,7 +17,7 @@ const HERO_IMAGE = '/brand/bus.png';
 
 const INTERIOR_CARDS = [
   { image: '/brand/interior.png', title: 'Reclining leather seats', subtitle: 'Room to sleep on the overnight run east' },
-  { image: '/brand/poster.jpg', title: 'ND 2323, Siyan Lanka Travels', subtitle: 'Your coach, every trip' },
+  { image: '/brand/poster.png', title: 'ND 2323, Siyan Lanka Travels', subtitle: 'Your coach, every trip' },
 ];
 
 const AMENITY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
