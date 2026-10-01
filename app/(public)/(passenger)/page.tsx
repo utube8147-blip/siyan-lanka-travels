@@ -99,7 +99,7 @@ export default function LandingPage() {
           <div className="hidden lg:block absolute inset-0 z-0 overflow-hidden">
             <img alt="" className="w-full h-full object-cover object-[65%_center]" src={HERO_IMAGE} />
             {/* Flat faint overlay so the whole photo is evenly toned down */}
-            <div className="absolute inset-0 bg-black/25" />
+            <div className="absolute inset-0 bg-black/35" />
             {/* Directional gradient: darkest behind the headline, lighter toward the right */}
             <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/35" />
           </div>
@@ -178,7 +178,7 @@ export default function LandingPage() {
                 <button
                   onClick={search}
                   disabled={!from || !to}
-                  className="w-full py-3.5 md:py-[18px] bg-[#feb700] text-[#050a44] rounded-2xl text-[17px] font-semibold hover:bg-white hover:shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
+                  className="w-full py-3.5 md:py-[18px] bg-[#feb700] text-[#050a44] rounded-2xl text-[17px] font-semibold hover:bg-[#ffc933] hover:shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
                 >
                   <span>Find buses</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -313,7 +313,7 @@ export default function LandingPage() {
                   Book a seat and a bike space <ArrowRight className="w-5 h-5" />
                 </Link>
               </div>
-              <div ref={bikesRef} className="grid grid-cols-3 gap-3 sm:gap-4">
+              <div ref={bikesRef} className="grid grid-cols-2 gap-3 sm:gap-4">
                 {Object.values(OPERATOR.bikes.kinds).map((k) => (
                   <div key={k.label} className="rounded-2xl border border-[#c7c5d1] p-3 sm:p-5 bg-[#fcfcfd]">
                     <span className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#050a44] text-[#feb700] flex items-center justify-center">
