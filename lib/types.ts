@@ -24,7 +24,7 @@ export interface Bus {
   bikeSpaces: number;
 }
 
-export type BikeKind = 'bicycle' | 'scooter' | 'motorbike';
+export type BikeKind = 'scooter' | 'motorbike';
 
 export interface BikeItem {
   id: string;
