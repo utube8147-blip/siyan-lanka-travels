@@ -98,6 +98,10 @@ export function Modal({
 
 const BADGE: Record<string, string> = {
   confirmed: 'bg-[#006e1c]/10 text-[#006e1c]',
+  held: 'bg-[#feb700]/15 text-[#7c5800]',
+  new: 'bg-[#dfe0ff] text-[#050a44]',
+  quoted: 'bg-[#feb700]/15 text-[#7c5800]',
+  done: 'bg-[#006e1c]/10 text-[#006e1c]',
   boarded: 'bg-[#050a44]/10 text-[#050a44]',
   cancelled: 'bg-[#ba1a1a]/10 text-[#ba1a1a]',
   'no-show': 'bg-[#feb700]/15 text-[#7c5800]',

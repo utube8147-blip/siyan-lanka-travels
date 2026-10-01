@@ -10,6 +10,7 @@ import { CATEGORY_LABEL, monthKey, useErp, type Income, type IncomeCategory } fr
 import { addDays, formatDateLabel, formatLKR, formatTime12, genId, listRuns, netRevenue, routeLabel, todayISO } from '@/lib/trips';
 import { AdminOnly, BarList } from '@/components/admin/AdminOnly';
 import { Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { uuid } from '@/lib/uuid';
 
 const INCOME_LABEL: Record<IncomeCategory, string> = { charter: 'Charter / hire', parcel: 'Parcels', advertising: 'Advertising', other: 'Other' };
 
@@ -71,7 +72,7 @@ function Finance() {
         actions={
           <>
             <input type="month" aria-label="Month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${inputClass} !w-auto`} />
-            <Button variant="secondary" onClick={() => setAddingIncome({ id: genId('inc'), receivedOn: todayISO(), category: 'charter', amount: 0, busId: data.buses[0]?.id, description: '' })}>
+            <Button variant="secondary" onClick={() => setAddingIncome({ id: uuid(), receivedOn: todayISO(), category: 'charter', amount: 0, busId: data.buses[0]?.id, description: '' })}>
               <Plus className="w-4 h-4" /> Other income
             </Button>
           </>

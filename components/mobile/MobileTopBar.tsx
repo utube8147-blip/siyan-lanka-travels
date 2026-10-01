@@ -10,8 +10,10 @@ import { Wordmark } from '../Wordmark';
 import { InstallAppButton } from '../InstallAppButton';
 import { useHideOnScroll } from '@/lib/useHideOnScroll';
 import { TAB_ROOTS, parentOf, screenTitle } from './routes';
+import { LanguageSwitcher, useT } from '@/lib/i18n';
 
 function Bar() {
+  const { t } = useT();
   const pathname = usePathname() || '/';
   const params = useSearchParams();
   const router = useRouter();
@@ -45,10 +47,10 @@ function Bar() {
                 <ChevronLeft className="w-6 h-6" />
               </button>
             )}
-            <h1 className={`text-[17px] font-semibold truncate ${isRoot ? 'pl-3' : ''}`}>{title}</h1>
+            <h1 className={`text-[17px] font-semibold truncate ${isRoot ? 'pl-3' : ''}`}>{t(title)}</h1>
           </>
         )}
-        <div className="ml-auto flex items-center">{isHome && <InstallAppButton variant="icon" />}</div>
+        <div className="ml-auto flex items-center gap-1">{isHome && <LanguageSwitcher />}{isHome && <InstallAppButton variant="icon" />}</div>
       </div>
     </header>
   );

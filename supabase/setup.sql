@@ -1,0 +1,1417 @@
+-- =============================================================================
+-- Siyan Lanka Travels — COMPLETE DATABASE SETUP (all migrations + starting data)
+--
+-- Paste this whole file into Supabase → SQL Editor → Run.
+-- It is SAFE TO RUN AGAIN: anything that already exists is skipped or updated,
+-- anything missing is created. Use it for a new project or to bring an
+-- existing (partly set-up) project up to date.
+--
+-- Includes, in order:
+--   1. Core: profiles, settings, buses, routes, schedules, bookings, seats,
+--      bikes, booking functions, security rules, bike-photo storage
+--   2. Super admin role, expenses / income / documents / crew, seat resale
+--   3. Payment holds, rewards, waitlist, notifications, message queue,
+--      saved passengers, live trips, parcels & charters, cash counts
+--   4. Conductor role
+--   5. Starting data: settings, bus ND-2323, Route 48 both ways, timetable
+-- =============================================================================
+
+
+-- =============================================================================
+-- ▼ 20261001000000_init.sql
+-- =============================================================================
+-- =============================================================================
+-- Siyan Lanka Travels — database schema for Supabase (Postgres 15+)
+--
+-- Design:
+-- * Anyone can read the timetable (buses, routes, schedules, settings) and
+--   which seats are taken — never who took them.
+-- * Passengers can read only their own bookings. They create, change and
+--   cancel bookings ONLY through the functions below, which work out prices
+--   on the server, so a tampered browser can't change what it pays.
+-- * Staff (profiles.role = 'staff') manage the timetable and all bookings.
+-- * Double-booking is impossible: a unique index on live seats per departure.
+-- =============================================================================
+
+create extension if not exists pgcrypto;
+
+-- ------------------------------------------------------------------ types ---
+do $$ begin create type public.user_role as enum ('passenger', 'staff'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.bus_type as enum ('AC', 'Non-AC'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.bus_status as enum ('active', 'maintenance', 'retired'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.booking_status as enum ('confirmed', 'boarded', 'cancelled', 'no-show'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.booking_channel as enum ('online', 'counter', 'phone'); exception when duplicate_object then null; end $$;
+do $$ begin create type public.bike_kind as enum ('bicycle', 'scooter', 'motorbike'); exception when duplicate_object then null; end $$;
+
+-- --------------------------------------------------------------- profiles ---
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  full_name text,
+  phone text,
+  role public.user_role not null default 'passenger',
+  created_at timestamptz not null default now()
+);
+
+-- New sign-ups get a profile automatically.
+create or replace function public.handle_new_user() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.profiles (id, full_name, phone)
+  values (new.id, new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'phone')
+  on conflict (id) do nothing;
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+create or replace function public.is_staff() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role = 'staff');
+$$;
+
+-- --------------------------------------------------------------- settings ---
+-- One row. Mirrors config/operator.ts so prices are decided server-side.
+create table if not exists public.app_settings (
+  id boolean primary key default true check (id),
+  booking_fee integer not null default 50,
+  promo_code text,
+  promo_percent integer not null default 0 check (promo_percent between 0 and 100),
+  max_seats_per_booking integer not null default 6,
+  booking_cutoff_minutes integer not null default 30,
+  refund_policy jsonb not null default '[{"hoursBefore":24,"percent":90},{"hoursBefore":6,"percent":50},{"hoursBefore":0,"percent":0}]',
+  bikes jsonb not null default '{"minFee":300,"maxPerBooking":2,"kinds":{"bicycle":{"spaces":1,"fullRouteFee":600},"scooter":{"spaces":2,"fullRouteFee":1200},"motorbike":{"spaces":2,"fullRouteFee":1500}}}',
+  timezone text not null default 'Asia/Colombo'
+);
+
+-- ------------------------------------------------------------- timetable ---
+create table if not exists public.buses (
+  id text primary key default ('bus-' || substr(md5(gen_random_uuid()::text), 1, 8)),
+  name text not null,
+  reg_no text not null unique,
+  type public.bus_type not null default 'AC',
+  rows integer not null check (rows between 1 and 16),
+  back_row_seats integer not null default 5 check (back_row_seats in (0, 4, 5, 6)),
+  ladies_seats text[] not null default '{}',
+  amenities text[] not null default '{}',
+  status public.bus_status not null default 'active',
+  bike_spaces integer not null default 0 check (bike_spaces between 0 and 20),
+  created_at timestamptz not null default now()
+);
+
+-- stops: [{"name":"Colombo","offsetMin":0,"fareFromStart":0}, ...] in travel order
+create table if not exists public.routes (
+  id text primary key default ('route-' || substr(md5(gen_random_uuid()::text), 1, 8)),
+  stops jsonb not null check (jsonb_typeof(stops) = 'array' and jsonb_array_length(stops) >= 2),
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.schedules (
+  id text primary key default ('sch-' || substr(md5(gen_random_uuid()::text), 1, 8)),
+  route_id text not null references public.routes (id) on delete restrict,
+  bus_id text not null references public.buses (id) on delete restrict,
+  departure text not null check (departure ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  days smallint[] not null check (days <@ array[0, 1, 2, 3, 4, 5, 6]::smallint[] and cardinality(days) > 0),
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------- bookings ---
+create table if not exists public.bookings (
+  id uuid primary key default gen_random_uuid(),
+  ref text not null unique,
+  schedule_id text not null references public.schedules (id) on delete restrict,
+  travel_date date not null,               -- date the bus leaves its FIRST stop
+  from_stop text not null,
+  to_stop text not null,
+  seats text[] not null check (cardinality(seats) between 1 and 20),
+  passenger_name text not null,
+  passenger_gender text not null default '' check (passenger_gender in ('Male', 'Female', '')),
+  passenger_phone text not null default '',
+  contact_email text not null default '',
+  contact_phone text not null default '',
+  user_id uuid references public.profiles (id) on delete set null,
+  created_by uuid references public.profiles (id) on delete set null,
+  channel public.booking_channel not null default 'online',
+  fare integer not null,                   -- per seat
+  fee integer not null default 0,
+  discount integer not null default 0,
+  bike_fee integer not null default 0,
+  total integer not null,
+  status public.booking_status not null default 'confirmed',
+  refund_amount integer,
+  refunded_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists bookings_user_idx on public.bookings (user_id, travel_date);
+create index if not exists bookings_departure_idx on public.bookings (schedule_id, travel_date);
+
+-- One row per seat of a live booking. The partial unique index is what makes
+-- double-booking impossible, even with two payments at the same instant.
+create table if not exists public.booking_seats (
+  booking_id uuid not null references public.bookings (id) on delete cascade,
+  schedule_id text not null,
+  travel_date date not null,
+  seat text not null,
+  gender text not null default '',
+  active boolean not null default true,
+  primary key (booking_id, seat)
+);
+create unique index if not exists booking_seats_one_per_departure on public.booking_seats (schedule_id, travel_date, seat) where active;
+
+create table if not exists public.booking_bikes (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid not null references public.bookings (id) on delete cascade,
+  kind public.bike_kind not null,
+  description text not null,
+  reg_no text not null default '',
+  photo_path text,                          -- in storage bucket "bike-photos"
+  fee integer not null
+);
+create index if not exists booking_bikes_booking_idx on public.booking_bikes (booking_id);
+
+-- Keep booking_seats in step with bookings (status, seats, date).
+create or replace function public.sync_booking_seats() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.booking_seats where booking_id = new.id;
+  if new.status in ('confirmed', 'boarded') then
+    insert into public.booking_seats (booking_id, schedule_id, travel_date, seat, gender)
+    select new.id, new.schedule_id, new.travel_date, s, new.passenger_gender from unnest(new.seats) s;
+  end if;
+  return new;
+exception when unique_violation then
+  raise exception 'SEAT_TAKEN: One of those seats was just booked by someone else. Please pick another.' using errcode = 'P0001';
+end $$;
+
+drop trigger if exists bookings_sync_seats on public.bookings;
+create trigger bookings_sync_seats after insert or update of status, seats, travel_date, schedule_id, passenger_gender
+  on public.bookings for each row execute function public.sync_booking_seats();
+
+-- ---------------------------------------------------------------- helpers ---
+create or replace function public.seat_is_on_bus(p_bus public.buses, p_seat text) returns boolean
+language plpgsql immutable as $$
+declare r int; c text; m text[];
+begin
+  m := regexp_match(p_seat, '^([0-9]+)([A-F])$');
+  if m is null then return false; end if;
+  r := m[1]::int; c := m[2];
+  if r between 1 and p_bus.rows then return c in ('A', 'B', 'C', 'D'); end if;
+  if r = p_bus.rows + 1 then return position(c in 'ABCDEF') between 1 and p_bus.back_row_seats; end if;
+  return false;
+end $$;
+
+create or replace function public.stop_index(p_stops jsonb, p_name text) returns int
+language sql immutable as $$
+  select (ord - 1)::int from jsonb_array_elements(p_stops) with ordinality as e(stop, ord)
+  where lower(trim(stop ->> 'name')) = lower(trim(p_name)) limit 1;
+$$;
+
+-- Bike spaces already booked on a departure (anyone can read this).
+create or replace function public.bike_spaces_used(p_schedule text, p_date date) returns int
+language sql stable security definer set search_path = public as $$
+  select coalesce(sum(((select bikes from public.app_settings) -> 'kinds' -> k.kind::text ->> 'spaces')::int), 0)::int
+  from public.booking_bikes k join public.bookings b on b.id = k.booking_id
+  where b.schedule_id = p_schedule and b.travel_date = p_date and b.status in ('confirmed', 'boarded');
+$$;
+
+create or replace function public.get_bike_usage(p_from date, p_to date)
+returns table (schedule_id text, travel_date date, spaces int)
+language sql stable security definer set search_path = public as $$
+  select b.schedule_id, b.travel_date,
+         sum(((select bikes from public.app_settings) -> 'kinds' -> k.kind::text ->> 'spaces')::int)::int
+  from public.booking_bikes k join public.bookings b on b.id = k.booking_id
+  where b.travel_date between p_from and p_to and b.status in ('confirmed', 'boarded')
+  group by 1, 2;
+$$;
+
+create or replace function public.new_booking_ref() returns text
+language plpgsql volatile as $$
+declare chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; out text;
+begin
+  loop
+    out := 'SLT-';
+    for i in 1..6 loop out := out || substr(chars, 1 + floor(random() * length(chars))::int, 1); end loop;
+    exit when not exists (select 1 from public.bookings where ref = out);
+  end loop;
+  return out;
+end $$;
+
+-- ----------------------------------------------------------- create_booking ---
+-- p = {
+--   schedule_id, date ("YYYY-MM-DD", the run date), from, to, seats: [..],
+--   passenger: {name, gender, phone}, contact: {email, phone},
+--   promo?, channel? ("online" | "counter" | "phone"; the last two staff-only),
+--   bikes?: [{kind, description, reg_no, photo_path}]
+-- }
+create or replace function public.create_booking(p jsonb) returns public.bookings
+language plpgsql security definer set search_path = public as $$
+declare
+  cfg public.app_settings;
+  uid uuid := auth.uid();
+  staff boolean := public.is_staff();
+  chan public.booking_channel := coalesce(nullif(p ->> 'channel', ''), 'online')::public.booking_channel;
+  sch public.schedules; rt public.routes; bus public.buses;
+  d date := (p ->> 'date')::date;
+  fi int; ti int; stops jsonb; v_seats text[]; s text;
+  gender text := coalesce(p -> 'passenger' ->> 'gender', '');
+  v_fare int; base int; disc int := 0; v_fee int; bike_total int := 0; full_fare int;
+  leaves timestamptz; bike jsonb; need int := 0; kinds jsonb; bfee int; share numeric;
+  bk public.bookings;
+begin
+  select * into cfg from public.app_settings;
+  if chan <> 'online' and not staff then raise exception 'NOT_ALLOWED: Only staff can make counter or phone bookings.'; end if;
+  if chan = 'online' and uid is null then raise exception 'SIGN_IN: Please sign in to book.'; end if;
+
+  select * into sch from public.schedules where id = p ->> 'schedule_id' and active;
+  if not found then raise exception 'NOT_FOUND: That departure is not running.'; end if;
+  select * into rt from public.routes where id = sch.route_id and active;
+  select * into bus from public.buses where id = sch.bus_id and status = 'active';
+  if rt.id is null or bus.id is null then raise exception 'NOT_FOUND: That departure is not running.'; end if;
+  if not (extract(dow from d)::smallint = any (sch.days)) then raise exception 'NOT_FOUND: The bus does not run on that day.'; end if;
+
+  stops := rt.stops;
+  fi := public.stop_index(stops, p ->> 'from');
+  ti := public.stop_index(stops, p ->> 'to');
+  if fi is null or ti is null or fi >= ti then raise exception 'BAD_STOPS: Choose a boarding point before the drop-off.'; end if;
+
+  leaves := ((d + sch.departure::time) + make_interval(mins => (stops -> fi ->> 'offsetMin')::int)) at time zone cfg.timezone;
+  if chan = 'online' and now() > leaves - make_interval(mins => cfg.booking_cutoff_minutes) then
+    raise exception 'CLOSED: Online booking for this departure has closed.';
+  end if;
+  if now() > leaves then raise exception 'CLOSED: This bus has already left.'; end if;
+
+  select array_agg(distinct upper(x)) into v_seats from jsonb_array_elements_text(p -> 'seats') x;
+  if v_seats is null or cardinality(v_seats) = 0 then raise exception 'NO_SEATS: Pick at least one seat.'; end if;
+  if chan = 'online' and cardinality(v_seats) > cfg.max_seats_per_booking then
+    raise exception 'TOO_MANY: You can book up to % seats at once.', cfg.max_seats_per_booking;
+  end if;
+  foreach s in array v_seats loop
+    if not public.seat_is_on_bus(bus, s) then raise exception 'BAD_SEAT: Seat % does not exist on this bus.', s; end if;
+    if s = any (bus.ladies_seats) and gender <> 'Female' then raise exception 'LADIES_SEAT: Seat % is for female passengers.', s; end if;
+  end loop;
+
+  -- Prices are always worked out here, never taken from the browser.
+  v_fare := (stops -> ti ->> 'fareFromStart')::int - (stops -> fi ->> 'fareFromStart')::int;
+  base := v_fare * cardinality(v_seats);
+  if chan = 'online' and cfg.promo_code is not null and upper(coalesce(p ->> 'promo', '')) = upper(cfg.promo_code) then
+    disc := round(base * cfg.promo_percent / 100.0);
+  end if;
+  v_fee := case when chan = 'online' then cfg.booking_fee else 0 end;
+
+  -- Bikes: serialize per departure so two bookings can't overfill the compartment.
+  if jsonb_array_length(coalesce(p -> 'bikes', '[]')) > 0 then
+    kinds := cfg.bikes -> 'kinds';
+    if jsonb_array_length(p -> 'bikes') > (cfg.bikes ->> 'maxPerBooking')::int then
+      raise exception 'TOO_MANY_BIKES: Up to % bikes per booking.', cfg.bikes ->> 'maxPerBooking';
+    end if;
+    perform pg_advisory_xact_lock(hashtext(sch.id || d::text));
+    full_fare := greatest(1, (stops -> (jsonb_array_length(stops) - 1) ->> 'fareFromStart')::int);
+    share := least(1, v_fare::numeric / full_fare);
+    for bike in select * from jsonb_array_elements(p -> 'bikes') loop
+      if not kinds ? (bike ->> 'kind') then raise exception 'BAD_BIKE: Unknown kind of bike.'; end if;
+      if length(coalesce(bike ->> 'description', '')) < 3 then raise exception 'BAD_BIKE: Describe each bike (make and colour).'; end if;
+      if bike ->> 'kind' <> 'bicycle' and length(coalesce(bike ->> 'reg_no', '')) < 4 then raise exception 'BAD_BIKE: Add the number plate.'; end if;
+      if chan = 'online' and coalesce(bike ->> 'photo_path', '') = '' then raise exception 'BAD_BIKE: Upload a photo of each bike.'; end if;
+      need := need + (kinds -> (bike ->> 'kind') ->> 'spaces')::int;
+      bfee := greatest((cfg.bikes ->> 'minFee')::int, (round((kinds -> (bike ->> 'kind') ->> 'fullRouteFee')::int * share / 50) * 50)::int);
+      bike_total := bike_total + bfee;
+    end loop;
+    if public.bike_spaces_used(sch.id, d) + need > bus.bike_spaces then
+      raise exception 'BIKES_FULL: The luggage compartment is full for this departure.';
+    end if;
+  end if;
+
+  insert into public.bookings (ref, schedule_id, travel_date, from_stop, to_stop, seats,
+    passenger_name, passenger_gender, passenger_phone, contact_email, contact_phone,
+    user_id, created_by, channel, fare, fee, discount, bike_fee, total)
+  values (public.new_booking_ref(), sch.id, d, stops -> fi ->> 'name', stops -> ti ->> 'name', v_seats,
+    left(coalesce(nullif(trim(p -> 'passenger' ->> 'name'), ''), 'Passenger'), 120), gender,
+    left(coalesce(p -> 'passenger' ->> 'phone', ''), 40), left(coalesce(p -> 'contact' ->> 'email', ''), 200),
+    left(coalesce(p -> 'contact' ->> 'phone', ''), 40),
+    case when chan = 'online' then uid end, uid, chan, v_fare, v_fee, disc, bike_total, base - disc + bike_total + v_fee)
+  returning * into bk;
+
+  if bike_total > 0 then
+    insert into public.booking_bikes (booking_id, kind, description, reg_no, photo_path, fee)
+    select bk.id, (b ->> 'kind')::public.bike_kind, left(b ->> 'description', 120), upper(left(coalesce(b ->> 'reg_no', ''), 20)),
+           nullif(b ->> 'photo_path', ''),
+           greatest((cfg.bikes ->> 'minFee')::int, (round((cfg.bikes -> 'kinds' -> (b ->> 'kind') ->> 'fullRouteFee')::int * share / 50) * 50)::int)
+    from jsonb_array_elements(p -> 'bikes') b;
+  end if;
+  return bk;
+end $$;
+
+-- ----------------------------------------------------------- cancel_booking ---
+-- Passengers: refund by the policy tiers. Staff: full fare back (fee kept).
+create or replace function public.cancel_booking(p_id uuid) returns public.bookings
+language plpgsql security definer set search_path = public as $$
+declare
+  cfg public.app_settings; bk public.bookings; sch public.schedules; rt public.routes;
+  leaves timestamptz; hrs numeric; pct int := 0; tier jsonb; staff boolean := public.is_staff();
+begin
+  select * into cfg from public.app_settings;
+  select * into bk from public.bookings where id = p_id for update;
+  if not found or (bk.user_id is distinct from auth.uid() and not staff) then raise exception 'NOT_FOUND: Booking not found.'; end if;
+  if bk.status <> 'confirmed' then raise exception 'NOT_ALLOWED: Only confirmed bookings can be cancelled.'; end if;
+  if staff and bk.user_id is distinct from auth.uid() then
+    pct := 100;
+  else
+    select * into sch from public.schedules where id = bk.schedule_id;
+    select * into rt from public.routes where id = sch.route_id;
+    leaves := ((bk.travel_date + sch.departure::time)
+      + make_interval(mins => (rt.stops -> public.stop_index(rt.stops, bk.from_stop) ->> 'offsetMin')::int)) at time zone cfg.timezone;
+    hrs := extract(epoch from (leaves - now())) / 3600;
+    for tier in select * from jsonb_array_elements(cfg.refund_policy) loop
+      if hrs >= (tier ->> 'hoursBefore')::numeric then pct := (tier ->> 'percent')::int; exit; end if;
+    end loop;
+  end if;
+  update public.bookings set status = 'cancelled', refund_amount = round((total - fee) * pct / 100.0), refunded_at = now()
+  where id = p_id returning * into bk;
+  return bk;
+end $$;
+
+-- ----------------------------------------------------------- modify_booking ---
+-- Change seats and/or move to another date on the same departure.
+create or replace function public.modify_booking(p_id uuid, p_seats text[] default null, p_date date default null) returns public.bookings
+language plpgsql security definer set search_path = public as $$
+declare
+  cfg public.app_settings; bk public.bookings; sch public.schedules; rt public.routes; bus public.buses;
+  v_seats text[]; v_d date; s text; leaves timestamptz; used int; mine int;
+begin
+  select * into cfg from public.app_settings;
+  select * into bk from public.bookings where id = p_id for update;
+  if not found or (bk.user_id is distinct from auth.uid() and not public.is_staff()) then raise exception 'NOT_FOUND: Booking not found.'; end if;
+  if bk.status <> 'confirmed' then raise exception 'NOT_ALLOWED: This booking can no longer be changed.'; end if;
+  select * into sch from public.schedules where id = bk.schedule_id;
+  select * into rt from public.routes where id = sch.route_id;
+  select * into bus from public.buses where id = sch.bus_id;
+  v_seats := coalesce((select array_agg(distinct upper(x)) from unnest(p_seats) x), bk.seats);
+  v_d := coalesce(p_date, bk.travel_date);
+  if not (extract(dow from v_d)::smallint = any (sch.days)) then raise exception 'NOT_FOUND: The bus does not run on that day.'; end if;
+  leaves := ((v_d + sch.departure::time) + make_interval(mins => (rt.stops -> public.stop_index(rt.stops, bk.from_stop) ->> 'offsetMin')::int)) at time zone cfg.timezone;
+  if now() > leaves - make_interval(mins => cfg.booking_cutoff_minutes) then raise exception 'CLOSED: Too close to departure to change this booking.'; end if;
+  if cardinality(v_seats) > cfg.max_seats_per_booking then raise exception 'TOO_MANY: Up to % seats per booking.', cfg.max_seats_per_booking; end if;
+  foreach s in array v_seats loop
+    if not public.seat_is_on_bus(bus, s) then raise exception 'BAD_SEAT: Seat % does not exist on this bus.', s; end if;
+    if s = any (bus.ladies_seats) and bk.passenger_gender <> 'Female' then raise exception 'LADIES_SEAT: Seat % is for female passengers.', s; end if;
+  end loop;
+  if v_d <> bk.travel_date then
+    select count(*) into mine from public.booking_bikes where booking_id = bk.id;
+    if mine > 0 then
+      perform pg_advisory_xact_lock(hashtext(sch.id || v_d::text));
+      used := public.bike_spaces_used(sch.id, v_d);
+      if used + (select coalesce(sum((cfg.bikes -> 'kinds' -> kind::text ->> 'spaces')::int), 0) from public.booking_bikes where booking_id = bk.id) > bus.bike_spaces then
+        raise exception 'BIKES_FULL: No room for your bike on that date.';
+      end if;
+    end if;
+  end if;
+  update public.bookings
+     set seats = v_seats, travel_date = v_d,
+         total = bk.fare * cardinality(v_seats) - bk.discount + bk.bike_fee + bk.fee
+   where id = p_id returning * into bk;
+  return bk;
+end $$;
+
+-- ------------------------------------------------------------------- RLS ---
+alter table public.profiles enable row level security;
+alter table public.app_settings enable row level security;
+alter table public.buses enable row level security;
+alter table public.routes enable row level security;
+alter table public.schedules enable row level security;
+alter table public.bookings enable row level security;
+alter table public.booking_seats enable row level security;
+alter table public.booking_bikes enable row level security;
+
+drop policy if exists "own profile" on public.profiles;
+create policy "own profile" on public.profiles for select using (id = auth.uid() or public.is_staff());
+drop policy if exists "edit own profile" on public.profiles;
+create policy "edit own profile" on public.profiles for update using (id = auth.uid()) with check (id = auth.uid());
+drop policy if exists "staff edit profiles" on public.profiles;
+create policy "staff edit profiles" on public.profiles for update using (public.is_staff());
+-- Passengers may change their name/phone but never their role.
+revoke update on public.profiles from anon, authenticated;
+grant update (full_name, phone) on public.profiles to authenticated;
+
+drop policy if exists "read settings" on public.app_settings;
+create policy "read settings" on public.app_settings for select using (true);
+drop policy if exists "staff settings" on public.app_settings;
+create policy "staff settings" on public.app_settings for update using (public.is_staff());
+
+drop policy if exists "read buses" on public.buses;
+create policy "read buses" on public.buses for select using (true);
+drop policy if exists "staff buses" on public.buses;
+create policy "staff buses" on public.buses for all using (public.is_staff()) with check (public.is_staff());
+drop policy if exists "read routes" on public.routes;
+create policy "read routes" on public.routes for select using (true);
+drop policy if exists "staff routes" on public.routes;
+create policy "staff routes" on public.routes for all using (public.is_staff()) with check (public.is_staff());
+drop policy if exists "read schedules" on public.schedules;
+create policy "read schedules" on public.schedules for select using (true);
+drop policy if exists "staff schedules" on public.schedules;
+create policy "staff schedules" on public.schedules for all using (public.is_staff()) with check (public.is_staff());
+
+-- Bookings: read own; staff read/update all. No direct inserts: use create_booking().
+drop policy if exists "read own bookings" on public.bookings;
+create policy "read own bookings" on public.bookings for select using (user_id = auth.uid() or public.is_staff());
+drop policy if exists "staff update bookings" on public.bookings;
+create policy "staff update bookings" on public.bookings for update using (public.is_staff()) with check (public.is_staff());
+revoke insert, delete on public.bookings from anon, authenticated;
+
+-- Seat map: everyone sees which seats are taken, but not whose booking.
+drop policy if exists "read live seats" on public.booking_seats;
+create policy "read live seats" on public.booking_seats for select using (active);
+revoke all on public.booking_seats from anon, authenticated;
+grant select (schedule_id, travel_date, seat, gender, active) on public.booking_seats to anon, authenticated;
+
+drop policy if exists "read own bikes" on public.booking_bikes;
+create policy "read own bikes" on public.booking_bikes for select using (
+  public.is_staff() or exists (select 1 from public.bookings b where b.id = booking_id and b.user_id = auth.uid()));
+revoke insert, update, delete on public.booking_bikes from anon, authenticated;
+
+-- Functions callable from the app.
+revoke execute on function public.create_booking(jsonb), public.cancel_booking(uuid), public.modify_booking(uuid, text[], date) from public, anon;
+grant execute on function public.create_booking(jsonb), public.cancel_booking(uuid), public.modify_booking(uuid, text[], date) to authenticated;
+grant execute on function public.get_bike_usage(date, date), public.bike_spaces_used(text, date), public.is_staff() to anon, authenticated;
+
+-- Live seat map updates.
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'booking_seats') then
+    alter publication supabase_realtime add table public.booking_seats;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------- storage ---
+insert into storage.buckets (id, name, public) values ('bike-photos', 'bike-photos', false) on conflict (id) do nothing;
+
+-- Passengers upload into a folder named after their user id; staff see all.
+drop policy if exists "upload own bike photos" on storage.objects;
+create policy "upload own bike photos" on storage.objects for insert to authenticated
+  with check (bucket_id = 'bike-photos' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "read own bike photos" on storage.objects;
+create policy "read own bike photos" on storage.objects for select to authenticated
+  using (bucket_id = 'bike-photos' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_staff()));
+
+
+-- =============================================================================
+-- ▼ 20261002000000_admin_erp_resale.sql
+-- =============================================================================
+-- =============================================================================
+-- Siyan Lanka Travels — migration 2
+--  * Super admin role ('admin'): everything staff can do, plus business pages
+--    (finance, expenses, crew, documents, user accounts, settings).
+--  * ERP tables: expenses (fuel, service, repairs, salaries, …), other income,
+--    bus documents (insurance, permits…), crew.
+--  * Passenger seat resale on real data, switched off until an admin enables it.
+-- Note: role checks compare role::text so this file can add the new enum value
+-- and use it in the same run.
+-- =============================================================================
+
+alter type public.user_role add value if not exists 'admin';
+
+create or replace function public.is_staff() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role::text in ('staff', 'admin'));
+$$;
+
+create or replace function public.is_admin() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role::text = 'admin');
+$$;
+grant execute on function public.is_admin() to anon, authenticated;
+
+-- Settings are now edited by super admins only; add the resale switch.
+drop policy if exists "staff settings" on public.app_settings;
+drop policy if exists "admin settings" on public.app_settings;
+create policy "admin settings" on public.app_settings for update using (public.is_admin()) with check (public.is_admin());
+alter table public.app_settings add column if not exists resale_enabled boolean not null default false;
+
+-- ------------------------------------------------------------- accounts ---
+-- Super admins manage who is passenger / staff / admin.
+create or replace function public.admin_list_users()
+returns table (id uuid, email text, full_name text, phone text, role text, created_at timestamptz, last_sign_in_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'NOT_ALLOWED: Super admins only.'; end if;
+  return query
+    select p.id, u.email::text, p.full_name, p.phone, p.role::text, p.created_at, u.last_sign_in_at
+    from public.profiles p join auth.users u on u.id = p.id
+    order by p.role::text desc, p.created_at desc;
+end $$;
+
+create or replace function public.set_user_role(p_user uuid, p_role text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'NOT_ALLOWED: Super admins only.'; end if;
+  if p_role not in ('passenger', 'staff', 'admin') then raise exception 'BAD_ROLE: Unknown role.'; end if;
+  if p_user = auth.uid() and p_role <> 'admin' then raise exception 'NOT_ALLOWED: You can''t remove your own super admin access.'; end if;
+  update public.profiles set role = p_role::public.user_role where id = p_user;
+end $$;
+
+revoke execute on function public.admin_list_users(), public.set_user_role(uuid, text) from public, anon;
+grant execute on function public.admin_list_users(), public.set_user_role(uuid, text) to authenticated;
+
+-- ------------------------------------------------------------------ ERP ---
+do $$ begin create type public.expense_category as enum (
+  'fuel', 'service', 'repair', 'tyres', 'salary', 'toll', 'parking', 'cleaning',
+  'insurance', 'license', 'permit', 'commission', 'office', 'other'
+); exception when duplicate_object then null; end $$;
+
+create table if not exists public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  spent_on date not null default current_date,
+  category public.expense_category not null,
+  amount integer not null check (amount >= 0),
+  bus_id text references public.buses (id) on delete set null,
+  schedule_id text references public.schedules (id) on delete set null,
+  travel_date date,
+  description text not null default '',
+  vendor text not null default '',
+  payment_method text not null default 'cash' check (payment_method in ('cash', 'card', 'bank', 'cheque', 'other')),
+  litres numeric(8, 2) check (litres is null or litres > 0),        -- fuel
+  odometer_km integer check (odometer_km is null or odometer_km >= 0), -- fuel / service
+  next_due_date date,                                                  -- service
+  next_due_km integer,                                                 -- service
+  receipt_path text,                                                   -- storage bucket "receipts"
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists expenses_date_idx on public.expenses (spent_on);
+create index if not exists expenses_bus_idx on public.expenses (bus_id, spent_on);
+
+create table if not exists public.other_income (
+  id uuid primary key default gen_random_uuid(),
+  received_on date not null default current_date,
+  category text not null check (category in ('charter', 'parcel', 'advertising', 'other')),
+  amount integer not null check (amount >= 0),
+  bus_id text references public.buses (id) on delete set null,
+  description text not null default '',
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.bus_documents (
+  id uuid primary key default gen_random_uuid(),
+  bus_id text not null references public.buses (id) on delete cascade,
+  kind text not null check (kind in ('insurance', 'revenue_license', 'route_permit', 'emission_test', 'fitness_certificate', 'other')),
+  number text not null default '',
+  expires_on date not null,
+  notes text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.crew (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  role text not null check (role in ('driver', 'conductor', 'cleaner', 'mechanic', 'office')),
+  phone text not null default '',
+  license_no text not null default '',
+  license_expires date,
+  monthly_salary integer not null default 0 check (monthly_salary >= 0),
+  bus_id text references public.buses (id) on delete set null,
+  active boolean not null default true,
+  notes text not null default '',
+  created_at timestamptz not null default now()
+);
+
+alter table public.expenses enable row level security;
+alter table public.other_income enable row level security;
+alter table public.bus_documents enable row level security;
+alter table public.crew enable row level security;
+
+-- Super admins: everything.
+drop policy if exists "admin expenses" on public.expenses;
+create policy "admin expenses" on public.expenses for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "admin income" on public.other_income;
+create policy "admin income" on public.other_income for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "admin documents" on public.bus_documents;
+create policy "admin documents" on public.bus_documents for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "admin crew" on public.crew;
+create policy "admin crew" on public.crew for all using (public.is_admin()) with check (public.is_admin());
+-- Staff on the road: log (and see) running costs only.
+drop policy if exists "staff log running costs" on public.expenses;
+create policy "staff log running costs" on public.expenses for insert
+  with check (public.is_staff() and category in ('fuel', 'toll', 'parking', 'cleaning') and created_by = auth.uid());
+drop policy if exists "staff see running costs" on public.expenses;
+create policy "staff see running costs" on public.expenses for select
+  using (public.is_staff() and category in ('fuel', 'toll', 'parking', 'cleaning'));
+-- Staff can see bus paperwork (crew and salaries are super-admin only).
+drop policy if exists "staff see documents" on public.bus_documents;
+create policy "staff see documents" on public.bus_documents for select using (public.is_staff());
+
+-- Receipts (photos of bills).
+insert into storage.buckets (id, name, public) values ('receipts', 'receipts', false) on conflict (id) do nothing;
+drop policy if exists "staff upload receipts" on storage.objects;
+create policy "staff upload receipts" on storage.objects for insert to authenticated
+  with check (bucket_id = 'receipts' and public.is_staff() and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "read receipts" on storage.objects;
+create policy "read receipts" on storage.objects for select to authenticated
+  using (bucket_id = 'receipts' and (public.is_admin() or (storage.foldername(name))[1] = auth.uid()::text));
+
+-- --------------------------------------------------------------- resale ---
+create table if not exists public.resale_listings (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid not null references public.bookings (id) on delete cascade,
+  seller_id uuid not null references public.profiles (id) on delete cascade,
+  price integer not null check (price > 0),
+  status text not null default 'listed' check (status in ('listed', 'sold', 'withdrawn')),
+  buyer_id uuid references public.profiles (id) on delete set null,
+  new_booking_id uuid references public.bookings (id) on delete set null,
+  created_at timestamptz not null default now(),
+  sold_at timestamptz
+);
+create unique index if not exists resale_one_open_listing on public.resale_listings (booking_id) where status = 'listed';
+alter table public.resale_listings enable row level security;
+drop policy if exists "own or staff listings" on public.resale_listings;
+create policy "own or staff listings" on public.resale_listings for select
+  using (seller_id = auth.uid() or buyer_id = auth.uid() or public.is_staff());
+revoke insert, update, delete on public.resale_listings from anon, authenticated;
+
+-- Public marketplace: open listings for future departures, no personal data.
+create or replace function public.get_resale_listings()
+returns table (id uuid, price integer, paid integer, schedule_id text, travel_date date, from_stop text, to_stop text, seats text[], listed_at timestamptz)
+language sql stable security definer set search_path = public as $$
+  select l.id, l.price, (b.total - b.fee), b.schedule_id, b.travel_date, b.from_stop, b.to_stop, b.seats, l.created_at
+  from public.resale_listings l join public.bookings b on b.id = l.booking_id
+  where l.status = 'listed' and b.status = 'confirmed' and b.travel_date >= current_date
+    and (select resale_enabled from public.app_settings)
+  order by b.travel_date, l.created_at;
+$$;
+grant execute on function public.get_resale_listings() to anon, authenticated;
+
+create or replace function public.list_for_resale(p_booking uuid, p_price integer) returns public.resale_listings
+language plpgsql security definer set search_path = public as $$
+declare cfg public.app_settings; bk public.bookings; sch public.schedules; rt public.routes; leaves timestamptz; l public.resale_listings;
+begin
+  select * into cfg from public.app_settings;
+  if not cfg.resale_enabled then raise exception 'RESALE_OFF: Seat resale isn''t available yet.'; end if;
+  select * into bk from public.bookings where id = p_booking for update;
+  if not found or bk.user_id is distinct from auth.uid() then raise exception 'NOT_FOUND: Booking not found.'; end if;
+  if bk.status <> 'confirmed' then raise exception 'NOT_ALLOWED: Only confirmed bookings can be resold.'; end if;
+  if bk.channel <> 'online' then raise exception 'NOT_ALLOWED: Counter tickets can''t be resold online.'; end if;
+  if exists (select 1 from public.booking_bikes where booking_id = bk.id) then raise exception 'NOT_ALLOWED: Bookings with a bike can''t be resold. Cancel the bike first.'; end if;
+  if p_price > bk.total - bk.fee then raise exception 'TOO_HIGH: You can''t sell for more than you paid (LKR %).', bk.total - bk.fee; end if;
+  select * into sch from public.schedules where id = bk.schedule_id;
+  select * into rt from public.routes where id = sch.route_id;
+  leaves := ((bk.travel_date + sch.departure::time) + make_interval(mins => (rt.stops -> public.stop_index(rt.stops, bk.from_stop) ->> 'offsetMin')::int)) at time zone cfg.timezone;
+  if now() > leaves - make_interval(hours => 2) then raise exception 'CLOSED: Too close to departure to resell.'; end if;
+  insert into public.resale_listings (booking_id, seller_id, price) values (bk.id, auth.uid(), p_price) returning * into l;
+  return l;
+exception when unique_violation then
+  raise exception 'ALREADY_LISTED: This booking is already listed.';
+end $$;
+
+create or replace function public.withdraw_listing(p_listing uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.resale_listings set status = 'withdrawn'
+  where id = p_listing and status = 'listed' and (seller_id = auth.uid() or public.is_staff());
+  if not found then raise exception 'NOT_FOUND: Listing not found.'; end if;
+end $$;
+
+-- Buying hands the seats over in one transaction: the seller's booking is
+-- closed (they're paid the listing price) and the buyer gets a new booking
+-- for the same seats; nobody else can grab them in between.
+create or replace function public.buy_resale(p_listing uuid, p_passenger jsonb, p_contact jsonb) returns public.bookings
+language plpgsql security definer set search_path = public as $$
+declare cfg public.app_settings; l public.resale_listings; old public.bookings; nb public.bookings; bus public.buses; s text;
+  gender text := coalesce(p_passenger ->> 'gender', ''); per_seat int;
+begin
+  select * into cfg from public.app_settings;
+  if not cfg.resale_enabled then raise exception 'RESALE_OFF: Seat resale isn''t available yet.'; end if;
+  if auth.uid() is null then raise exception 'SIGN_IN: Please sign in to buy.'; end if;
+  select * into l from public.resale_listings where id = p_listing for update;
+  if not found or l.status <> 'listed' then raise exception 'GONE: This ticket has just been sold.'; end if;
+  if l.seller_id = auth.uid() then raise exception 'NOT_ALLOWED: That''s your own listing.'; end if;
+  select * into old from public.bookings where id = l.booking_id for update;
+  if old.status <> 'confirmed' then raise exception 'GONE: This ticket is no longer available.'; end if;
+  select b.* into bus from public.buses b join public.schedules sc on sc.bus_id = b.id where sc.id = old.schedule_id;
+  foreach s in array old.seats loop
+    if s = any (bus.ladies_seats) and gender <> 'Female' then raise exception 'LADIES_SEAT: Seat % is for female passengers.', s; end if;
+  end loop;
+  update public.bookings set status = 'cancelled', refund_amount = l.price, refunded_at = now() where id = old.id;
+  per_seat := ceil(l.price::numeric / cardinality(old.seats));
+  insert into public.bookings (ref, schedule_id, travel_date, from_stop, to_stop, seats, passenger_name, passenger_gender,
+    passenger_phone, contact_email, contact_phone, user_id, created_by, channel, fare, fee, discount, bike_fee, total)
+  values (public.new_booking_ref(), old.schedule_id, old.travel_date, old.from_stop, old.to_stop, old.seats,
+    left(coalesce(nullif(trim(p_passenger ->> 'name'), ''), 'Passenger'), 120), gender, left(coalesce(p_passenger ->> 'phone', ''), 40),
+    left(coalesce(p_contact ->> 'email', ''), 200), left(coalesce(p_contact ->> 'phone', ''), 40),
+    auth.uid(), auth.uid(), 'online', per_seat, cfg.booking_fee, per_seat * cardinality(old.seats) - l.price, 0, l.price + cfg.booking_fee)
+  returning * into nb;
+  update public.resale_listings set status = 'sold', buyer_id = auth.uid(), new_booking_id = nb.id, sold_at = now() where id = l.id;
+  return nb;
+end $$;
+
+revoke execute on function public.list_for_resale(uuid, integer), public.withdraw_listing(uuid), public.buy_resale(uuid, jsonb, jsonb) from public, anon;
+grant execute on function public.list_for_resale(uuid, integer), public.withdraw_listing(uuid), public.buy_resale(uuid, jsonb, jsonb) to authenticated;
+
+-- If a listed booking is cancelled (by the passenger or staff), withdraw the
+-- listing. buy_resale marks it 'sold' straight after, so sales are unaffected.
+create or replace function public.withdraw_listing_on_cancel() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.status = 'cancelled' and old.status <> 'cancelled' then
+    update public.resale_listings set status = 'withdrawn' where booking_id = new.id and status = 'listed';
+  end if;
+  return new;
+end $$;
+drop trigger if exists bookings_withdraw_listing on public.bookings;
+create trigger bookings_withdraw_listing after update of status on public.bookings
+  for each row execute function public.withdraw_listing_on_cancel();
+
+
+-- =============================================================================
+-- ▼ 20261003000000_passenger_features.sql
+-- =============================================================================
+-- =============================================================================
+-- Siyan Lanka Travels — migration 3: passenger conveniences + staff tools
+--  1. Payment options & seat holds: PayHere (card / eZ Cash / mCash / Genie),
+--     bank transfer and pay-at-counter. Unpaid holds expire automatically.
+--  2. Rewards: every Nth completed trip, one seat free.
+--  3. Waitlist for full departures, with automatic offers on cancellation.
+--  4. Saved passengers (one-tap rebooking).
+--  5. Live trips: bus location + trip updates (departed / delayed / arriving).
+--  6. Conductor contact for passengers on the day of travel.
+--  7. Parcel & charter requests.
+--  8. Daily cash count for counter sales.
+--  9. Message queue for SMS / WhatsApp (sent by /api/messages/dispatch).
+-- Enum values added here are compared as text so this file runs in one go.
+-- =============================================================================
+
+alter type public.booking_status add value if not exists 'held';
+
+-- ---------------------------------------------------------------- settings ---
+alter table public.app_settings
+  add column if not exists payments_mode text not null default 'demo' check (payments_mode in ('demo', 'payhere')),
+  add column if not exists hold_minutes_counter integer not null default 120,
+  add column if not exists hold_minutes_bank integer not null default 1440,
+  add column if not exists bank_details text not null default '',
+  add column if not exists reward_every integer not null default 10 check (reward_every >= 0),
+  add column if not exists messaging jsonb not null default '{"sms": true, "whatsapp": false}',
+  add column if not exists site_url text not null default 'https://www.siyanlanka.lk';
+
+-- ------------------------------------------------------------- bookings -----
+alter table public.bookings
+  add column if not exists payment_method text not null default 'card'
+    check (payment_method in ('card', 'wallet', 'bank', 'counter', 'cash', 'free')),
+  add column if not exists payment_status text not null default 'paid' check (payment_status in ('paid', 'unpaid', 'refunded')),
+  add column if not exists hold_expires_at timestamptz,
+  add column if not exists paid_at timestamptz,
+  add column if not exists payment_ref text,
+  add column if not exists reward_used boolean not null default false;
+
+-- Held (unpaid) bookings keep their seats until the hold expires.
+create or replace function public.sync_booking_seats() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.booking_seats where booking_id = new.id;
+  if new.status::text in ('confirmed', 'boarded', 'held') then
+    insert into public.booking_seats (booking_id, schedule_id, travel_date, seat, gender)
+    select new.id, new.schedule_id, new.travel_date, s, new.passenger_gender from unnest(new.seats) s;
+  end if;
+  return new;
+exception when unique_violation then
+  raise exception 'SEAT_TAKEN: One of those seats was just booked by someone else. Please pick another.' using errcode = 'P0001';
+end $$;
+
+create or replace function public.bike_spaces_used(p_schedule text, p_date date) returns int
+language sql stable security definer set search_path = public as $$
+  select coalesce(sum(((select bikes from public.app_settings) -> 'kinds' -> k.kind::text ->> 'spaces')::int), 0)::int
+  from public.booking_bikes k join public.bookings b on b.id = k.booking_id
+  where b.schedule_id = p_schedule and b.travel_date = p_date and b.status::text in ('confirmed', 'boarded', 'held');
+$$;
+
+create or replace function public.get_bike_usage(p_from date, p_to date)
+returns table (schedule_id text, travel_date date, spaces int)
+language sql stable security definer set search_path = public as $$
+  select b.schedule_id, b.travel_date,
+         sum(((select bikes from public.app_settings) -> 'kinds' -> k.kind::text ->> 'spaces')::int)::int
+  from public.booking_bikes k join public.bookings b on b.id = k.booking_id
+  where b.travel_date between p_from and p_to and b.status::text in ('confirmed', 'boarded', 'held')
+  group by 1, 2;
+$$;
+
+-- Release unpaid holds whose time is up (called before booking, by the app on
+-- refresh, and by the dispatcher cron). Safe for anyone to call.
+create or replace function public.release_expired_holds() returns integer
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  update public.bookings set status = 'cancelled', payment_status = 'unpaid'
+  where status::text = 'held' and hold_expires_at < now();
+  get diagnostics n = row_count;
+  return n;
+end $$;
+grant execute on function public.release_expired_holds() to anon, authenticated;
+
+-- ------------------------------------------------------------------ rewards ---
+-- Completed trip = boarded, or confirmed and the travel date has passed.
+create or replace function public.loyalty_status(p_user uuid default auth.uid())
+returns table (trips integer, every integer, earned integer, used integer, available integer, next_in integer)
+language sql stable security definer set search_path = public as $$
+  with s as (select reward_every as every from public.app_settings),
+  t as (
+    select count(*)::int as trips from public.bookings
+    where user_id = p_user and (status::text = 'boarded' or (status::text = 'confirmed' and travel_date < current_date))
+  ),
+  u as (select count(*)::int as used from public.bookings where user_id = p_user and reward_used and status::text <> 'cancelled')
+  select t.trips, s.every,
+         case when s.every > 0 then t.trips / s.every else 0 end,
+         u.used,
+         greatest(0, case when s.every > 0 then t.trips / s.every else 0 end - u.used),
+         case when s.every > 0 then s.every - (t.trips % s.every) else 0 end
+  from s, t, u;
+$$;
+grant execute on function public.loyalty_status(uuid) to authenticated;
+
+-- ----------------------------------------------------- create_booking v2 ---
+-- Adds: p.payment ('card' | 'wallet' | 'bank' | 'counter'), p.use_reward.
+-- In payments_mode 'payhere', card/wallet bookings are held until PayHere
+-- confirms; in 'demo' they're confirmed straight away (simulated payment).
+create or replace function public.create_booking(p jsonb) returns public.bookings
+language plpgsql security definer set search_path = public as $$
+declare
+  cfg public.app_settings;
+  uid uuid := auth.uid();
+  staff boolean := public.is_staff();
+  chan public.booking_channel := coalesce(nullif(p ->> 'channel', ''), 'online')::public.booking_channel;
+  pay text := coalesce(nullif(p ->> 'payment', ''), case when coalesce(nullif(p ->> 'channel', ''), 'online') = 'online' then 'card' else 'cash' end);
+  sch public.schedules; rt public.routes; bus public.buses;
+  d date := (p ->> 'date')::date;
+  fi int; ti int; stops jsonb; v_seats text[]; s text;
+  gender text := coalesce(p -> 'passenger' ->> 'gender', '');
+  v_fare int; base int; disc int := 0; v_fee int; bike_total int := 0; full_fare int;
+  leaves timestamptz; bike jsonb; need int := 0; kinds jsonb; bfee int; share numeric;
+  v_status text := 'confirmed'; v_pay_status text := 'paid'; v_hold timestamptz; v_reward boolean := false;
+  bk public.bookings;
+begin
+  perform public.release_expired_holds();
+  select * into cfg from public.app_settings;
+  if chan <> 'online' and not staff then raise exception 'NOT_ALLOWED: Only staff can make counter or phone bookings.'; end if;
+  if chan = 'online' and uid is null then raise exception 'SIGN_IN: Please sign in to book.'; end if;
+  if pay not in ('card', 'wallet', 'bank', 'counter', 'cash') then raise exception 'BAD_PAYMENT: Choose how you''ll pay.'; end if;
+
+  select * into sch from public.schedules where id = p ->> 'schedule_id' and active;
+  if not found then raise exception 'NOT_FOUND: That departure is not running.'; end if;
+  select * into rt from public.routes where id = sch.route_id and active;
+  select * into bus from public.buses where id = sch.bus_id and status = 'active';
+  if rt.id is null or bus.id is null then raise exception 'NOT_FOUND: That departure is not running.'; end if;
+  if not (extract(dow from d)::smallint = any (sch.days)) then raise exception 'NOT_FOUND: The bus does not run on that day.'; end if;
+
+  stops := rt.stops;
+  fi := public.stop_index(stops, p ->> 'from');
+  ti := public.stop_index(stops, p ->> 'to');
+  if fi is null or ti is null or fi >= ti then raise exception 'BAD_STOPS: Choose a boarding point before the drop-off.'; end if;
+
+  leaves := ((d + sch.departure::time) + make_interval(mins => (stops -> fi ->> 'offsetMin')::int)) at time zone cfg.timezone;
+  if chan = 'online' and now() > leaves - make_interval(mins => cfg.booking_cutoff_minutes) then
+    raise exception 'CLOSED: Online booking for this departure has closed.';
+  end if;
+  if now() > leaves then raise exception 'CLOSED: This bus has already left.'; end if;
+
+  select array_agg(distinct upper(x)) into v_seats from jsonb_array_elements_text(p -> 'seats') x;
+  if v_seats is null or cardinality(v_seats) = 0 then raise exception 'NO_SEATS: Pick at least one seat.'; end if;
+  if chan = 'online' and cardinality(v_seats) > cfg.max_seats_per_booking then
+    raise exception 'TOO_MANY: You can book up to % seats at once.', cfg.max_seats_per_booking;
+  end if;
+  foreach s in array v_seats loop
+    if not public.seat_is_on_bus(bus, s) then raise exception 'BAD_SEAT: Seat % does not exist on this bus.', s; end if;
+    if s = any (bus.ladies_seats) and gender <> 'Female' then raise exception 'LADIES_SEAT: Seat % is for female passengers.', s; end if;
+  end loop;
+
+  v_fare := (stops -> ti ->> 'fareFromStart')::int - (stops -> fi ->> 'fareFromStart')::int;
+  base := v_fare * cardinality(v_seats);
+  if chan = 'online' and cfg.promo_code is not null and upper(coalesce(p ->> 'promo', '')) = upper(cfg.promo_code) then
+    disc := round(base * cfg.promo_percent / 100.0);
+  end if;
+  -- Reward: one seat free (on top of any promo, never below zero).
+  if chan = 'online' and coalesce((p ->> 'use_reward')::boolean, false) then
+    if (select available from public.loyalty_status(uid)) < 1 then raise exception 'NO_REWARD: You don''t have a free trip yet.'; end if;
+    disc := least(base, disc + v_fare);
+    v_reward := true;
+  end if;
+  v_fee := case when chan = 'online' then cfg.booking_fee else 0 end;
+
+  if jsonb_array_length(coalesce(p -> 'bikes', '[]')) > 0 then
+    kinds := cfg.bikes -> 'kinds';
+    if jsonb_array_length(p -> 'bikes') > (cfg.bikes ->> 'maxPerBooking')::int then
+      raise exception 'TOO_MANY_BIKES: Up to % bikes per booking.', cfg.bikes ->> 'maxPerBooking';
+    end if;
+    perform pg_advisory_xact_lock(hashtext(sch.id || d::text));
+    full_fare := greatest(1, (stops -> (jsonb_array_length(stops) - 1) ->> 'fareFromStart')::int);
+    share := least(1, v_fare::numeric / full_fare);
+    for bike in select * from jsonb_array_elements(p -> 'bikes') loop
+      if not kinds ? (bike ->> 'kind') then raise exception 'BAD_BIKE: Unknown kind of bike.'; end if;
+      if length(coalesce(bike ->> 'description', '')) < 3 then raise exception 'BAD_BIKE: Describe each bike (make and colour).'; end if;
+      if bike ->> 'kind' <> 'bicycle' and length(coalesce(bike ->> 'reg_no', '')) < 4 then raise exception 'BAD_BIKE: Add the number plate.'; end if;
+      if chan = 'online' and coalesce(bike ->> 'photo_path', '') = '' then raise exception 'BAD_BIKE: Upload a photo of each bike.'; end if;
+      need := need + (kinds -> (bike ->> 'kind') ->> 'spaces')::int;
+      bfee := greatest((cfg.bikes ->> 'minFee')::int, (round((kinds -> (bike ->> 'kind') ->> 'fullRouteFee')::int * share / 50) * 50)::int);
+      bike_total := bike_total + bfee;
+    end loop;
+    if public.bike_spaces_used(sch.id, d) + need > bus.bike_spaces then
+      raise exception 'BIKES_FULL: The luggage compartment is full for this departure.';
+    end if;
+  end if;
+
+  -- Payment state
+  if chan = 'online' then
+    if pay in ('bank', 'counter') then
+      v_status := 'held'; v_pay_status := 'unpaid';
+      v_hold := least(now() + make_interval(mins => case when pay = 'bank' then cfg.hold_minutes_bank else cfg.hold_minutes_counter end),
+                      leaves - make_interval(mins => cfg.booking_cutoff_minutes));
+    elsif cfg.payments_mode = 'payhere' and base - disc + bike_total + v_fee > 0 then
+      v_status := 'held'; v_pay_status := 'unpaid'; v_hold := now() + interval '20 minutes';
+    end if;
+  end if;
+  if base - disc + bike_total + v_fee = 0 then pay := 'free'; v_status := 'confirmed'; v_pay_status := 'paid'; v_hold := null; end if;
+
+  insert into public.bookings (ref, schedule_id, travel_date, from_stop, to_stop, seats,
+    passenger_name, passenger_gender, passenger_phone, contact_email, contact_phone,
+    user_id, created_by, channel, fare, fee, discount, bike_fee, total,
+    status, payment_method, payment_status, hold_expires_at, paid_at, reward_used)
+  values (public.new_booking_ref(), sch.id, d, stops -> fi ->> 'name', stops -> ti ->> 'name', v_seats,
+    left(coalesce(nullif(trim(p -> 'passenger' ->> 'name'), ''), 'Passenger'), 120), gender,
+    left(coalesce(p -> 'passenger' ->> 'phone', ''), 40), left(coalesce(p -> 'contact' ->> 'email', ''), 200),
+    left(coalesce(p -> 'contact' ->> 'phone', ''), 40),
+    case when chan = 'online' then uid end, uid, chan, v_fare, v_fee, disc, bike_total, base - disc + bike_total + v_fee,
+    v_status::public.booking_status, pay, v_pay_status, v_hold, case when v_pay_status = 'paid' then now() end, v_reward)
+  returning * into bk;
+
+  if bike_total > 0 then
+    insert into public.booking_bikes (booking_id, kind, description, reg_no, photo_path, fee)
+    select bk.id, (b ->> 'kind')::public.bike_kind, left(b ->> 'description', 120), upper(left(coalesce(b ->> 'reg_no', ''), 20)),
+           nullif(b ->> 'photo_path', ''),
+           greatest((cfg.bikes ->> 'minFee')::int, (round((cfg.bikes -> 'kinds' -> (b ->> 'kind') ->> 'fullRouteFee')::int * share / 50) * 50)::int)
+    from jsonb_array_elements(p -> 'bikes') b;
+  end if;
+  return bk;
+end $$;
+
+-- Cancelling a held (unpaid) booking refunds nothing.
+create or replace function public.cancel_booking(p_id uuid) returns public.bookings
+language plpgsql security definer set search_path = public as $$
+declare
+  cfg public.app_settings; bk public.bookings; sch public.schedules; rt public.routes;
+  leaves timestamptz; hrs numeric; pct int := 0; tier jsonb; staff boolean := public.is_staff();
+begin
+  select * into cfg from public.app_settings;
+  select * into bk from public.bookings where id = p_id for update;
+  if not found or (bk.user_id is distinct from auth.uid() and not staff) then raise exception 'NOT_FOUND: Booking not found.'; end if;
+  if bk.status::text not in ('confirmed', 'held') then raise exception 'NOT_ALLOWED: Only confirmed bookings can be cancelled.'; end if;
+  if bk.payment_status = 'unpaid' then
+    update public.bookings set status = 'cancelled', refund_amount = 0, refunded_at = now() where id = p_id returning * into bk;
+    return bk;
+  end if;
+  if staff and bk.user_id is distinct from auth.uid() then
+    pct := 100;
+  else
+    select * into sch from public.schedules where id = bk.schedule_id;
+    select * into rt from public.routes where id = sch.route_id;
+    leaves := ((bk.travel_date + sch.departure::time)
+      + make_interval(mins => (rt.stops -> public.stop_index(rt.stops, bk.from_stop) ->> 'offsetMin')::int)) at time zone cfg.timezone;
+    hrs := extract(epoch from (leaves - now())) / 3600;
+    for tier in select * from jsonb_array_elements(cfg.refund_policy) loop
+      if hrs >= (tier ->> 'hoursBefore')::numeric then pct := (tier ->> 'percent')::int; exit; end if;
+    end loop;
+  end if;
+  update public.bookings set status = 'cancelled', refund_amount = round((total - fee) * pct / 100.0), refunded_at = now(),
+         payment_status = case when pct > 0 then 'refunded' else payment_status end
+  where id = p_id returning * into bk;
+  return bk;
+end $$;
+
+-- Staff take payment for a held booking (counter cash / bank transfer seen).
+create or replace function public.confirm_payment(p_id uuid, p_method text, p_ref text default null) returns public.bookings
+language plpgsql security definer set search_path = public as $$
+declare bk public.bookings;
+begin
+  if not public.is_staff() then raise exception 'NOT_ALLOWED: Staff only.'; end if;
+  if p_method not in ('cash', 'bank', 'card', 'wallet') then raise exception 'BAD_PAYMENT: Unknown payment method.'; end if;
+  update public.bookings set status = 'confirmed', payment_status = 'paid', payment_method = p_method,
+         paid_at = now(), payment_ref = p_ref, hold_expires_at = null
+  where id = p_id and status::text = 'held' returning * into bk;
+  if not found then raise exception 'NOT_FOUND: No unpaid hold with that id (it may have expired).'; end if;
+  return bk;
+end $$;
+revoke execute on function public.confirm_payment(uuid, text, text) from public, anon;
+grant execute on function public.confirm_payment(uuid, text, text) to authenticated;
+
+-- PayHere server-to-server confirmation (called by /api/payhere/notify with
+-- the secret key, after the signature check). Amount must match.
+create or replace function public.mark_paid_by_gateway(p_ref text, p_amount numeric, p_gateway_ref text, p_method text) returns public.bookings
+language plpgsql security definer set search_path = public as $$
+declare bk public.bookings;
+begin
+  select * into bk from public.bookings where ref = p_ref for update;
+  if not found then raise exception 'NOT_FOUND'; end if;
+  if bk.payment_status = 'paid' then return bk; end if; -- idempotent
+  if round(p_amount) <> bk.total then raise exception 'AMOUNT_MISMATCH'; end if;
+  if bk.status::text = 'cancelled' then
+    -- Paid after the hold expired: keep the money on record for a manual refund/rebook.
+    update public.bookings set payment_status = 'paid', paid_at = now(), payment_ref = p_gateway_ref where id = bk.id returning * into bk;
+    return bk;
+  end if;
+  update public.bookings set status = 'confirmed', payment_status = 'paid', payment_method = p_method, paid_at = now(),
+         payment_ref = p_gateway_ref, hold_expires_at = null
+  where id = bk.id returning * into bk;
+  return bk;
+end $$;
+revoke execute on function public.mark_paid_by_gateway(text, numeric, text, text) from public, anon, authenticated;
+
+-- --------------------------------------------------------------- waitlist ---
+create table if not exists public.waitlist (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references public.profiles (id) on delete cascade,
+  schedule_id text not null references public.schedules (id) on delete cascade,
+  travel_date date not null,
+  from_stop text not null,
+  to_stop text not null,
+  seats integer not null default 1 check (seats between 1 and 6),
+  phone text not null default '',
+  status text not null default 'waiting' check (status in ('waiting', 'offered', 'booked', 'cancelled', 'expired')),
+  offered_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists waitlist_one_active on public.waitlist (user_id, schedule_id, travel_date) where status in ('waiting', 'offered');
+alter table public.waitlist enable row level security;
+drop policy if exists "own waitlist" on public.waitlist;
+create policy "own waitlist" on public.waitlist for select using (user_id = auth.uid() or public.is_staff());
+drop policy if exists "join waitlist" on public.waitlist;
+create policy "join waitlist" on public.waitlist for insert with check (user_id = auth.uid() and status = 'waiting' and travel_date >= current_date);
+drop policy if exists "leave waitlist" on public.waitlist;
+create policy "leave waitlist" on public.waitlist for update using (user_id = auth.uid()) with check (user_id = auth.uid() and status in ('cancelled', 'booked'));
+
+-- In-app notifications (shown in the app; also queued as SMS/WhatsApp).
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  title text not null,
+  body text not null default '',
+  url text not null default '/my-bookings',
+  created_at timestamptz not null default now(),
+  read_at timestamptz
+);
+alter table public.notifications enable row level security;
+drop policy if exists "own notifications" on public.notifications;
+create policy "own notifications" on public.notifications for select using (user_id = auth.uid());
+drop policy if exists "read own notifications" on public.notifications;
+create policy "read own notifications" on public.notifications for update using (user_id = auth.uid()) with check (user_id = auth.uid());
+revoke insert, delete on public.notifications from anon, authenticated;
+
+-- --------------------------------------------------------------- messaging ---
+create table if not exists public.message_queue (
+  id uuid primary key default gen_random_uuid(),
+  channel text not null check (channel in ('sms', 'whatsapp')),
+  to_phone text not null,
+  body text not null,
+  kind text not null default 'general',
+  booking_id uuid references public.bookings (id) on delete set null,
+  status text not null default 'pending' check (status in ('pending', 'sent', 'failed', 'skipped')),
+  attempts integer not null default 0,
+  error text,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz
+);
+create index if not exists message_queue_pending on public.message_queue (created_at) where status = 'pending';
+alter table public.message_queue enable row level security;
+drop policy if exists "admin messages" on public.message_queue;
+create policy "admin messages" on public.message_queue for select using (public.is_admin());
+revoke insert, update, delete on public.message_queue from anon, authenticated;
+
+create or replace function public.enqueue_message(p_phone text, p_body text, p_kind text, p_booking uuid default null) returns void
+language plpgsql security definer set search_path = public as $$
+declare m jsonb := (select messaging from public.app_settings);
+begin
+  if coalesce(trim(p_phone), '') = '' then return; end if;
+  if coalesce((m ->> 'sms')::boolean, false) then
+    insert into public.message_queue (channel, to_phone, body, kind, booking_id) values ('sms', p_phone, p_body, p_kind, p_booking);
+  end if;
+  if coalesce((m ->> 'whatsapp')::boolean, false) then
+    insert into public.message_queue (channel, to_phone, body, kind, booking_id) values ('whatsapp', p_phone, p_body, p_kind, p_booking);
+  end if;
+end $$;
+revoke execute on function public.enqueue_message(text, text, text, uuid) from public, anon, authenticated;
+
+create or replace function public.booking_departure_text(bk public.bookings) returns text
+language sql stable security definer set search_path = public as $$
+  select to_char(bk.travel_date + s.departure::time + make_interval(mins => (r.stops -> public.stop_index(r.stops, bk.from_stop) ->> 'offsetMin')::int),
+                 'Dy DD Mon, HH12:MI AM')
+  from public.schedules s join public.routes r on r.id = s.route_id where s.id = bk.schedule_id;
+$$;
+
+-- Booking messages: confirmed, held (how to pay), cancelled.
+create or replace function public.booking_messages() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare site text := (select site_url from public.app_settings); bank text := (select bank_details from public.app_settings);
+  phone text := coalesce(nullif(new.contact_phone, ''), new.passenger_phone);
+  trip text := new.from_stop || ' → ' || new.to_stop || ', ' || public.booking_departure_text(new) || ', seat ' || array_to_string(new.seats, ',');
+begin
+  if new.channel <> 'online' then return new; end if;
+  if new.status::text = 'confirmed' and (tg_op = 'INSERT' or old.status::text <> 'confirmed') then
+    perform public.enqueue_message(phone, 'Siyan Lanka: Booking ' || new.ref || ' confirmed. ' || trip || '. Ticket: ' || site || '/my-bookings', 'booking_confirmed', new.id);
+  elsif new.status::text = 'held' and tg_op = 'INSERT' and new.payment_method in ('bank', 'counter') then
+    perform public.enqueue_message(phone, 'Siyan Lanka: Seat held, ' || new.ref || '. ' || trip || '. Pay LKR ' || new.total || ' by '
+      || to_char(new.hold_expires_at at time zone (select timezone from public.app_settings), 'Dy DD Mon HH12:MI AM')
+      || case when new.payment_method = 'bank' then '. Bank: ' || bank || ' Ref: ' || new.ref else ' at our Bastian Mawatha counter' end || '.', 'booking_held', new.id);
+  elsif new.status::text = 'cancelled' and tg_op = 'UPDATE' and old.status::text in ('confirmed', 'held') then
+    perform public.enqueue_message(phone, 'Siyan Lanka: Booking ' || new.ref || ' cancelled'
+      || case when coalesce(new.refund_amount, 0) > 0 then '. Refund LKR ' || new.refund_amount || ' on its way.' else '.' end, 'booking_cancelled', new.id);
+  end if;
+  return new;
+end $$;
+drop trigger if exists bookings_messages on public.bookings;
+create trigger bookings_messages after insert or update of status on public.bookings
+  for each row execute function public.booking_messages();
+
+-- When seats free up, offer them to the waitlist (oldest first).
+create or replace function public.offer_waitlist() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare w record; cap int; taken int; site text := (select site_url from public.app_settings);
+begin
+  if not (new.status::text = 'cancelled' and old.status::text in ('confirmed', 'held')) then return new; end if;
+  select b.rows * 4 + b.back_row_seats into cap from public.buses b join public.schedules s on s.bus_id = b.id where s.id = new.schedule_id;
+  select count(*) into taken from public.booking_seats where schedule_id = new.schedule_id and travel_date = new.travel_date and active;
+  for w in select * from public.waitlist where schedule_id = new.schedule_id and travel_date = new.travel_date and status = 'waiting' order by created_at loop
+    exit when cap - taken < w.seats;
+    update public.waitlist set status = 'offered', offered_at = now() where id = w.id;
+    insert into public.notifications (user_id, title, body, url)
+    values (w.user_id, 'A seat is free on your bus', w.from_stop || ' → ' || w.to_stop || ', ' || to_char(w.travel_date, 'Dy DD Mon') || '. Book it before someone else does.',
+            '/seats/' || w.schedule_id || '?date=' || w.travel_date || '&from=' || w.from_stop || '&to=' || w.to_stop);
+    perform public.enqueue_message(w.phone, 'Siyan Lanka: A seat is free on ' || w.from_stop || ' → ' || w.to_stop || ', ' || to_char(w.travel_date, 'Dy DD Mon') || '. Book now: ' || site || '/my-bookings', 'waitlist_offer');
+    taken := taken + w.seats; -- offer to as many as the free seats cover
+  end loop;
+  return new;
+end $$;
+drop trigger if exists bookings_offer_waitlist on public.bookings;
+create trigger bookings_offer_waitlist after update of status on public.bookings
+  for each row execute function public.offer_waitlist();
+
+-- ---------------------------------------------------------- saved people ---
+alter table public.profiles add column if not exists saved_passengers jsonb not null default '[]';
+grant update (saved_passengers) on public.profiles to authenticated;
+
+-- ------------------------------------------------------------- live trips ---
+create table if not exists public.bus_locations (
+  schedule_id text not null references public.schedules (id) on delete cascade,
+  travel_date date not null,
+  lat double precision not null,
+  lng double precision not null,
+  speed_kmh numeric,
+  heading numeric,
+  accuracy_m numeric,
+  updated_at timestamptz not null default now(),
+  updated_by uuid default auth.uid(),
+  primary key (schedule_id, travel_date)
+);
+create table if not exists public.trip_events (
+  id uuid primary key default gen_random_uuid(),
+  schedule_id text not null references public.schedules (id) on delete cascade,
+  travel_date date not null,
+  kind text not null check (kind in ('departed', 'delayed', 'arriving', 'arrived', 'note')),
+  stop text not null default '',
+  minutes integer,
+  message text not null default '',
+  created_by uuid default auth.uid(),
+  created_at timestamptz not null default now()
+);
+create index if not exists trip_events_run on public.trip_events (schedule_id, travel_date, created_at);
+alter table public.bus_locations enable row level security;
+alter table public.trip_events enable row level security;
+-- Where the bus is and its updates are public (no personal data).
+drop policy if exists "read bus location" on public.bus_locations;
+create policy "read bus location" on public.bus_locations for select using (true);
+drop policy if exists "staff share location" on public.bus_locations;
+create policy "staff share location" on public.bus_locations for all using (public.is_staff()) with check (public.is_staff());
+drop policy if exists "read trip updates" on public.trip_events;
+create policy "read trip updates" on public.trip_events for select using (true);
+drop policy if exists "staff post updates" on public.trip_events;
+create policy "staff post updates" on public.trip_events for insert with check (public.is_staff());
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'bus_locations') then
+    alter publication supabase_realtime add table public.bus_locations;
+  end if;
+end $$;
+do $$ begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'trip_events') then
+    alter publication supabase_realtime add table public.trip_events;
+  end if;
+end $$;
+
+-- Trip updates go to everyone on that departure who hasn't got off yet.
+create or replace function public.trip_event_messages() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare b record; txt text;
+begin
+  txt := case new.kind
+    when 'departed' then 'Your Siyan Lanka bus has left ' || coalesce(nullif(new.stop, ''), 'its stop') || '.'
+    when 'delayed' then 'Your Siyan Lanka bus is running about ' || coalesce(new.minutes, 0) || ' min late.'
+    when 'arriving' then 'Your Siyan Lanka bus is about ' || coalesce(new.minutes, 0) || ' min from ' || new.stop || '.'
+    when 'arrived' then 'Your Siyan Lanka bus has reached ' || new.stop || '.'
+    else 'Siyan Lanka: ' || new.message end;
+  if new.message <> '' and new.kind <> 'note' then txt := txt || ' ' || new.message; end if;
+  for b in select * from public.bookings where schedule_id = new.schedule_id and travel_date = new.travel_date and status::text in ('confirmed', 'held') loop
+    perform public.enqueue_message(coalesce(nullif(b.contact_phone, ''), b.passenger_phone), txt, 'trip_' || new.kind, b.id);
+  end loop;
+  return new;
+end $$;
+drop trigger if exists trip_events_messages on public.trip_events;
+create trigger trip_events_messages after insert on public.trip_events for each row execute function public.trip_event_messages();
+
+-- Conductor's phone for passengers with a booking on that run, from the day before.
+create or replace function public.get_trip_contact(p_booking uuid)
+returns table (name text, role text, phone text)
+language plpgsql stable security definer set search_path = public as $$
+declare bk public.bookings; v_bus text;
+begin
+  select * into bk from public.bookings where id = p_booking;
+  if not found or (bk.user_id is distinct from auth.uid() and not public.is_staff()) then return; end if;
+  if bk.travel_date > current_date + 1 or bk.travel_date < current_date - 1 then return; end if;
+  select s.bus_id into v_bus from public.schedules s where s.id = bk.schedule_id;
+  return query select c.full_name, c.role, c.phone from public.crew c
+    where c.bus_id = v_bus and c.active and c.role in ('conductor', 'driver') and c.phone <> ''
+    order by (c.role = 'conductor') desc limit 1;
+end $$;
+grant execute on function public.get_trip_contact(uuid) to authenticated;
+
+-- ------------------------------------------------------ parcels & charters ---
+create table if not exists public.service_requests (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null check (kind in ('parcel', 'charter')),
+  status text not null default 'new' check (status in ('new', 'quoted', 'confirmed', 'done', 'cancelled')),
+  name text not null check (length(name) between 2 and 120),
+  phone text not null check (length(phone) between 7 and 30),
+  email text not null default '',
+  details jsonb not null default '{}',
+  quote_amount integer,
+  staff_notes text not null default '',
+  user_id uuid default auth.uid() references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.service_requests enable row level security;
+drop policy if exists "anyone can ask" on public.service_requests;
+create policy "anyone can ask" on public.service_requests for insert
+  with check (status = 'new' and quote_amount is null and staff_notes = '' and (user_id is null or user_id = auth.uid()) and length(details::text) < 4000);
+drop policy if exists "own or staff requests" on public.service_requests;
+create policy "own or staff requests" on public.service_requests for select using (user_id = auth.uid() or public.is_staff());
+drop policy if exists "staff handle requests" on public.service_requests;
+create policy "staff handle requests" on public.service_requests for update using (public.is_staff()) with check (public.is_staff());
+
+-- --------------------------------------------------------------- cash count ---
+create table if not exists public.cash_counts (
+  id uuid primary key default gen_random_uuid(),
+  count_date date not null default current_date,
+  expected integer not null,
+  counted integer not null,
+  notes text not null default '',
+  created_by uuid not null default auth.uid() references public.profiles (id),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists cash_counts_one_per_day on public.cash_counts (count_date, created_by);
+alter table public.cash_counts enable row level security;
+drop policy if exists "staff count cash" on public.cash_counts;
+create policy "staff count cash" on public.cash_counts for insert with check (public.is_staff() and created_by = auth.uid());
+drop policy if exists "see cash counts" on public.cash_counts;
+create policy "see cash counts" on public.cash_counts for select using (created_by = auth.uid() or public.is_admin());
+
+-- Staff can attach receipt photos to running costs they log.
+drop policy if exists "staff see receipts own" on public.expenses;
+create policy "staff see receipts own" on public.expenses for update
+  using (public.is_staff() and created_by = auth.uid() and category in ('fuel', 'toll', 'parking', 'cleaning'))
+  with check (public.is_staff() and created_by = auth.uid() and category in ('fuel', 'toll', 'parking', 'cleaning'));
+
+-- Stop photos (public, shown to passengers).
+insert into storage.buckets (id, name, public) values ('stop-photos', 'stop-photos', true) on conflict (id) do nothing;
+drop policy if exists "staff upload stop photos" on storage.objects;
+create policy "staff upload stop photos" on storage.objects for insert to authenticated with check (bucket_id = 'stop-photos' and public.is_staff());
+drop policy if exists "read stop photos" on storage.objects;
+create policy "read stop photos" on storage.objects for select using (bucket_id = 'stop-photos');
+
+
+-- =============================================================================
+-- ▼ 20261004000000_conductor_role.sql
+-- =============================================================================
+-- =============================================================================
+-- Migration 4: conductor role.
+-- Conductors use the phone-first conductor page (/conductor): passenger
+-- lists, QR boarding, taking cash for held seats, selling a seat on board,
+-- trip updates, sharing the bus location, logging fuel/tolls, cash count.
+-- They can't change buses, routes or the timetable, or see paperwork and
+-- parcel/hire requests (office staff only).
+-- =============================================================================
+
+alter type public.user_role add value if not exists 'conductor';
+
+-- Anyone working for the company (office staff, super admin, conductor).
+create or replace function public.is_staff() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role::text in ('staff', 'admin', 'conductor'));
+$$;
+
+-- Office staff only (not conductors).
+create or replace function public.is_office_staff() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role::text in ('staff', 'admin'));
+$$;
+grant execute on function public.is_office_staff() to anon, authenticated;
+
+drop policy if exists "staff buses" on public.buses;
+drop policy if exists "office buses" on public.buses;
+create policy "office buses" on public.buses for all using (public.is_office_staff()) with check (public.is_office_staff());
+drop policy if exists "staff routes" on public.routes;
+drop policy if exists "office routes" on public.routes;
+create policy "office routes" on public.routes for all using (public.is_office_staff()) with check (public.is_office_staff());
+drop policy if exists "staff schedules" on public.schedules;
+drop policy if exists "office schedules" on public.schedules;
+create policy "office schedules" on public.schedules for all using (public.is_office_staff()) with check (public.is_office_staff());
+drop policy if exists "staff see documents" on public.bus_documents;
+drop policy if exists "office see documents" on public.bus_documents;
+create policy "office see documents" on public.bus_documents for select using (public.is_office_staff());
+drop policy if exists "own or staff requests" on public.service_requests;
+drop policy if exists "own or office requests" on public.service_requests;
+create policy "own or office requests" on public.service_requests for select using (user_id = auth.uid() or public.is_office_staff());
+drop policy if exists "staff handle requests" on public.service_requests;
+drop policy if exists "office handle requests" on public.service_requests;
+create policy "office handle requests" on public.service_requests for update using (public.is_office_staff()) with check (public.is_office_staff());
+drop policy if exists "staff edit profiles" on public.profiles;
+drop policy if exists "office edit profiles" on public.profiles;
+create policy "office edit profiles" on public.profiles for update using (public.is_office_staff());
+
+create or replace function public.set_user_role(p_user uuid, p_role text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'NOT_ALLOWED: Super admins only.'; end if;
+  if p_role not in ('passenger', 'conductor', 'staff', 'admin') then raise exception 'BAD_ROLE: Unknown role.'; end if;
+  if p_user = auth.uid() and p_role <> 'admin' then raise exception 'NOT_ALLOWED: You can''t remove your own super admin access.'; end if;
+  update public.profiles set role = p_role::public.user_role where id = p_user;
+end $$;
+
+
+-- =============================================================================
+-- ▼ seed.sql
+-- =============================================================================
+-- Starting data: settings, coach ND-2323, Route 48 both ways, timetable.
+-- Same as lib/seed.ts (minus the sample bookings). Safe to re-run.
+
+insert into public.app_settings (id, booking_fee, promo_code, promo_percent, max_seats_per_booking, booking_cutoff_minutes)
+values (true, 50, 'SIYAN10', 10, 6, 30)
+on conflict (id) do nothing;
+
+insert into public.buses (id, name, reg_no, type, rows, back_row_seats, ladies_seats, amenities, status, bike_spaces)
+values ('bus-1', 'Siyan Gold', 'ND-2323', 'AC', 10, 5, array['1A','1B'],
+        array['Air conditioning','Reclining seats','USB charging','Reading lights'], 'active', 4)
+on conflict (id) do nothing;
+
+insert into public.routes (id, stops, active) values
+  ('route-48-east', '[{"name": "Colombo", "offsetMin": 0, "fareFromStart": 0, "lat": 6.9338, "lng": 79.8524, "landmark": "Bastian Mawatha bus stand, Pettah (next to the Central Bus Stand)"}, {"name": "Kadawatha", "offsetMin": 30, "fareFromStart": 250, "lat": 7.001, "lng": 79.9534, "landmark": "Kandy Road, opposite Kadawatha interchange"}, {"name": "Nittambuwa", "offsetMin": 60, "fareFromStart": 450, "lat": 7.1446, "lng": 80.0957, "landmark": "Main bus stand, Kandy Road"}, {"name": "Kurunegala", "offsetMin": 125, "fareFromStart": 850, "lat": 7.4863, "lng": 80.3647, "landmark": "Clock tower roundabout, Kurunegala town"}, {"name": "Dambulla", "offsetMin": 205, "fareFromStart": 1300, "lat": 7.8601, "lng": 80.6517, "landmark": "Dambulla bus stand, near the Economic Centre"}, {"name": "Habarana", "offsetMin": 240, "fareFromStart": 1500, "lat": 8.0372, "lng": 80.7485, "landmark": "Habarana junction (Trincomalee / Polonnaruwa roads)"}, {"name": "Polonnaruwa", "offsetMin": 295, "fareFromStart": 1800, "lat": 7.9403, "lng": 81.0188, "landmark": "Kaduruwela bus stand"}, {"name": "Welikanda", "offsetMin": 340, "fareFromStart": 2000, "lat": 7.9606, "lng": 81.2003, "landmark": "Welikanda town, A11 main road"}, {"name": "Valaichchenai", "offsetMin": 395, "fareFromStart": 2200, "lat": 7.9228, "lng": 81.5306, "landmark": "Valaichchenai junction, A15"}, {"name": "Batticaloa", "offsetMin": 440, "fareFromStart": 2400, "lat": 7.7171, "lng": 81.7005, "landmark": "Batticaloa central bus stand"}, {"name": "Kalmunai", "offsetMin": 495, "fareFromStart": 2600, "lat": 7.4136, "lng": 81.8269, "landmark": "Kalmunai bus stand, Main Street"}, {"name": "Akkaraipattu", "offsetMin": 530, "fareFromStart": 2800, "lat": 7.2167, "lng": 81.85, "landmark": "Akkaraipattu bus stand, Main Street"}]'::jsonb, true),
+  ('route-48-west', '[{"name": "Akkaraipattu", "offsetMin": 0, "fareFromStart": 0, "lat": 7.2167, "lng": 81.85, "landmark": "Akkaraipattu bus stand, Main Street"}, {"name": "Kalmunai", "offsetMin": 35, "fareFromStart": 200, "lat": 7.4136, "lng": 81.8269, "landmark": "Kalmunai bus stand, Main Street"}, {"name": "Batticaloa", "offsetMin": 90, "fareFromStart": 400, "lat": 7.7171, "lng": 81.7005, "landmark": "Batticaloa central bus stand"}, {"name": "Valaichchenai", "offsetMin": 135, "fareFromStart": 600, "lat": 7.9228, "lng": 81.5306, "landmark": "Valaichchenai junction, A15"}, {"name": "Welikanda", "offsetMin": 190, "fareFromStart": 800, "lat": 7.9606, "lng": 81.2003, "landmark": "Welikanda town, A11 main road"}, {"name": "Polonnaruwa", "offsetMin": 235, "fareFromStart": 1000, "lat": 7.9403, "lng": 81.0188, "landmark": "Kaduruwela bus stand"}, {"name": "Habarana", "offsetMin": 290, "fareFromStart": 1300, "lat": 8.0372, "lng": 80.7485, "landmark": "Habarana junction (Trincomalee / Polonnaruwa roads)"}, {"name": "Dambulla", "offsetMin": 325, "fareFromStart": 1500, "lat": 7.8601, "lng": 80.6517, "landmark": "Dambulla bus stand, near the Economic Centre"}, {"name": "Kurunegala", "offsetMin": 405, "fareFromStart": 1950, "lat": 7.4863, "lng": 80.3647, "landmark": "Clock tower roundabout, Kurunegala town"}, {"name": "Nittambuwa", "offsetMin": 470, "fareFromStart": 2350, "lat": 7.1446, "lng": 80.0957, "landmark": "Main bus stand, Kandy Road"}, {"name": "Kadawatha", "offsetMin": 500, "fareFromStart": 2550, "lat": 7.001, "lng": 79.9534, "landmark": "Kandy Road, opposite Kadawatha interchange"}, {"name": "Colombo", "offsetMin": 530, "fareFromStart": 2800, "lat": 6.9338, "lng": 79.8524, "landmark": "Bastian Mawatha bus stand, Pettah (next to the Central Bus Stand)"}]'::jsonb, true)
+on conflict (id) do update set stops = excluded.stops;
+
+-- Out Mon/Wed/Fri 9:00 PM from Colombo; back Tue/Thu/Sat 8:00 PM from Akkaraipattu.
+insert into public.schedules (id, route_id, bus_id, departure, days, active) values
+  ('sch-cmb-2100', 'route-48-east', 'bus-1', '21:00', array[1,3,5]::smallint[], true),
+  ('sch-akp-2000', 'route-48-west', 'bus-1', '20:00', array[2,4,6]::smallint[], true)
+on conflict (id) do nothing;

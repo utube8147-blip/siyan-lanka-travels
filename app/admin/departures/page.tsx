@@ -24,6 +24,9 @@ import {
 } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 import { BikeLoadingList } from '@/components/admin/BikeList';
+import { TripTools } from '@/components/admin/TripTools';
+import { downloadManifestPdf } from '@/lib/manifestPdf';
+import { FileDown } from 'lucide-react';
 
 export default function DeparturesPage() {
   return (
@@ -88,14 +91,14 @@ function Departures() {
 }
 
 function Manifest({ run }: { run: Run }) {
-  const { data, createBooking, updateBooking } = useStore();
+  const { data, createBooking, updateBooking, confirmPayment } = useStore();
   const { toast, Toast } = useToast();
   const [selected, setSelected] = useState<string[]>([]);
   const [selling, setSelling] = useState(false);
   const [viewing, setViewing] = useState<Booking | null>(null);
 
   const bookings = data.bookings.filter((b) => b.scheduleId === run.schedule.id && b.date === run.date);
-  const live = bookings.filter((b) => b.status === 'confirmed' || b.status === 'boarded');
+  const live = bookings.filter((b) => b.status === 'confirmed' || b.status === 'boarded' || b.status === 'held');
   const taken = takenSeats(data.bookings, run.schedule.id, run.date);
   const seatOwner = new Map<string, Booking>();
   live.forEach((b) => b.seats.forEach((s) => seatOwner.set(s, b)));
@@ -155,6 +158,7 @@ function Manifest({ run }: { run: Run }) {
       </Card>
 
       <div className="min-w-0 space-y-6">
+      <TripTools run={run} bookings={bookings} />
       <Card className="min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-[#edeef0]">
           <div>
@@ -163,6 +167,9 @@ function Manifest({ run }: { run: Run }) {
               {boarded} of {run.sold} seats boarded · {formatLKR(run.revenue)} collected
             </p>
           </div>
+          <Button variant="secondary" size="sm" onClick={() => downloadManifestPdf(data, run.schedule.id, run.date)} className="print:hidden">
+            <FileDown className="w-4 h-4" /> Download PDF
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => window.print()} className="print:hidden">
             <Printer className="w-4 h-4" /> Print list
           </Button>
@@ -223,6 +230,16 @@ function Manifest({ run }: { run: Run }) {
                           </Button>
                           <Button size="sm" variant="secondary" onClick={() => setViewing(b)}>
                             More
+                          </Button>
+                        </div>
+                      )}
+                      {b.status === 'held' && (
+                        <div className="flex gap-1.5 justify-end">
+                          <Button size="sm" variant="gold" onClick={async () => {
+                            const r = await confirmPayment(b.id, 'cash');
+                            toast(r.ok ? `${b.passenger.name}: paid in cash` : r.reason ?? 'Could not take payment', r.ok ? 'ok' : 'error');
+                          }}>
+                            Take cash
                           </Button>
                         </div>
                       )}

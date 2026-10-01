@@ -12,7 +12,7 @@ import { AUTH_COOKIE_MAX_AGE } from '@/lib/features';
 const ADMIN_ONLY = ['/admin/finance', '/admin/fleet-health', '/admin/crew', '/admin/accounts', '/admin/settings'];
 
 /** Pages that need a signed-in passenger (with Supabase connected). */
-const SIGNED_IN_ONLY = ['/my-bookings', '/dashboard', '/payment', '/refund', '/marketplace/buy'];
+const SIGNED_IN_ONLY = ['/my-bookings', '/dashboard', '/payment', '/refund', '/marketplace/buy', '/track'];
 
 export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -53,11 +53,20 @@ export async function proxy(request: NextRequest) {
 
   if (path === '/staff/login') return response;
 
+  // Phone-first conductor page: conductors, office staff and super admins.
+  if (path.startsWith('/conductor')) {
+    if (!user) return to(`/staff/login?next=${encodeURIComponent(path + request.nextUrl.search)}`);
+    const { data: prof } = await sb.from('profiles').select('role').eq('id', user.id).maybeSingle();
+    if (!['conductor', 'staff', 'admin'].includes(prof?.role ?? '')) return to('/');
+    return response;
+  }
+
   if (path.startsWith('/admin')) {
     // Staff have their own sign-in page, separate from passengers.
     if (!user) return to(`/staff/login?next=${encodeURIComponent(path + request.nextUrl.search)}`);
     const { data: profile } = await sb.from('profiles').select('role').eq('id', user.id).maybeSingle();
     const role = profile?.role;
+    if (role === 'conductor') return to('/conductor');
     if (role !== 'staff' && role !== 'admin') return to('/');
     if (role !== 'admin' && ADMIN_ONLY.some((p) => path.startsWith(p))) return to('/admin');
   }

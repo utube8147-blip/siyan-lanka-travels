@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { Download, Share, X } from 'lucide-react';
 import { useInstall } from '@/lib/pwa';
+import { useT } from '@/lib/i18n';
 
 export function IosInstallHelp({ onClose }: { onClose: () => void }) {
   return (
@@ -38,6 +39,7 @@ export function IosInstallHelp({ onClose }: { onClose: () => void }) {
 }
 
 export function InstallAppButton({ variant = 'footer', className = '', onDone }: { variant?: 'footer' | 'icon' | 'menu'; className?: string; onDone?: () => void }) {
+  const { t } = useT();
   const { mode, install } = useInstall();
   const [iosHelp, setIosHelp] = useState(false);
   if (!mode) return null;
@@ -61,7 +63,7 @@ export function InstallAppButton({ variant = 'footer', className = '', onDone }:
       </button>
     ) : variant === 'menu' ? (
       <button type="button" onClick={go} className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[#050a44] hover:bg-[#f2f4f6] transition-all ${className}`}>
-        <Download className="w-4 h-4" /> Install the app
+        <Download className="w-4 h-4" /> {t('Install the app')}
       </button>
     ) : (
       <button
@@ -69,7 +71,7 @@ export function InstallAppButton({ variant = 'footer', className = '', onDone }:
         onClick={go}
         className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#feb700] text-[#050a44] text-[14px] font-bold hover:brightness-105 ${className}`}
       >
-        <Download className="w-4 h-4" /> Install the app
+        <Download className="w-4 h-4" /> {t('Install the app')}
       </button>
     );
 

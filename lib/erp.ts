@@ -9,6 +9,7 @@ import { OPERATOR } from '@/config/operator';
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
 import { addDays, genId, parseISODate, todayISO } from './trips';
 import { SEED_SCHEDULES } from './seed';
+import { asUuid, uuid } from '@/lib/uuid';
 
 // ------------------------------------------------------------------ types ---
 export const EXPENSE_CATEGORIES = [
@@ -37,6 +38,10 @@ export interface Expense {
   odometerKm?: number | null;
   nextDueDate?: string | null;
   nextDueKm?: number | null;
+  /** Storage path (Supabase) or data URL (demo) of the receipt photo. */
+  receiptPath?: string | null;
+  /** Viewable link for the receipt (signed URL with Supabase). */
+  receiptUrl?: string | null;
   createdAt?: string;
 }
 export type IncomeCategory = 'charter' | 'parcel' | 'advertising' | 'other';
@@ -52,7 +57,7 @@ export interface CrewMember {
   id: string; fullName: string; role: CrewRole; phone: string; licenseNo: string; licenseExpires?: string | null;
   monthlySalary: number; busId?: string | null; active: boolean; notes: string;
 }
-export type AccountRole = 'passenger' | 'staff' | 'admin';
+export type AccountRole = 'passenger' | 'conductor' | 'staff' | 'admin';
 export interface Account { id: string; email: string; fullName: string; phone: string; role: AccountRole; createdAt: string; lastSignIn?: string | null }
 export interface Settings {
   bookingFee: number;
@@ -63,6 +68,13 @@ export interface Settings {
   refundPolicy: { hoursBefore: number; percent: number }[];
   bikes: { minFee: number; maxPerBooking: number; kinds: Record<'bicycle' | 'scooter' | 'motorbike', { spaces: number; fullRouteFee: number }> };
   resaleEnabled: boolean;
+  paymentsMode: 'demo' | 'payhere';
+  bankDetails: string;
+  holdMinutesCounter: number;
+  holdMinutesBank: number;
+  rewardEvery: number;
+  messaging: { sms: boolean; whatsapp: boolean };
+  siteUrl: string;
 }
 export interface ErpData {
   expenses: Expense[];
@@ -79,32 +91,36 @@ type Result = { ok: boolean; reason?: string };
 const expFrom = (r: any): Expense => ({
   id: r.id, spentOn: r.spent_on, category: r.category, amount: r.amount, busId: r.bus_id, description: r.description,
   vendor: r.vendor, paymentMethod: r.payment_method, litres: r.litres != null ? Number(r.litres) : null, odometerKm: r.odometer_km,
-  nextDueDate: r.next_due_date, nextDueKm: r.next_due_km, createdAt: r.created_at,
+  nextDueDate: r.next_due_date, nextDueKm: r.next_due_km, receiptPath: r.receipt_path, createdAt: r.created_at,
 });
 const expTo = (e: Expense) => ({
-  id: e.id, spent_on: e.spentOn, category: e.category, amount: e.amount, bus_id: e.busId || null, description: e.description,
+  id: asUuid(e.id), spent_on: e.spentOn, category: e.category, amount: e.amount, bus_id: e.busId || null, description: e.description,
   vendor: e.vendor, payment_method: e.paymentMethod, litres: e.litres ?? null, odometer_km: e.odometerKm ?? null,
-  next_due_date: e.nextDueDate || null, next_due_km: e.nextDueKm ?? null,
+  next_due_date: e.nextDueDate || null, next_due_km: e.nextDueKm ?? null, receipt_path: e.receiptPath ?? null,
 });
 const incFrom = (r: any): Income => ({ id: r.id, receivedOn: r.received_on, category: r.category, amount: r.amount, busId: r.bus_id, description: r.description });
-const incTo = (i: Income) => ({ id: i.id, received_on: i.receivedOn, category: i.category, amount: i.amount, bus_id: i.busId || null, description: i.description });
+const incTo = (i: Income) => ({ id: asUuid(i.id), received_on: i.receivedOn, category: i.category, amount: i.amount, bus_id: i.busId || null, description: i.description });
 const docFrom = (r: any): BusDocument => ({ id: r.id, busId: r.bus_id, kind: r.kind, number: r.number, expiresOn: r.expires_on, notes: r.notes });
-const docTo = (d: BusDocument) => ({ id: d.id, bus_id: d.busId, kind: d.kind, number: d.number, expires_on: d.expiresOn, notes: d.notes });
+const docTo = (d: BusDocument) => ({ id: asUuid(d.id), bus_id: d.busId, kind: d.kind, number: d.number, expires_on: d.expiresOn, notes: d.notes });
 const crewFrom = (r: any): CrewMember => ({
   id: r.id, fullName: r.full_name, role: r.role, phone: r.phone, licenseNo: r.license_no, licenseExpires: r.license_expires,
   monthlySalary: r.monthly_salary, busId: r.bus_id, active: r.active, notes: r.notes,
 });
 const crewTo = (c: CrewMember) => ({
-  id: c.id, full_name: c.fullName, role: c.role, phone: c.phone, license_no: c.licenseNo, license_expires: c.licenseExpires || null,
+  id: asUuid(c.id), full_name: c.fullName, role: c.role, phone: c.phone, license_no: c.licenseNo, license_expires: c.licenseExpires || null,
   monthly_salary: c.monthlySalary, bus_id: c.busId || null, active: c.active, notes: c.notes,
 });
 const settingsFrom = (r: any): Settings => ({
   bookingFee: r.booking_fee, promoCode: r.promo_code ?? '', promoPercent: r.promo_percent, maxSeats: r.max_seats_per_booking,
   cutoffMinutes: r.booking_cutoff_minutes, refundPolicy: r.refund_policy, bikes: r.bikes, resaleEnabled: !!r.resale_enabled,
+  paymentsMode: r.payments_mode ?? 'demo', bankDetails: r.bank_details ?? '', holdMinutesCounter: r.hold_minutes_counter ?? 120,
+  holdMinutesBank: r.hold_minutes_bank ?? 1440, rewardEvery: r.reward_every ?? 10, messaging: r.messaging ?? { sms: true, whatsapp: false }, siteUrl: r.site_url ?? '',
 });
 const settingsTo = (s: Settings) => ({
   booking_fee: s.bookingFee, promo_code: s.promoCode || null, promo_percent: s.promoPercent, max_seats_per_booking: s.maxSeats,
   booking_cutoff_minutes: s.cutoffMinutes, refund_policy: s.refundPolicy, bikes: s.bikes, resale_enabled: s.resaleEnabled,
+  payments_mode: s.paymentsMode, bank_details: s.bankDetails, hold_minutes_counter: s.holdMinutesCounter, hold_minutes_bank: s.holdMinutesBank,
+  reward_every: s.rewardEvery, messaging: s.messaging, site_url: s.siteUrl,
 });
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -124,6 +140,13 @@ export const DEFAULT_SETTINGS: Settings = {
     },
   },
   resaleEnabled: OPERATOR.features.resale,
+  paymentsMode: 'demo',
+  bankDetails: 'Bank of Ceylon, Pettah branch · A/C 0077411020 · Siyan Lanka Travels',
+  holdMinutesCounter: 120,
+  holdMinutesBank: 1440,
+  rewardEvery: 10,
+  messaging: { sms: true, whatsapp: false },
+  siteUrl: OPERATOR.siteUrl,
 };
 
 // ------------------------------------------------------------- demo data ---
@@ -135,7 +158,7 @@ function demoSeed(): ErpData {
   let odo = 118_000;
   let n = 0;
   const e = (x: Omit<Expense, 'id' | 'vendor' | 'paymentMethod' | 'description'> & Partial<Expense>) =>
-    expenses.push({ id: genId('exp'), vendor: '', paymentMethod: 'cash', description: '', ...x });
+    expenses.push({ id: uuid(), vendor: '', paymentMethod: 'cash', description: '', ...x });
   for (let d = -60; d <= -1; d++) {
     const date = addDays(today, d);
     const wd = parseISODate(date).getDay();
@@ -161,25 +184,26 @@ function demoSeed(): ErpData {
   e({ spentOn: addDays(today, -33), category: 'tyres', amount: 184_000, busId: 'bus-1', vendor: 'DSI Tyres', description: '2 rear tyres', paymentMethod: 'bank' });
   e({ spentOn: addDays(today, -18), category: 'repair', amount: 27_500, busId: 'bus-1', vendor: 'City Auto AC', description: 'AC compressor belt' });
   const income: Income[] = [
-    { id: genId('inc'), receivedOn: addDays(today, -40), category: 'charter', amount: 115_000, busId: 'bus-1', description: 'Wedding party, Kalmunai → Kandy' },
-    { id: genId('inc'), receivedOn: addDays(today, -12), category: 'charter', amount: 95_000, busId: 'bus-1', description: 'School trip, Batticaloa' },
-    { id: genId('inc'), receivedOn: addDays(today, -6), category: 'parcel', amount: 8_400, busId: 'bus-1', description: 'Parcels Colombo → Kalmunai' },
+    { id: uuid(), receivedOn: addDays(today, -40), category: 'charter', amount: 115_000, busId: 'bus-1', description: 'Wedding party, Kalmunai → Kandy' },
+    { id: uuid(), receivedOn: addDays(today, -12), category: 'charter', amount: 95_000, busId: 'bus-1', description: 'School trip, Batticaloa' },
+    { id: uuid(), receivedOn: addDays(today, -6), category: 'parcel', amount: 8_400, busId: 'bus-1', description: 'Parcels Colombo → Kalmunai' },
   ];
   const documents: BusDocument[] = [
-    { id: genId('doc'), busId: 'bus-1', kind: 'insurance', number: 'CEY/MV/2026/88121', expiresOn: addDays(today, 41), notes: 'Ceylinco, full cover' },
-    { id: genId('doc'), busId: 'bus-1', kind: 'revenue_license', number: 'EP-RL-44102', expiresOn: addDays(today, 196), notes: '' },
-    { id: genId('doc'), busId: 'bus-1', kind: 'route_permit', number: 'NTC-48-0913', expiresOn: addDays(today, 12), notes: 'NTC Route 48' },
-    { id: genId('doc'), busId: 'bus-1', kind: 'emission_test', number: 'VET-29931', expiresOn: addDays(today, -3), notes: '' },
+    { id: uuid(), busId: 'bus-1', kind: 'insurance', number: 'CEY/MV/2026/88121', expiresOn: addDays(today, 41), notes: 'Ceylinco, full cover' },
+    { id: uuid(), busId: 'bus-1', kind: 'revenue_license', number: 'EP-RL-44102', expiresOn: addDays(today, 196), notes: '' },
+    { id: uuid(), busId: 'bus-1', kind: 'route_permit', number: 'NTC-48-0913', expiresOn: addDays(today, 12), notes: 'NTC Route 48' },
+    { id: uuid(), busId: 'bus-1', kind: 'emission_test', number: 'VET-29931', expiresOn: addDays(today, -3), notes: '' },
   ];
   const crew: CrewMember[] = [
-    { id: genId('crew'), fullName: 'Mohamed Rizvi', role: 'driver', phone: '+94 77 410 2211', licenseNo: 'B3341920', licenseExpires: addDays(today, 25), monthlySalary: 90_000, busId: 'bus-1', active: true, notes: 'Heavy vehicle licence' },
-    { id: genId('crew'), fullName: 'Ahamed Farook', role: 'driver', phone: '+94 75 882 1043', licenseNo: 'B2210876', licenseExpires: addDays(today, 400), monthlySalary: 0, busId: 'bus-1', active: true, notes: 'Relief driver, paid per trip' },
-    { id: genId('crew'), fullName: 'Suresh Kumar', role: 'conductor', phone: '+94 71 553 9087', licenseNo: '', licenseExpires: null, monthlySalary: 62_000, busId: 'bus-1', active: true, notes: '' },
-    { id: genId('crew'), fullName: 'Nimal Perera', role: 'cleaner', phone: '+94 76 118 7720', licenseNo: '', licenseExpires: null, monthlySalary: 35_000, busId: 'bus-1', active: true, notes: '' },
+    { id: uuid(), fullName: 'Mohamed Rizvi', role: 'driver', phone: '+94 77 410 2211', licenseNo: 'B3341920', licenseExpires: addDays(today, 25), monthlySalary: 90_000, busId: 'bus-1', active: true, notes: 'Heavy vehicle licence' },
+    { id: uuid(), fullName: 'Ahamed Farook', role: 'driver', phone: '+94 75 882 1043', licenseNo: 'B2210876', licenseExpires: addDays(today, 400), monthlySalary: 0, busId: 'bus-1', active: true, notes: 'Relief driver, paid per trip' },
+    { id: uuid(), fullName: 'Suresh Kumar', role: 'conductor', phone: '+94 71 553 9087', licenseNo: '', licenseExpires: null, monthlySalary: 62_000, busId: 'bus-1', active: true, notes: '' },
+    { id: uuid(), fullName: 'Nimal Perera', role: 'cleaner', phone: '+94 76 118 7720', licenseNo: '', licenseExpires: null, monthlySalary: 35_000, busId: 'bus-1', active: true, notes: '' },
   ];
   const accounts: Account[] = [
     { id: 'mock-admin-1', email: 'owner@siyanlanka.lk', fullName: 'Owner (super admin)', phone: '', role: 'admin', createdAt: addDays(today, -90) },
     { id: 'mock-staff-1', email: 'counter@siyanlanka.lk', fullName: 'Operations Desk', phone: '', role: 'staff', createdAt: addDays(today, -80) },
+    { id: 'mock-conductor-1', email: '', fullName: 'Suresh Kumar (conductor)', phone: '+94715539087', role: 'conductor', createdAt: addDays(today, -75) },
     { id: 'mock-user-1', email: 'alex.ham@example.com', fullName: 'Alex Ham', phone: '+94771234567', role: 'passenger', createdAt: addDays(today, -30) },
   ];
   return { expenses, income, documents, crew, accounts, settings: DEFAULT_SETTINGS };
@@ -217,8 +241,15 @@ export function useErp({ admin }: { admin: boolean }) {
     ]);
     const err = exp.error || inc.error || docs.error || crew.error || settings.error || accounts.error;
     if (err) setError(friendlyError(err));
+    const expenses = (exp.data ?? []).map(expFrom);
+    const paths = expenses.map((e) => e.receiptPath).filter((p): p is string => !!p);
+    if (paths.length) {
+      const { data: signed } = await sb.storage.from('receipts').createSignedUrls(paths, 3600);
+      const map = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
+      expenses.forEach((e) => (e.receiptUrl = e.receiptPath ? map.get(e.receiptPath) ?? null : null));
+    }
     setData({
-      expenses: (exp.data ?? []).map(expFrom),
+      expenses,
       income: (inc.data ?? []).map(incFrom),
       documents: (docs.data ?? []).map(docFrom),
       crew: (crew.data ?? []).map(crewFrom),
@@ -281,7 +312,19 @@ export function useErp({ admin }: { admin: boolean }) {
     setData(demoSeed());
   };
 
-  return { data, error, reload: load, expenses, income, documents, crew, setRole, saveSettings, resetDemo, mode: db ? ('supabase' as const) : ('demo' as const) };
+  /** Upload a receipt photo (data URL from compressPhoto); returns the value to store. */
+  const uploadReceipt = async (dataUrl: string): Promise<string> => {
+    if (!db) return dataUrl;
+    const { data: sess } = await supabase().auth.getSession();
+    const uid = sess.session?.user.id ?? 'anon';
+    const blob = await (await fetch(dataUrl)).blob();
+    const path = `${uid}/${uuid()}.jpg`;
+    const { error: e } = await supabase().storage.from('receipts').upload(path, blob, { contentType: 'image/jpeg' });
+    if (e) throw e;
+    return path;
+  };
+
+  return { data, error, reload: load, uploadReceipt, expenses, income, documents, crew, setRole, saveSettings, resetDemo, mode: db ? ('supabase' as const) : ('demo' as const) };
 }
 
 // ------------------------------------------------------------ calculations ---

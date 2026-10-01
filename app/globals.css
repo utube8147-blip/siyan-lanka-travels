@@ -126,6 +126,18 @@
     border: 1px solid rgba(255, 255, 255, 0.4);
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08);
 }
+/* Tamil & Sinhala: Noto fonts (Plus Jakarta / Bricolage have no glyphs for
+   these scripts), slightly taller line height for the scripts' stacked marks. */
+html[data-lang='ta'] body, html[data-lang='ta'] h1, html[data-lang='ta'] h2, html[data-lang='ta'] h3 {
+  font-family: 'Noto Sans Tamil Variable', 'Plus Jakarta Sans Variable', sans-serif;
+  letter-spacing: 0;
+}
+html[data-lang='si'] body, html[data-lang='si'] h1, html[data-lang='si'] h2, html[data-lang='si'] h3 {
+  font-family: 'Noto Sans Sinhala Variable', 'Plus Jakarta Sans Variable', sans-serif;
+  letter-spacing: 0;
+}
+html[data-lang='ta'] p, html[data-lang='si'] p { line-height: 1.75; }
+
 /* Logo on light backgrounds: the gold-and-white logo gets a thin navy edge
    (CSS only, the image file is unchanged). Not needed on dark surfaces. */
 html:not(.dark) .logo-img:not(.keep-navy *) {
@@ -414,13 +426,3 @@ html.dark ::selection { background: rgba(254,183,0,.35); color: #fff; }
    layer so it wins over font-bold / font-extrabold on the elements). */
 h1, h2, h3 { font-weight: 600; }
 h4, h5, h6 { font-weight: 600; }
-
-
-
-.no-scrollbar {
-  -ms-overflow-style: none;   /* IE / old Edge */
-  scrollbar-width: none;      /* Firefox */
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;              /* Chrome, Safari, new Edge */
-}

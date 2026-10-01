@@ -95,6 +95,121 @@ Same pages, two layouts, switched at the `md` breakpoint (768px):
   offline notice (`components/OfflineIndicator.tsx`) replace spinners and
   blank pages.
 
+## Phone sign-in (Notify.lk)
+Passengers sign up and sign in with their mobile number and a 6-digit text
+code (email + password is still offered). Supabase sends the code through
+our own route, which texts it with Notify.lk:
+1. Notify.lk: create an account at https://app.notify.lk, top up, request a
+   sender ID (e.g. "SiyanLanka"; until it's approved use "NotifyDEMO"), and
+   copy the User ID and API key into `NOTIFYLK_USER_ID`, `NOTIFYLK_API_KEY`,
+   `NOTIFYLK_SENDER_ID`.
+2. Supabase → Authentication → Sign In / Providers → **Phone**: enable it
+   (no SMS provider needed there).
+3. Supabase → Authentication → **Hooks** → *Send SMS hook* → HTTPS →
+   `https://your-domain/api/auth/sms-hook`. Generate the secret and put it in
+   `SUPABASE_SMS_HOOK_SECRET`.
+4. Optional: Authentication → Rate limits (SMS per hour) and OTP expiry.
+The route checks Supabase's signature before sending, so nobody else can use
+it to send texts. Demo mode: no text is sent; the code is **123456**.
+
+## Payments
+- Passengers choose **Card / Mobile wallet** (PayHere: Visa, Mastercard,
+  Amex, eZ Cash, mCash, Genie), **Bank transfer** or **Pay at counter**.
+  Bank / counter bookings hold the seat (24 h / 2 h by default, never past
+  the booking cut-off); unpaid holds are released automatically.
+- Staff take payment for holds from the departure list ("Take cash") or a
+  booking ("Mark paid").
+- **Going live with PayHere:** set `PAYHERE_MERCHANT_ID`,
+  `PAYHERE_MERCHANT_SECRET` (and `PAYHERE_SANDBOX=false` when approved), add
+  your domain in PayHere, then Staff area → Settings → Payments → PayHere.
+  The booking is confirmed only when PayHere calls `/api/payhere/notify` and
+  the signature and amount check out.
+- ⚠️ While Settings → Payments is on *Demo*, card bookings are confirmed
+  without taking money. Don't open to the public like that.
+
+## Messages (SMS / WhatsApp)
+The database queues a message when a booking is confirmed, a seat is held,
+a booking is cancelled, a waitlisted seat frees up, or the crew posts a trip
+update. `/api/messages/dispatch` sends them (Notify.lk SMS; WhatsApp Cloud
+API if configured) and logs the result (Settings → Recent messages).
+Run it every minute with `Authorization: Bearer $CRON_SECRET`, e.g. with
+Supabase pg_cron + pg_net:
+```sql
+select cron.schedule('send-messages', '* * * * *', $$
+  select net.http_post(url := 'https://your-domain/api/messages/dispatch',
+                       headers := jsonb_build_object('Authorization', 'Bearer YOUR_CRON_SECRET'))
+$$);
+```
+WhatsApp: business-started messages need an approved template; create one
+named `siyan_update` with the body `{{1}}`.
+
+## Live tracking ("Track my bus")
+No GPS tracker is needed: the bus location comes from the **conductor's
+phone GPS** through the conductor page (`/conductor` → *Share location*,
+or Staff area → Departures). It sends on movement plus a heartbeat every
+30 s while stopped, keeps the screen on, resumes by itself after the screen
+locks / the app is switched / the page is reopened, and catches up after
+lost signal. The conductor sees "Live · sent 8 s ago · ±12 m" or a warning.
+Tips for the crew: keep the conductor page open on a phone mount, plugged
+into the bus charger, and add it to the home screen. (Browsers pause GPS when
+the page isn't on screen; for sharing with the screen off you'd need a small
+native app wrapper later, e.g. Capacitor with a background-location plugin.)
+The conductor taps **Share location** and keeps the phone in the bus; passengers open **Track** on
+their ticket to see the bus on a map, its recent positions, the arrival
+estimate at their stop and crew updates.
+Right now the database keeps the latest position only; the page builds the
+trail from live updates while it's open. To keep the **last 5 positions**
+in the database later, run this and change `loadRecentPositions()` in
+`lib/tracking.ts` to read `bus_location_history` (the map already handles
+a list):
+```sql
+create table public.bus_location_history (
+  id bigint generated always as identity primary key,
+  schedule_id text not null, travel_date date not null,
+  lat double precision not null, lng double precision not null,
+  speed_kmh numeric, heading numeric, recorded_at timestamptz not null default now()
+);
+create index on public.bus_location_history (schedule_id, travel_date, recorded_at desc);
+alter table public.bus_location_history enable row level security;
+create policy "read history" on public.bus_location_history for select using (true);
+create function public.keep_location_history() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into bus_location_history (schedule_id, travel_date, lat, lng, speed_kmh, heading)
+  values (new.schedule_id, new.travel_date, new.lat, new.lng, new.speed_kmh, new.heading);
+  delete from bus_location_history where schedule_id = new.schedule_id and travel_date = new.travel_date
+    and id not in (select id from bus_location_history where schedule_id = new.schedule_id and travel_date = new.travel_date order by recorded_at desc limit 5);
+  return new;
+end $$;
+create trigger bus_locations_history after insert or update on public.bus_locations for each row execute function public.keep_location_history();
+```
+
+## Languages
+English, Tamil and Sinhala (switcher in the header and Profile). Strings live
+in `lib/i18n.tsx`; anything untranslated shows in English. **Have a native
+speaker review the Tamil and Sinhala before launch.**
+
+## Conductor page & passenger list
+- **`/conductor`**, a phone-first page for the bus. Sign in at `/staff/login`
+  with a **Conductor** account (set in Accounts & roles); conductors land
+  here and can't open the rest of the staff area. Office staff and super
+  admins can use it too ("Conductor app" in the staff sidebar).
+  - Today's departure is picked automatically (last night's overnight bus
+    counts while it's still on the road).
+  - **Scan tickets**: full-screen camera scanner. Works on Android (built-in
+    detector) and iPhone (jsQR). Green ✓ boards the passenger; unpaid holds
+    show "collect LKR …" with *Cash received · board*; wrong-bus and
+    cancelled tickets show red. You can also type a ref or a seat number.
+  - Tap a name to board, mark a no-show, undo, call, or take cash.
+  - Share location, update passengers, download the passenger list, close
+    the day (`/conductor/cash`).
+- **Passenger list PDF** (Departures → *Download PDF*, or the conductor
+  page): A4 tick list grouped by boarding stop in route order, with seat,
+  name, phone, destination, what to collect, bikes to load, and lines for
+  boarded count, cash and signatures. Passengers already on board come
+  pre-ticked.
+- Passenger tickets (My trips → View Ticket and the confirmation screen)
+  carry a real QR code with the booking reference, made on the phone.
+
 ## Staff area & roles
 - **Entrance:** `https://your-domain/staff/login`. It isn't linked anywhere on
   the customer site (share it with staff yourself) and is hidden from Google.
@@ -102,6 +217,8 @@ Same pages, two layouts, switched at the `md` breakpoint (768px):
   to the passenger sign-in.
 - **Roles** (set in Accounts & roles):
   - *Passenger*: books and manages their own trips.
+  - *Conductor*: the conductor page only (boarding, cash, trip updates,
+    location, fuel/tolls, closing the day).
   - *Staff*: Operations: departures & manifests, bookings, buses, routes &
     timetable, and logging running costs (fuel, tolls, parking, cleaning).
   - *Super admin*: everything, plus Business: Finance (P&L by month / bus /
@@ -200,14 +317,12 @@ browser). To connect a real database:
 
 1. **Create a project** at supabase.com (region: Mumbai / `ap-south-1` is
    closest to Sri Lanka).
-2. **Run the SQL** (Dashboard → SQL Editor → New query), in this order:
-   - `supabase/migrations/20261001000000_init.sql` — tables, security rules,
-     booking functions, bike-photo storage
-   - `supabase/seed.sql` — ND-2323, Route 48 both ways, the timetable
-   - `supabase/migrations/20261002000000_admin_erp_resale.sql` — super admin
-     role, expenses/income/documents/crew, seat resale (off by default)
-   (or with the Supabase CLI: `supabase link` then `supabase db push`, then
-   run `seed.sql`).
+2. **Run the SQL**: open `supabase/setup.sql`, paste the whole file into
+   Supabase → SQL Editor → **Run**. It sets up everything (all four
+   migrations + starting data) and is **safe to run again**: existing
+   tables, functions, rules and data are skipped or updated, so it also
+   repairs a project where only some migrations ran. (The separate files in
+   `supabase/migrations/` are the same SQL split up, for the Supabase CLI.)
 3. **Keys:** Dashboard → Project Settings → API. Copy `.env.example` to
    `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL` and the **publishable**
    key (`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; the older "anon" key also

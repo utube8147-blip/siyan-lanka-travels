@@ -5,6 +5,7 @@ import React, { useMemo, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { OPERATOR } from '@/config/operator';
+import { useQrDataUrl } from '@/lib/qr';
 import { formatLKR } from '@/lib/trips';
 import { useAuth } from '@/contexts/AuthContext';
 import { useResaleListings, buyResale } from '@/lib/resale';
@@ -118,9 +119,7 @@ export default function MarketplaceBuyPage() {
     });
   }, [ticket, purchaseRef]);
 
-  const qrImageUrl = qrPayload
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(qrPayload)}`
-    : '';
+  const qrImageUrl = useQrDataUrl(qrPayload);
 
   const handleDownload = async () => {
     if (!qrImageUrl) return;

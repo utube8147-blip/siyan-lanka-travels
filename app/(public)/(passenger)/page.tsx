@@ -12,6 +12,7 @@ import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { useStore } from '@/lib/store';
 import { addDays, allStopNames, busCapacity, findTrips, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route } from '@/lib/types';
+import { useT } from '@/lib/i18n';
 
 const HERO_IMAGE = '/brand/bus.png';
 
@@ -29,6 +30,7 @@ const AMENITY_ICONS: Record<string, React.ComponentType<{ className?: string }>>
 };
 
 export default function LandingPage() {
+  const { t } = useT();
   const router = useRouter();
   const { data, ready } = useStore();
   const stops = useMemo(() => allStopNames(data), [data]);
@@ -56,21 +58,6 @@ export default function LandingPage() {
   }, [paused]);
 
   const stopsRef = useStaggerIn<HTMLOListElement>();
-
-  // "Where we stop" snake layout below xl: how many stops fit in one row.
-  const [stopCols, setStopCols] = useState(3);
-  useEffect(() => {
-    const calc = () => {
-      const w = window.innerWidth;
-      setStopCols(w < 640 ? 3 : w < 1024 ? 5 : 7);
-    };
-    calc();
-    window.addEventListener('resize', calc);
-    return () => window.removeEventListener('resize', calc);
-  }, []);
-  const stopRows = firstRoute
-    ? Array.from({ length: Math.ceil(firstRoute.stops.length / stopCols) }, (_, r) => firstRoute.stops.slice(r * stopCols, r * stopCols + stopCols))
-    : [];
   const bikesRef = useStaggerIn<HTMLDivElement>();
   const weeklyDepartures = data.schedules.filter((s) => s.active).reduce((n, s) => n + s.days.length, 0);
   const activeBuses = data.buses.filter((b) => b.status === 'active');
@@ -98,35 +85,31 @@ export default function LandingPage() {
         <section className="relative w-full lg:min-h-[560px] lg:h-[calc(100dvh-80px)]">
           <div className="hidden lg:block absolute inset-0 z-0 overflow-hidden">
             <img alt="" className="w-full h-full object-cover object-[65%_center]" src={HERO_IMAGE} />
-            {/* Flat faint overlay so the whole photo is evenly toned down */}
-            <div className="absolute inset-0 bg-black/35" />
-            {/* Directional gradient: darkest behind the headline, lighter toward the right */}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/35" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/15" />
           </div>
 
           <div className="relative z-10 h-full lg:px-16 lg:py-6 grid grid-cols-1 lg:grid-cols-2 lg:gap-[48px] items-center max-w-[1440px] mx-auto">
             <div className="relative overflow-hidden lg:overflow-visible text-center lg:text-left px-6 md:px-12 lg:px-0 pt-14 pb-14 md:pt-20 md:pb-20 lg:py-0">
               <div className="lg:hidden absolute inset-0" aria-hidden>
                 <img alt="" className="w-full h-full object-cover object-[60%_center]" src={HERO_IMAGE} />
-                <div className="absolute inset-0 bg-black/15" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/55 to-black/80" />
               </div>
               <div className="relative">
               <p className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/10 backdrop-blur-md border border-white/20 text-white rounded-full mb-5 text-[13px] font-semibold">
                 <ShieldCheck className="w-4 h-4 text-[#feb700]" />
-                {weeklyDepartures} overnight departures a week
+                {t('{n} overnight departures a week', { n: weeklyDepartures })}
               </p>
               <BlurText
                 as="h1"
                 className="text-[30px] sm:text-[44px] lg:text-[54px] font-bold mb-4 lg:mb-6 leading-[1.05] tracking-tight text-white text-shadow-premium justify-center lg:justify-start flex flex-wrap"
                 text={
                   firstRoute
-                    ? `${firstRoute.stops[0].name} to ${firstRoute.stops[firstRoute.stops.length - 1].name}, with a seat that's yours.`
+                    ? t("{from} to {to}, with a seat that's yours.", { from: firstRoute.stops[0].name, to: firstRoute.stops[firstRoute.stops.length - 1].name })
                     : 'Book your seat before you leave home.'
                 }
               />
               <p className="text-[16px] leading-[1.6] max-w-xl mx-auto lg:mx-0 text-white/90 text-shadow-premium">
-                Board in Colombo at night, wake up in the East. Pick your seat, pay online and show the ticket on your phone.
+                {t('Board in Colombo at night, wake up in the East. Pick your seat, pay online and show the ticket on your phone.')}
               </p>
               </div>
             </div>
@@ -141,11 +124,11 @@ export default function LandingPage() {
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-[10px] md:gap-[14px] mb-[10px] md:mb-[14px] items-end">
                   <div className="space-y-[6px]">
                     <label htmlFor="hero-from" className="text-[12px] font-semibold text-white/80 ml-1">
-                      Boarding point
+                      {t('Boarding point')}
                     </label>
                     <div className="relative">
                       <MapPin className="w-5 h-5 absolute left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
-                      <input id="hero-from" list="stop-names" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} placeholder="Where from?" />
+                      <input id="hero-from" list="stop-names" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} placeholder={t('Where from?')} />
                     </div>
                   </div>
                   <button
@@ -158,17 +141,17 @@ export default function LandingPage() {
                   </button>
                   <div className="space-y-[6px]">
                     <label htmlFor="hero-to" className="text-[12px] font-semibold text-white/80 ml-1">
-                      Drop-off point
+                      {t('Drop-off point')}
                     </label>
                     <div className="relative">
                       <Navigation className="w-5 h-5 absolute left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
-                      <input id="hero-to" list="stop-names" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} placeholder="Where to?" />
+                      <input id="hero-to" list="stop-names" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} placeholder={t('Where to?')} />
                     </div>
                   </div>
                 </div>
                 <div className="space-y-[6px] mb-[14px] md:mb-[20px]">
                   <label htmlFor="hero-date" className="text-[12px] font-semibold text-white/80 ml-1">
-                    Travel date
+                    {t('Travel date')}
                   </label>
                   <div className="relative">
                     <Calendar className="w-5 h-5 absolute left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
@@ -178,9 +161,9 @@ export default function LandingPage() {
                 <button
                   onClick={search}
                   disabled={!from || !to}
-                  className="w-full py-3.5 md:py-[18px] bg-[#feb700] text-[#050a44] rounded-2xl text-[17px] font-semibold hover:bg-[#ffc933] hover:shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
+                  className="w-full py-3.5 md:py-[18px] bg-[#feb700] text-[#050a44] rounded-2xl text-[17px] font-semibold hover:bg-white hover:shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
                 >
-                  <span>Find buses</span>
+                  <span>{t('Find buses')}</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
@@ -193,11 +176,11 @@ export default function LandingPage() {
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 mb-8">
               <div>
-                <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2]">Next departures</h2>
-                <p className="text-[15px] text-[#46464f] mt-2 max-w-xl">Seats left update as people book. Tap a departure to choose your seat.</p>
+                <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2]">{t('Next departures')}</h2>
+                <p className="text-[15px] text-[#46464f] mt-2 max-w-xl">{t('Seats left update as people book. Tap a departure to choose your seat.')}</p>
               </div>
               <Link href="/search" className="text-[14px] font-bold text-[#050a44] hover:underline">
-                Search a date
+                {t('Search a date')}
               </Link>
             </div>
             {!ready ? (
@@ -212,67 +195,17 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Stops along the way.
-            Below xl: a vertical timeline that unfolds downwards (no sideways scrolling).
-            xl and up: the horizontal timeline. */}
+        {/* Stops along the way */}
         {firstRoute && (
           <section className="py-[56px] bg-[#fcfcfd]">
             <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
-              <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-2">Where we stop</h2>
+              <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-2">{t('Where we stop')}</h2>
               <p className="text-[15px] text-[#46464f] mb-10 max-w-xl">
-                Get on or off at any of these. Fares shown from {firstRoute.stops[0].name}; you only pay for the part you ride.
+                {t('Get on or off at any of these. Fares shown from {from}; you only pay for the part you ride.', { from: firstRoute.stops[0].name })}
               </p>
-
-              {/* Snake layout below xl: row 1 runs left to right, drops down at the
-                  edge, row 2 runs right to left, and so on. */}
-              <div className="xl:hidden">
-                {stopRows.map((row, r) => {
-                  const reversed = r % 2 === 1;
-                  const isLastRow = r === stopRows.length - 1;
-                  const cell = 100 / stopCols;
-                  const edge = `calc(${cell / 2}% - 1.5px)`;
-                  return (
-                    <ol key={r} className={`relative flex ${reversed ? 'flex-row-reverse' : 'flex-row'} ${isLastRow ? '' : 'pb-10'}`}>
-                      {/* Horizontal line through this row's dots */}
-                      {row.length > 1 && (
-                        <div
-                          className="absolute top-[11px] h-[3px] bg-[#9a99a8]/60 rounded-full"
-                          style={{ width: `${(row.length - 1) * cell}%`, [reversed ? 'right' : 'left']: `${cell / 2}%` }}
-                          aria-hidden
-                        />
-                      )}
-                      {/* Drop down to the next row at the edge where this row ends */}
-                      {!isLastRow && (
-                        <div
-                          className="absolute top-[11px] -bottom-[11px] w-[3px] bg-[#9a99a8]/60 rounded-full"
-                          style={{ [reversed ? 'left' : 'right']: edge }}
-                          aria-hidden
-                        />
-                      )}
-                      {row.map((stop, j) => {
-                        const i = r * stopCols + j;
-                        const ends = i === 0 || i === firstRoute.stops.length - 1;
-                        return (
-                          <li key={stop.name} className="relative flex flex-col items-center text-center" style={{ width: `${cell}%` }}>
-                            <span
-                              className={`relative z-10 w-6 h-6 rounded-full border-4 border-[#fcfcfd] ${ends ? 'bg-[#050a44]' : 'bg-[#feb700]'}`}
-                              aria-hidden
-                            />
-                            <span className="mt-3 text-[13px] sm:text-[14px] font-bold text-[#050a44] leading-tight px-1">{stop.name}</span>
-                            <span className="text-[11px] sm:text-[12px] font-medium text-[#46464f]">{i === 0 ? 'Start' : formatDuration(stop.offsetMin)}</span>
-                            {i > 0 && <span className="mt-1 text-[11px] sm:text-[12px] font-bold text-[#7c5800]">{formatLKR(stop.fareFromStart)}</span>}
-                          </li>
-                        );
-                      })}
-                    </ol>
-                  );
-                })}
-              </div>
-
-              {/* Horizontal (wide screens) */}
-              <div className="hidden xl:block overflow-x-auto no-scrollbar -mx-4 px-4">
+              <div className="overflow-x-auto no-scrollbar -mx-4 px-4">
                 <ol ref={stopsRef} className="relative flex min-w-[1080px]">
-                  <div className="absolute left-3 right-3 top-[11px] h-[3px] bg-[#9a99a8]/60 rounded-full" aria-hidden />
+                  <div className="absolute left-3 right-3 top-[11px] h-[3px] bg-[#050a44]/15 rounded-full" aria-hidden />
                   {firstRoute.stops.map((stop, i) => {
                     const ends = i === 0 || i === firstRoute.stops.length - 1;
                     return (
@@ -282,7 +215,7 @@ export default function LandingPage() {
                           aria-hidden
                         />
                         <span className="mt-3 text-[14px] font-bold text-[#050a44]">{stop.name}</span>
-                        <span className="text-[12px] font-medium text-[#46464f]">{i === 0 ? 'Start' : formatDuration(stop.offsetMin)}</span>
+                        <span className="text-[12px] font-medium text-[#46464f]">{i === 0 ? t('Start') : formatDuration(stop.offsetMin)}</span>
                         {i > 0 && <span className="mt-1 text-[12px] font-bold text-[#7c5800]">{formatLKR(stop.fareFromStart)}</span>}
                       </li>
                     );
@@ -302,18 +235,18 @@ export default function LandingPage() {
                   <span className="material-symbols-outlined text-[16px]">new_releases</span>
                   New
                 </p>
-                <h2 className="text-[28px] md:text-[34px] font-bold text-[#050a44] leading-[1.15] mb-4">Bring your bike with you</h2>
+                <h2 className="text-[28px] md:text-[34px] font-bold text-[#050a44] leading-[1.15] mb-4">{t('Bring your bike with you')}</h2>
                 <p className="text-[16px] leading-[1.7] text-[#46464f] max-w-lg">
-                  Book a space in the luggage compartment when you book your seat. Upload a photo of the bike, and the crew will load it at your stop and have it ready when you get off.
+                  {t('Book a space in the luggage compartment when you book your seat. Upload a photo of the bike, and the crew will load it at your stop and have it ready when you get off.')}
                 </p>
                 <Link
                   href="/search"
                   className="inline-flex items-center gap-2 mt-7 px-7 py-4 bg-[#050a44] text-white rounded-2xl text-[16px] font-semibold hover:opacity-90"
                 >
-                  Book a seat and a bike space <ArrowRight className="w-5 h-5" />
+                  {t('Book a seat and a bike space')} <ArrowRight className="w-5 h-5" />
                 </Link>
               </div>
-              <div ref={bikesRef} className="grid grid-cols-2 gap-3 sm:gap-4">
+              <div ref={bikesRef} className="grid grid-cols-3 gap-3 sm:gap-4">
                 {Object.values(OPERATOR.bikes.kinds).map((k) => (
                   <div key={k.label} className="rounded-2xl border border-[#c7c5d1] p-3 sm:p-5 bg-[#fcfcfd]">
                     <span className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#050a44] text-[#feb700] flex items-center justify-center">
@@ -332,12 +265,25 @@ export default function LandingPage() {
           </section>
         )}
 
+        {/* Parcels & bus hire */}
+        <section className="py-[40px] bg-[#fcfcfd] border-t border-[#edeef0]">
+          <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div>
+              <h2 className="text-[22px] md:text-[28px] font-bold text-[#050a44]">{t('Send a parcel or hire a bus')}</h2>
+              <p className="text-[15px] text-[#46464f] mt-1 max-w-xl">{t('Parcels go on our night bus; coaches for weddings, school trips and pilgrimages.')}</p>
+            </div>
+            <Link href="/services" className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white border border-[#c7c5d1] text-[#050a44] text-[15px] font-semibold hover:bg-[#f2f4f6]">
+              {t('Get a quote')} <ArrowRight className="w-5 h-5" />
+            </Link>
+          </div>
+        </section>
+
         {/* The coach + fleet */}
         <section className="py-[56px] bg-white overflow-hidden">
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-[48px] items-center">
             <div>
               <h2 className="text-[28px] md:text-[34px] font-bold text-[#050a44] leading-[1.15] mb-4">
-                {activeBuses.length === 1 ? 'Our coach' : `Our ${activeBuses.length} coaches`}
+                {activeBuses.length === 1 ? t('Our coach') : `Our ${activeBuses.length} coaches`}
               </h2>
               <p className="text-[16px] leading-[1.7] text-[#46464f] mb-8 max-w-lg">
                 We run our own coach and keep it that way: cleaned between trips, serviced on schedule, driven by people who know Route 48 by heart.
@@ -417,7 +363,7 @@ export default function LandingPage() {
         {/* How it works — a real sequence, so numbering earns its place */}
         <section className="keep-navy py-[56px] bg-[#141519] text-white">
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
-            <h2 className="text-[28px] md:text-[30px] font-bold leading-[1.2] mb-10">Booking takes about two minutes</h2>
+            <h2 className="text-[28px] md:text-[30px] font-bold leading-[1.2] mb-10">{t('Booking takes about two minutes')}</h2>
             <ol className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
                 ['Choose a departure', 'Pick where you get on and off and the time that suits you.'],
@@ -426,8 +372,8 @@ export default function LandingPage() {
               ].map(([title, body], i) => (
                 <li key={title} className="rounded-2xl bg-white/5 border border-white/10 p-6">
                   <span className="text-[34px] font-black text-[#feb700] leading-none">{i + 1}</span>
-                  <h3 className="text-[18px] font-bold mt-4 mb-2">{title}</h3>
-                  <p className="text-[14px] leading-[1.6] text-[#bdc2ff]">{body}</p>
+                  <h3 className="text-[18px] font-bold mt-4 mb-2">{t(title)}</h3>
+                  <p className="text-[14px] leading-[1.6] text-[#bdc2ff]">{t(body)}</p>
                 </li>
               ))}
             </ol>
@@ -439,7 +385,7 @@ export default function LandingPage() {
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
             <div className="rounded-[2.5rem] border border-[#edeef0] premium-shadow p-8 md:p-14 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
               <div className="max-w-xl">
-                <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-3">Questions, or booking for a group?</h2>
+                <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-3">{t('Questions, or booking for a group?')}</h2>
                 <p className="text-[16px] leading-[1.7] text-[#46464f]">
                   Get in touch and we&apos;ll hold seats for you. You can also buy tickets from our conductor at {OPERATOR.contact.address.split(',')[0]}.
                 </p>
@@ -468,6 +414,7 @@ export default function LandingPage() {
 }
 
 function TimetableCard({ route }: { route: Route }) {
+  const { t: tr } = useT();
   const { data } = useStore();
   const from = route.stops[0].name;
   const to = route.stops[route.stops.length - 1].name;
@@ -499,10 +446,10 @@ function TimetableCard({ route }: { route: Route }) {
                     <span className="block text-[20px] font-extrabold text-[#050a44] tabular-nums">{formatTime12(t.departure)}</span>
                   </span>
                   <span className="hidden sm:block text-[13px] text-[#46464f]">
-                    Arrives {formatTime12(t.arrival)}{t.arrivalDayOffset ? ' next morning' : ''} · {formatDuration(t.durationMin)}
+                    {tr('Arrives')} {formatTime12(t.arrival)}{t.arrivalDayOffset ? ` ${tr('next morning')}` : ''} · {formatDuration(t.durationMin)}
                   </span>
                   <span className={`text-[13px] font-bold whitespace-nowrap ${t.seatsLeft <= 5 ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>
-                    {t.seatsLeft === 0 ? 'Full' : <><AnimatedNumber value={t.seatsLeft} /> seats left</>}
+                    {t.seatsLeft === 0 ? tr('Full') : <><AnimatedNumber value={t.seatsLeft} /> {tr('seats left')}</>}
                   </span>
                 </Link>
               </li>

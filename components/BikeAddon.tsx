@@ -8,6 +8,7 @@ import { useId, useState } from 'react';
 import { OPERATOR } from '@/config/operator';
 import type { BikeItem, BikeKind, Trip } from '@/lib/types';
 import { bikeFee, bikeSpacesFor, compressPhoto, formatLKR, genId } from '@/lib/trips';
+import { useT } from '@/lib/i18n';
 
 const KINDS = Object.keys(OPERATOR.bikes.kinds) as BikeKind[];
 const needsPlate = (k: BikeKind) => k !== 'bicycle';
@@ -32,6 +33,7 @@ export function BikeAddon({
   bikes: BikeItem[];
   onChange: (bikes: BikeItem[]) => void;
 }) {
+  const { t } = useT();
   const [showRules, setShowRules] = useState(false);
   if (!trip.bikeSpaces) return null;
 
@@ -63,7 +65,7 @@ export function BikeAddon({
             <span className="material-symbols-outlined">two_wheeler</span>
           </span>
           <div>
-            <h2 className="text-[16px] font-semibold">Bringing a bike?</h2>
+            <h2 className="text-[16px] font-semibold">{t('Bringing a bike?')}</h2>
             <p className="text-[13px] text-[#46464f] mt-0.5">
               {full
                 ? 'The luggage compartment is full on this departure. Try another date.'

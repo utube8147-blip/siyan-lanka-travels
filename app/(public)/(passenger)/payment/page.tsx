@@ -3,15 +3,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { OPERATOR } from '@/config/operator';
+import { useQrDataUrl } from '@/lib/qr';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
 import { SuccessCheck } from '@/components/motion/SuccessCheck';
+import { useLoyalty, usePublicSettings, useSavedPassengers, whatsappShareUrl } from '@/lib/extras';
+import { addDays as addDaysIso } from '@/lib/trips';
 import { notify } from '@/lib/pwa';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, todayISO } from '@/lib/trips';
 import type { BikeItem, Gender } from '@/lib/types';
+import { useT } from '@/lib/i18n';
 
-type PaymentMethod = 'card' | 'wallet';
+type PaymentMethod = 'card' | 'wallet' | 'bank' | 'counter';
 type PayState = 'idle' | 'processing' | 'success';
 
 interface Passenger {
@@ -40,6 +44,7 @@ export default function PaymentPage() {
 }
 
 function PaymentPageInner() {
+  const { t } = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -112,7 +117,14 @@ function PaymentPageInner() {
     /^\d{2}\/\d{2}$/.test(expiry) &&
     cvv.length === 3;
   const walletValid = wallet !== '';
-  const canPay = trip && seats.length > 0 && (method === 'card' ? cardValid : walletValid);
+  const pub = usePublicSettings();
+  const payhereLive = pub.paymentsMode === 'payhere';
+  const holdMethod = method === 'bank' || method === 'counter';
+  const loyalty = useLoyalty(user?.id);
+  const [useReward, setUseReward] = useState(false);
+  const saved = useSavedPassengers(user?.id);
+  const [heldUntil, setHeldUntil] = useState<string | null>(null);
+  const canPay = trip && seats.length > 0 && (holdMethod || payhereLive || (method === 'card' ? cardValid : walletValid));
 
   const handlePay = () => {
     setError('');
@@ -151,6 +163,8 @@ function PaymentPageInner() {
         discount,
         total: totalPrice,
         promo: promo || undefined,
+        payment: method,
+        useReward: useReward && (loyalty?.available ?? 0) > 0,
       });
       if (!result.ok) {
         setPayState('idle');
@@ -158,6 +172,31 @@ function PaymentPageInner() {
         return;
       }
       setPaidTrip(trip);
+      saved.remember({ name: lead?.name || '', gender: (lead?.gender as Gender) || '', phone: lead?.phone || contactPhone });
+      // PayHere live: the booking is held; send the passenger to PayHere to pay.
+      if (result.booking.status === 'held' && !holdMethod) {
+        const res = await fetch('/api/payhere/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: result.booking.id }) });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setPayState('idle');
+          setError(j.error ?? 'Could not start the payment. Your seat is held for 20 minutes; try again from My trips.');
+          return;
+        }
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = j.action;
+        Object.entries(j.fields as Record<string, string>).forEach(([k, v]) => {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = k;
+          input.value = v;
+          form.appendChild(input);
+        });
+        document.body.appendChild(form);
+        form.submit();
+        return;
+      }
+      setHeldUntil(result.booking.status === 'held' ? result.booking.holdExpiresAt ?? null : null);
       notify('Booking confirmed', {
         body: `${trip.from} → ${trip.to}, ${formatDateLabel(trip.boardingDate)} at ${formatTime12(trip.departure)} · Seat ${seats.join(', ')} · ${result.booking.ref}`,
         tag: `booking-${result.booking.id}`,
@@ -183,9 +222,7 @@ function PaymentPageInner() {
     });
   }, [trip, bookingRef, from, to, seats]);
 
-  const qrImageUrl = qrPayload
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(qrPayload)}`
-    : '';
+  const qrImageUrl = useQrDataUrl(qrPayload);
 
   const handleDownload = async () => {
     if (!qrImageUrl) return;
@@ -236,10 +273,34 @@ function PaymentPageInner() {
             <div className="mb-[14px]">
                 <SuccessCheck size={68} />
             </div>
-            <h1 className="text-[24px] font-bold mb-[4px]">Booking Confirmed!</h1>
-            <p className="text-[14px] text-[#46464f]">
-                Your ticket has been sent to <span className="font-bold">{contactEmail || 'your email'}</span> and is ready for boarding.
+            <h1 className="text-[24px] font-bold mb-[4px]">{heldUntil ? t('Seat held') : t('Booking Confirmed!')}</h1>
+            <p className="text-[14px] text-[#46464f] max-w-xl">
+                {heldUntil ? (
+                  <>
+                    Pay <span className="font-bold">{formatLKR(totalPrice)}</span> by{' '}
+                    <span className="font-bold">{new Date(heldUntil).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>{' '}
+                    {method === 'bank' ? `to ${pub.bankDetails}, reference ${bookingRef}.` : `at our counter (${OPERATOR.contact.address}).`} We&apos;ve texted you the details.
+                  </>
+                ) : (
+                  <>Your ticket is in My trips and we&apos;ve texted you the details. Show the QR code when you board.</>
+                )}
             </p>
+            <div className="flex flex-wrap justify-center gap-2 mt-4">
+              <a
+                href={whatsappShareUrl(`My Siyan Lanka bus ticket ${bookingRef}: ${trip.from} → ${trip.to}, ${formatDateLabel(trip.boardingDate)} at ${formatTime12(trip.departure)}, seat ${seats.join(', ')}. ${OPERATOR.siteUrl}/my-bookings`)}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#25D366] text-white text-[14px] font-bold"
+              >
+                <span className="material-symbols-outlined text-[18px]">chat</span> {t('Share on WhatsApp')}
+              </a>
+              <a
+                href={`/search?${new URLSearchParams({ from: trip.to, to: trip.from, date: addDaysIso(trip.boardingDate, 2) }).toString()}`}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-[#c7c5d1] text-[#050a44] text-[14px] font-bold"
+              >
+                <span className="material-symbols-outlined text-[18px]">swap_horiz</span> {t('Book your return trip')}
+              </a>
+            </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-[24px] items-stretch">
@@ -449,16 +510,16 @@ function PaymentPageInner() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-[24px]">
         <div className="lg:col-span-7 space-y-[24px]">
           <div className="bg-white rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
-            <h2 className="text-[16px] font-semibold mb-[16px]">Payment Method</h2>
+            <h2 className="text-[16px] font-semibold mb-[16px]">{t('Payment Method')}</h2>
 
-            <div className="flex p-1 bg-[#f2f4f6] rounded-xl mb-[20px] border border-[#e1e2e4]/60 max-w-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-[#f2f4f6] rounded-xl mb-[20px] border border-[#e1e2e4]/60">
               <button
                 onClick={() => setMethod('card')}
                 className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
                   method === 'card' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
                 }`}
               >
-                Card
+                {t('Card')}
               </button>
               <button
                 onClick={() => setMethod('wallet')}
@@ -466,11 +527,56 @@ function PaymentPageInner() {
                   method === 'wallet' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
                 }`}
               >
-                Mobile Wallet
+                {t('Mobile Wallet')}
+              </button>
+              <button
+                onClick={() => setMethod('bank')}
+                className={`py-2 text-sm font-bold rounded-lg transition-all ${method === 'bank' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'}`}
+              >
+                {t('Bank transfer')}
+              </button>
+              <button
+                onClick={() => setMethod('counter')}
+                className={`py-2 text-sm font-bold rounded-lg transition-all ${method === 'counter' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'}`}
+              >
+                {t('Pay at counter')}
               </button>
             </div>
 
-            {method === 'card' ? (
+            {(loyalty?.available ?? 0) > 0 && (
+              <label className="flex items-center gap-3 rounded-xl border border-[#feb700]/50 bg-[#feb700]/10 px-4 py-3 mb-[16px] cursor-pointer">
+                <input type="checkbox" checked={useReward} onChange={(e) => setUseReward(e.target.checked)} className="w-5 h-5 accent-[#050a44]" />
+                <span className="text-[14px]">
+                  <span className="font-bold text-[#050a44]">{t('Use my free trip')}</span>
+                  <span className="block text-[12px] text-[#46464f]">You&apos;ve earned it: one seat on this booking is free ({formatLKR(seatPrice)} off).</span>
+                </span>
+              </label>
+            )}
+
+            {holdMethod ? (
+              <div className="rounded-xl bg-[#f8f9fb] border border-[#e1e2e4] p-4 space-y-2 text-[14px] text-[#46464f]">
+                <p className="font-bold text-[#050a44]">
+                  {method === 'bank' ? 'We hold your seat while you transfer' : 'We hold your seat, you pay at our counter'}
+                </p>
+                <p>
+                  Your seat is held for {method === 'bank' ? `${Math.round(pub.holdMinutesBank / 60)} hours` : `${Math.round(pub.holdMinutesCounter / 60)} hours`} (or until online booking closes, if sooner).
+                  If it isn&apos;t paid by then, it&apos;s released for others.
+                </p>
+                {method === 'bank' ? (
+                  <p className="rounded-lg bg-white border border-[#e1e2e4] px-3 py-2 font-semibold text-[#050a44]">
+                    {pub.bankDetails}
+                    <span className="block text-[12px] font-normal text-[#46464f]">Use your booking reference as the payment reference. We&apos;ll confirm when it arrives.</span>
+                  </p>
+                ) : (
+                  <p>Pay in cash at {OPERATOR.contact.address}. Show your booking reference.</p>
+                )}
+              </div>
+            ) : payhereLive ? (
+              <div className="rounded-xl bg-[#f8f9fb] border border-[#e1e2e4] p-4 text-[14px] text-[#46464f]">
+                <p className="font-bold text-[#050a44]">You&apos;ll pay securely on PayHere</p>
+                <p className="mt-1">Visa, Mastercard, Amex, eZ Cash, mCash and Genie. Your seat is held for 20 minutes while you pay.</p>
+              </div>
+            ) : method === 'card' ? (
               <div className="space-y-[12px]">
                 <div>
                   <label className="text-[11px] font-bold text-[#46464f] px-1">Card number</label>
@@ -645,13 +751,15 @@ function PaymentPageInner() {
                   Processing…
                 </>
               ) : (
-                <>Pay {formatLKR(totalPrice)}</>
+                <>{holdMethod ? `Hold my seat · pay ${formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0))} later` : `Pay ${formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0))}`}</>
               )}
             </button>
 
+            {!holdMethod && !payhereLive && (
             <p className="text-center text-[12px] font-semibold text-[#7c5800] bg-[#feb700]/10 rounded-lg px-3 py-2 mt-[16px]">
               Demo checkout: no card is charged. Any 16-digit number works.
             </p>
+            )}
             <p className="text-center text-[11px] font-medium text-[#46464f] mt-[12px]">
               Payments are securely processed. By paying you agree to our{' '}
               <a className="text-[#000000] underline" href="#">Terms of Service</a>.

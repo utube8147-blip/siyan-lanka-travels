@@ -75,6 +75,10 @@ export const bookingFromRow = (r: any, photoUrls: Record<string, string> = {}): 
   bikes: (r.booking_bikes ?? []).map((b: any) => bikeFromRow(b, b.photo_path ? photoUrls[b.photo_path] : undefined)),
   total: r.total,
   status: r.status,
+  paymentMethod: r.payment_method,
+  paymentStatus: r.payment_status,
+  holdExpiresAt: r.hold_expires_at,
+  rewardUsed: r.reward_used,
   createdAt: r.created_at,
   refund: r.refund_amount != null ? { amount: r.refund_amount, at: r.refunded_at } : undefined,
 });

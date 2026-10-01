@@ -43,13 +43,30 @@ const EAST: Array<[string, number, number]> = [
   ['Akkaraipattu', 530, 2800],
 ];
 
+
+/** Where exactly to wait: map pin + landmark (edit in Staff area → Routes). */
+export const STOP_INFO: Record<string, { lat: number; lng: number; landmark: string }> = {
+  "Colombo": { lat: 6.9338, lng: 79.8524, landmark: "Bastian Mawatha bus stand, Pettah (next to the Central Bus Stand)" },
+  "Kadawatha": { lat: 7.001, lng: 79.9534, landmark: "Kandy Road, opposite Kadawatha interchange" },
+  "Nittambuwa": { lat: 7.1446, lng: 80.0957, landmark: "Main bus stand, Kandy Road" },
+  "Kurunegala": { lat: 7.4863, lng: 80.3647, landmark: "Clock tower roundabout, Kurunegala town" },
+  "Dambulla": { lat: 7.8601, lng: 80.6517, landmark: "Dambulla bus stand, near the Economic Centre" },
+  "Habarana": { lat: 8.0372, lng: 80.7485, landmark: "Habarana junction (Trincomalee / Polonnaruwa roads)" },
+  "Polonnaruwa": { lat: 7.9403, lng: 81.0188, landmark: "Kaduruwela bus stand" },
+  "Welikanda": { lat: 7.9606, lng: 81.2003, landmark: "Welikanda town, A11 main road" },
+  "Valaichchenai": { lat: 7.9228, lng: 81.5306, landmark: "Valaichchenai junction, A15" },
+  "Batticaloa": { lat: 7.7171, lng: 81.7005, landmark: "Batticaloa central bus stand" },
+  "Kalmunai": { lat: 7.4136, lng: 81.8269, landmark: "Kalmunai bus stand, Main Street" },
+  "Akkaraipattu": { lat: 7.2167, lng: 81.85, landmark: "Akkaraipattu bus stand, Main Street" },
+};
+
 const total = EAST[EAST.length - 1];
 
 export const SEED_ROUTES: Route[] = [
   {
     id: 'route-48-east',
     active: true,
-    stops: EAST.map(([name, offsetMin, fareFromStart]) => ({ name, offsetMin, fareFromStart })),
+    stops: EAST.map(([name, offsetMin, fareFromStart]) => ({ name, offsetMin, fareFromStart, ...STOP_INFO[name] })),
   },
   {
     id: 'route-48-west',
@@ -59,6 +76,7 @@ export const SEED_ROUTES: Route[] = [
       name,
       offsetMin: total[1] - offsetMin,
       fareFromStart: total[2] - fareFromStart,
+      ...STOP_INFO[name],
     })),
   },
 ];

@@ -9,6 +9,7 @@ import { DOCUMENT_LABEL, daysUntil, fuelEfficiency, latestOdometer, nextService,
 import { formatDateLabel, formatLKR, genId, todayISO, addDays } from '@/lib/trips';
 import { AdminOnly, ExpiryBadge } from '@/components/admin/AdminOnly';
 import { Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { uuid } from '@/lib/uuid';
 
 export default function FleetHealthPage() {
   return (
@@ -42,7 +43,7 @@ function FleetHealth() {
                   <h2 className="text-[17px] font-semibold text-[#050a44]">{bus.name} · {bus.regNo}</h2>
                   <p className="text-[12px] text-[#6b6d78]">{bus.type} · {bus.status}</p>
                 </div>
-                <Button size="sm" variant="secondary" onClick={() => setDoc({ id: genId('doc'), busId: bus.id, kind: 'insurance', number: '', expiresOn: addDays(todayISO(), 365), notes: '' })}>
+                <Button size="sm" variant="secondary" onClick={() => setDoc({ id: uuid(), busId: bus.id, kind: 'insurance', number: '', expiresOn: addDays(todayISO(), 365), notes: '' })}>
                   <Plus className="w-4 h-4" /> Add document
                 </Button>
               </div>

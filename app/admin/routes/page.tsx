@@ -5,9 +5,23 @@
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { compressPhoto } from '@/lib/trips';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
+
+/** Stop photos: public storage with Supabase, an embedded image in demo mode. */
+async function uploadStopPhoto(file: File) {
+  const dataUrl = await compressPhoto(file, 1000);
+  if (!isSupabaseConfigured) return dataUrl;
+  const blob = await (await fetch(dataUrl)).blob();
+  const path = `${uuid()}.jpg`;
+  const { error } = await supabase().storage.from('stop-photos').upload(path, blob, { contentType: 'image/jpeg' });
+  if (error) return dataUrl;
+  return supabase().storage.from('stop-photos').getPublicUrl(path).data.publicUrl;
+}
 import type { Route, RouteStop, Schedule, Weekday } from '@/lib/types';
 import { formatDuration, formatLKR, formatTime12, fromMinutes, genId, routeLabel, scheduleConflicts, toMinutes } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, WEEKDAYS, formatDays, inputClass, useToast } from '@/components/admin/ui';
+import { uuid } from '@/lib/uuid';
 
 export default function RoutesPage() {
   const { data, saveRoute, deleteRoute, saveSchedule, deleteSchedule } = useStore();
@@ -259,9 +273,28 @@ function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => vo
           </thead>
           <tbody>
             {stops.map((s, i) => (
-              <tr key={i}>
-                <td className="py-1 pr-2 min-w-[160px]">
+              <tr key={i} className="align-top">
+                <td className="py-1 pr-2 min-w-[200px]">
                   <input aria-label={`Stop ${i + 1} name`} className={inputClass} value={s.name} onChange={(e) => update(i, { name: e.target.value })} />
+                  <details className="mt-1">
+                    <summary className="text-[11px] font-bold text-[#7c5800] cursor-pointer">Where to wait{s.landmark ? ' ✓' : ''}</summary>
+                    <div className="space-y-1.5 mt-1.5">
+                      <input aria-label={`Stop ${i + 1} landmark`} className={inputClass} placeholder="Landmark, e.g. Clock tower roundabout" value={s.landmark ?? ''} onChange={(e) => update(i, { landmark: e.target.value })} />
+                      <input aria-label={`Stop ${i + 1} map pin`} className={inputClass} placeholder="Map pin: lat, lng (copy from Google Maps)" value={s.lat != null ? `${s.lat}, ${s.lng}` : ''}
+                        onChange={(e) => { const m = e.target.value.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); update(i, m ? { lat: Number(m[1]), lng: Number(m[2]) } : { lat: undefined, lng: undefined }); }} />
+                      <input aria-label={`Stop ${i + 1} notes`} className={inputClass} placeholder="Notes, e.g. wait under the bus shelter" value={s.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value })} />
+                      <div className="flex items-center gap-2">
+                        {s.photo && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={s.photo} alt="" className="w-12 h-12 rounded object-cover border border-[#e1e2e4]" />
+                        )}
+                        <label className="text-[12px] font-bold text-[#050a44] underline cursor-pointer">
+                          {s.photo ? 'Replace photo' : 'Add photo of the spot'}
+                          <input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const f = e.target.files?.[0]; if (f) update(i, { photo: await uploadStopPhoto(f) }); }} />
+                        </label>
+                      </div>
+                    </div>
+                  </details>
                 </td>
                 <td className="py-1 pr-2">
                   <input

@@ -8,15 +8,17 @@ import { usePathname } from 'next/navigation';
 import { House, Search, Ticket, UserRound } from 'lucide-react';
 import { motion } from 'motion/react';
 import { isFocused } from './routes';
+import { useT } from '@/lib/i18n';
 
 const TABS = [
   { href: '/', label: 'Home', Icon: House, match: (p: string) => p === '/' || p.startsWith('/bus') },
   { href: '/search', label: 'Book', Icon: Search, match: (p: string) => p.startsWith('/search') },
   { href: '/my-bookings', label: 'Trips', Icon: Ticket, match: (p: string) => p.startsWith('/my-bookings') || p.startsWith('/refund') },
-  { href: '/profile', label: 'Profile', Icon: UserRound, match: (p: string) => ['/profile', '/dashboard', '/marketplace', '/legal'].some((b) => p.startsWith(b)) },
+  { href: '/profile', label: 'Profile', Icon: UserRound, match: (p: string) => ['/profile', '/dashboard', '/marketplace', '/legal', '/services'].some((b) => p.startsWith(b)) },
 ];
 
 export function MobileTabBar() {
+  const { t } = useT();
   const pathname = usePathname() || '/';
   if (isFocused(pathname)) return null;
   return (
@@ -44,7 +46,7 @@ export function MobileTabBar() {
                       <Icon className={`w-[22px] h-[22px] ${active ? 'text-[#14120a]' : 'text-[#46464f]'}`} strokeWidth={active ? 2.3 : 1.9} />
                     </motion.span>
                   </span>
-                  <span className={`text-[11px] ${active ? 'font-semibold text-[#050a44]' : 'font-medium text-[#46464f]'}`}>{label}</span>
+                  <span className={`text-[11px] ${active ? 'font-semibold text-[#050a44]' : 'font-medium text-[#46464f]'}`}>{t(label)}</span>
                 </Link>
               </li>
             );

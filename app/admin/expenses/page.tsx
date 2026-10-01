@@ -8,11 +8,13 @@ import { Fuel, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
 import { CATEGORY_LABEL, EXPENSE_CATEGORIES, RUNNING_COSTS, useErp, type Expense, type ExpenseCategory } from '@/lib/erp';
-import { formatDateLabel, formatLKR, genId, todayISO } from '@/lib/trips';
+import { compressPhoto, formatDateLabel, formatLKR, genId, todayISO } from '@/lib/trips';
+import { Camera } from 'lucide-react';
 import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { uuid } from '@/lib/uuid';
 
 const blank = (category: ExpenseCategory, busId: string): Expense => ({
-  id: genId('exp'), spentOn: todayISO(), category, amount: 0, busId, description: '', vendor: '', paymentMethod: 'cash',
+  id: uuid(), spentOn: todayISO(), category, amount: 0, busId, description: '', vendor: '', paymentMethod: 'cash',
   litres: null, odometerKm: null, nextDueDate: null, nextDueKm: null,
 });
 
@@ -100,7 +102,12 @@ export default function ExpensesPage() {
                     <td className="px-4 py-3 whitespace-nowrap">{formatDateLabel(e.spentOn, false)}</td>
                     <td className="px-4 py-3"><Badge value={e.category} label={CATEGORY_LABEL[e.category]} /></td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-[#050a44]">{e.description || e.vendor || '—'}</p>
+                      <p className="font-semibold text-[#050a44]">
+                        {e.description || e.vendor || '—'}
+                        {(e.receiptUrl || e.receiptPath?.startsWith('data:')) && (
+                          <a href={e.receiptUrl ?? e.receiptPath!} target="_blank" rel="noopener" className="ml-2 text-[11px] font-bold text-[#7c5800] underline">receipt</a>
+                        )}
+                      </p>
                       <p className="text-[12px] text-[#6b6d78]">
                         {[e.vendor && e.description ? e.vendor : '', e.litres ? `${e.litres} L` : '', e.odometerKm ? `${e.odometerKm.toLocaleString()} km` : '', e.nextDueKm ? `next at ${e.nextDueKm.toLocaleString()} km` : '']
                           .filter(Boolean)
@@ -135,19 +142,22 @@ export default function ExpensesPage() {
         )}
       </Card>
 
-      {editing && <ExpenseForm expense={editing} allowed={allowed} buses={store.buses.map((b) => ({ id: b.id, label: `${b.name} · ${b.regNo}` }))} onClose={() => setEditing(null)} onSave={save} />}
+      {editing && <ExpenseForm upload={erp.uploadReceipt} expense={editing} allowed={allowed} buses={store.buses.map((b) => ({ id: b.id, label: `${b.name} · ${b.regNo}` }))} onClose={() => setEditing(null)} onSave={save} />}
       <Toast />
     </>
   );
 }
 
-function ExpenseForm({ expense, allowed, buses, onClose, onSave }: { expense: Expense; allowed: readonly ExpenseCategory[]; buses: { id: string; label: string }[]; onClose: () => void; onSave: (e: Expense) => void }) {
+function ExpenseForm({ expense, allowed, buses, onClose, onSave, upload }: { upload: (dataUrl: string) => Promise<string>; expense: Expense; allowed: readonly ExpenseCategory[]; buses: { id: string; label: string }[]; onClose: () => void; onSave: (e: Expense) => void }) {
   const [e, setE] = useState<Expense>(expense);
   const set = <K extends keyof Expense>(k: K, v: Expense[K]) => setE((p) => ({ ...p, [k]: v }));
   const isFuel = e.category === 'fuel';
   const isService = ['service', 'repair', 'tyres'].includes(e.category);
   const valid = e.amount > 0 && e.spentOn && (!isFuel || (e.litres ?? 0) > 0);
   const num = (v: string) => (v === '' ? null : Number(v));
+  const [photo, setPhoto] = useState<string | null>(expense.receiptUrl ?? (expense.receiptPath?.startsWith('data:') ? expense.receiptPath : null));
+  const [busy, setBusy] = useState(false);
+  const [photoErr, setPhotoErr] = useState<string | null>(null);
   return (
     <Modal
       title={isFuel ? 'Log fuel' : 'Expense'}
@@ -155,7 +165,17 @@ function ExpenseForm({ expense, allowed, buses, onClose, onSave }: { expense: Ex
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button disabled={!valid} onClick={() => onSave(e)}>Save</Button>
+          <Button disabled={!valid || busy} onClick={async () => {
+            try {
+              setBusy(true);
+              const receiptPath = photo?.startsWith('data:') ? await upload(photo) : e.receiptPath;
+              onSave({ ...e, receiptPath });
+            } catch {
+              setPhotoErr('Could not upload the receipt. Try again.');
+            } finally {
+              setBusy(false);
+            }
+          }}>{busy ? 'Saving…' : 'Save'}</Button>
         </>
       }
     >
@@ -209,6 +229,23 @@ function ExpenseForm({ expense, allowed, buses, onClose, onSave }: { expense: Ex
       )}
       <Field label="Details">
         <input className={inputClass} value={e.description} onChange={(x) => set('description', x.target.value)} placeholder={isFuel ? 'Optional' : 'e.g. Oil change and brake pads'} />
+      </Field>
+      <Field label="Receipt photo" hint="Snap the bill so the owner can check it later">
+        <div className="flex items-center gap-3">
+          {photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photo} alt="Receipt" className="w-16 h-16 object-cover rounded-lg border border-[#e1e2e4]" />
+          ) : null}
+          <label className="inline-flex items-center gap-2 px-3 h-10 rounded-lg border border-[#c7c5d1] text-[13px] font-bold text-[#050a44] cursor-pointer hover:bg-[#f2f4f6]">
+            <Camera className="w-4 h-4" /> {photo ? 'Replace' : 'Add photo'}
+            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={async (x) => {
+              const f = x.target.files?.[0];
+              if (!f) return;
+              try { setPhoto(await compressPhoto(f, 1200)); setPhotoErr(null); } catch (err) { setPhotoErr(err instanceof Error ? err.message : 'Could not read photo'); }
+            }} />
+          </label>
+        </div>
+        {photoErr && <p className="text-[12px] text-[#ba1a1a] mt-1">{photoErr}</p>}
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Paid to">

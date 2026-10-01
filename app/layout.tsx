@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import '@fontsource-variable/plus-jakarta-sans';
 import '@fontsource-variable/bricolage-grotesque';
+import '@fontsource-variable/noto-sans-tamil';
+import '@fontsource-variable/noto-sans-sinhala';
 import 'material-symbols/outlined.css';
 import { Providers } from '../components/Providers';
 import { ServiceWorker } from '../components/ServiceWorker';

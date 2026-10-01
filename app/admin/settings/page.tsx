@@ -3,6 +3,7 @@
 // uses these to price every booking), plus the resale switch.
 
 import { useEffect, useState } from 'react';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { OPERATOR } from '@/config/operator';
 import { useErp, type Settings } from '@/lib/erp';
 import { formatLKR } from '@/lib/trips';
@@ -85,6 +86,38 @@ function SettingsForm() {
         </Card>
 
         <Card className="p-5 space-y-4">
+          <h2 className="text-[16px] font-semibold text-[#050a44]">Payments</h2>
+          <Field label="Online card & wallet payments" hint="Switch to PayHere once your merchant account is approved and its keys are on the server (README → Payments).">
+            <select className={inputClass} value={s.paymentsMode} onChange={(e) => setS({ ...s, paymentsMode: e.target.value as Settings['paymentsMode'] })}>
+              <option value="demo">Demo: no money taken (testing only)</option>
+              <option value="payhere">PayHere: cards, eZ Cash, mCash, Genie</option>
+            </select>
+          </Field>
+          {s.paymentsMode === 'demo' && <p className="text-[12px] font-semibold text-[#ba1a1a]">While on demo, online bookings are confirmed without payment. Don&apos;t go live like this.</p>}
+          <Field label="Bank details shown for bank transfers"><input className={inputClass} value={s.bankDetails} onChange={(e) => setS({ ...s, bankDetails: e.target.value })} /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Hold for counter payment (minutes)"><input type="number" className={inputClass} value={s.holdMinutesCounter} onChange={(e) => setS({ ...s, holdMinutesCounter: Math.max(15, n(e.target.value)) })} /></Field>
+            <Field label="Hold for bank transfer (minutes)"><input type="number" className={inputClass} value={s.holdMinutesBank} onChange={(e) => setS({ ...s, holdMinutesBank: Math.max(30, n(e.target.value)) })} /></Field>
+          </div>
+        </Card>
+
+        <Card className="p-5 space-y-4">
+          <h2 className="text-[16px] font-semibold text-[#050a44]">Rewards & messages</h2>
+          <Field label="Free trip after every … completed trips" hint="0 turns rewards off"><input type="number" className={inputClass} value={s.rewardEvery} onChange={(e) => setS({ ...s, rewardEvery: n(e.target.value) })} /></Field>
+          <div className="flex flex-wrap gap-4">
+            {(['sms', 'whatsapp'] as const).map((ch) => (
+              <label key={ch} className="flex items-center gap-2 text-[14px] font-semibold text-[#050a44]">
+                <input type="checkbox" className="w-4 h-4 accent-[#050a44]" checked={s.messaging[ch]} onChange={(e) => setS({ ...s, messaging: { ...s.messaging, [ch]: e.target.checked } })} />
+                Send {ch === 'sms' ? 'SMS' : 'WhatsApp'} messages
+              </label>
+            ))}
+          </div>
+          <p className="text-[12px] text-[#6b6d78]">Booking confirmations, payment reminders, trip updates and waitlist offers. Needs the provider keys on the server (README → Messages).</p>
+          <Field label="Website address used in messages"><input className={inputClass} value={s.siteUrl} onChange={(e) => setS({ ...s, siteUrl: e.target.value.trim() })} placeholder="https://www.siyanlanka.lk" /></Field>
+          <MessageLog />
+        </Card>
+
+        <Card className="p-5 space-y-4">
           <h2 className="text-[16px] font-semibold text-[#050a44]">Seat resale</h2>
           <p className="text-[13px] text-[#46464f]">
             Lets passengers sell a seat they can&apos;t use to another passenger, for no more than they paid. The buyer pays the price plus the {formatLKR(s.bookingFee)} booking fee; the seller gets the price back.
@@ -104,5 +137,33 @@ function SettingsForm() {
       {erp.mode === 'demo' && <p className="text-[12px] text-[#6b6d78] mt-4">Demo mode: settings are saved in this browser only. With Supabase connected they price every booking.</p>}
       <Toast />
     </>
+  );
+}
+
+function MessageLog() {
+  const [rows, setRows] = useState<{ id: string; channel: string; to_phone: string; body: string; status: string; created_at: string; error: string | null }[] | null>(null);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return setRows([]);
+    supabase().from('message_queue').select('id, channel, to_phone, body, status, created_at, error').order('created_at', { ascending: false }).limit(15).then(({ data }) => setRows(data ?? []));
+  }, []);
+  if (!rows) return null;
+  return (
+    <details className="rounded-xl bg-[#f8f9fb] border border-[#edeef0] p-3">
+      <summary className="text-[13px] font-bold text-[#050a44] cursor-pointer">Recent messages ({rows.length})</summary>
+      {rows.length === 0 ? (
+        <p className="text-[12px] text-[#6b6d78] mt-2">{isSupabaseConfigured ? 'Nothing sent yet.' : 'Messages are queued in the database; connect Supabase to see them.'}</p>
+      ) : (
+        <ul className="mt-2 space-y-2 max-h-72 overflow-y-auto">
+          {rows.map((m) => (
+            <li key={m.id} className="text-[12px]">
+              <span className={`font-bold ${m.status === 'sent' ? 'text-[#006e1c]' : m.status === 'pending' ? 'text-[#7c5800]' : 'text-[#ba1a1a]'}`}>{m.status}</span>{' '}
+              <span className="text-[#6b6d78]">{m.channel} → {m.to_phone} · {new Date(m.created_at).toLocaleString('en-GB')}</span>
+              <span className="block text-[#46464f]">{m.body}</span>
+              {m.error && m.status !== 'sent' && <span className="block text-[#6b6d78]">{m.error}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
   );
 }

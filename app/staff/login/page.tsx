@@ -9,9 +9,10 @@ import { isStaffRole, useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Wordmark } from '@/components/Wordmark';
 
-function nextPath() {
+function nextPath(role?: string | null) {
   const n = new URLSearchParams(window.location.search).get('next');
-  return n && n.startsWith('/admin') ? n : '/admin';
+  if (role === 'conductor') return n && n.startsWith('/conductor') ? n : '/conductor';
+  return n && (n.startsWith('/admin') || n.startsWith('/conductor')) ? n : '/admin';
 }
 
 export default function StaffLoginPage() {
@@ -34,12 +35,12 @@ export default function StaffLoginPage() {
     // Check the role before letting them in.
     const { data } = await supabase().auth.getUser();
     const { data: prof } = await supabase().from('profiles').select('role').eq('id', data.user?.id ?? '').maybeSingle();
-    if (prof?.role !== 'staff' && prof?.role !== 'admin') {
+    if (!['staff', 'admin', 'conductor'].includes(prof?.role ?? '')) {
       await logout();
       setBusy(false);
       return setError("This account doesn't have staff access. Ask the owner to give you access.");
     }
-    router.replace(nextPath());
+    router.replace(nextPath(prof?.role));
   };
 
   const field =
@@ -63,7 +64,7 @@ export default function StaffLoginPage() {
           </div>
 
           {user && isStaffRole(user.role) ? (
-            <button onClick={() => router.replace(nextPath())} className="w-full h-12 rounded-xl bg-[#feb700] text-[#14120a] font-semibold">
+            <button onClick={() => router.replace(nextPath(user.role === 'conductor' ? 'conductor' : null))} className="w-full h-12 rounded-xl bg-[#feb700] text-[#14120a] font-semibold">
               Continue as {user.user_metadata.full_name}
             </button>
           ) : mode === 'demo' ? (
@@ -76,6 +77,15 @@ export default function StaffLoginPage() {
                 className="w-full h-12 rounded-xl bg-white/10 border border-white/15 font-semibold hover:bg-white/15"
               >
                 Continue as staff (demo)
+              </button>
+              <button
+                onClick={() => {
+                  login({ role: 'conductor' });
+                  router.replace('/conductor');
+                }}
+                className="w-full h-12 rounded-xl bg-white/10 border border-white/15 font-semibold hover:bg-white/15"
+              >
+                Continue as conductor (demo)
               </button>
               <button
                 onClick={() => {

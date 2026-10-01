@@ -15,7 +15,7 @@ type When = 'upcoming' | 'past' | 'all';
 const PAGE = 40;
 
 export default function BookingsPage() {
-  const { data, updateBooking } = useStore();
+  const { data, updateBooking, confirmPayment } = useStore();
   const { toast, Toast } = useToast();
   const [q, setQ] = useState('');
   const [when, setWhen] = useState<When>('upcoming');
@@ -116,6 +116,7 @@ export default function BookingsPage() {
           <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className={`${inputClass} !w-auto !py-2`}>
             <option value="all">Any status</option>
             <option value="confirmed">Confirmed</option>
+            <option value="held">Held (unpaid)</option>
             <option value="boarded">Boarded</option>
             <option value="no-show">No-show</option>
             <option value="cancelled">Cancelled</option>
@@ -198,6 +199,15 @@ export default function BookingsPage() {
           }}
           footer={
             <>
+              {open.status === 'held' && (
+                <Button variant="gold" onClick={async () => {
+                  const r = await confirmPayment(open.id, open.paymentMethod === 'bank' ? 'bank' : 'cash');
+                  toast(r.ok ? `${open.ref} marked paid` : r.reason ?? 'Could not confirm', r.ok ? 'ok' : 'error');
+                  if (r.ok) setOpen(null);
+                }}>
+                  Mark paid ({open.paymentMethod === 'bank' ? 'bank transfer' : 'cash'})
+                </Button>
+              )}
               <Link href={`/admin/departures?date=${open.date}&run=${open.scheduleId}`}>
                 <Button variant="secondary">Open departure</Button>
               </Link>

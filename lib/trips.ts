@@ -38,12 +38,18 @@ export function todayISO() {
   return toISODate(new Date());
 }
 
+let DATE_LOCALE = 'en-GB';
+/** Set by the language switcher (en-GB / ta-LK / si-LK). */
+export function setDateLocale(locale: string) {
+  DATE_LOCALE = locale;
+}
+
 /** "2026-07-12" → "Sun, 12 Jul 2026" */
 export function formatDateLabel(iso: string | null | undefined, withYear = true) {
   if (!iso) return '';
   const d = parseISODate(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('en-GB', {
+  return d.toLocaleDateString(DATE_LOCALE, {
     weekday: 'short',
     day: '2-digit',
     month: 'short',
@@ -144,7 +150,7 @@ export function seatIds(bus: Pick<Bus, 'rows' | 'backRowSeats'>) {
 }
 
 export function isLiveBooking(b: Booking) {
-  return b.status === 'confirmed' || b.status === 'boarded';
+  return b.status === 'confirmed' || b.status === 'boarded' || b.status === 'held';
 }
 
 /**

@@ -17,6 +17,7 @@ import { addDays, bikeSpacesFor, bikeSpacesUsed, genId, genRef, isLiveBooking, t
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
 import { bookingFromRow, busFromRow, busToRow, routeFromRow, routeToRow, scheduleFromRow, scheduleToRow } from './supabase/mappers';
 import { isStaffRole, useAuth } from '@/contexts/AuthContext';
+import { uuid } from '@/lib/uuid';
 
 const STORAGE_KEY = 'vivid-demo-data';
 
@@ -35,6 +36,8 @@ interface StoreContextValue {
   deleteSchedule: (id: string) => Promise<ActionResult>;
   createBooking: (b: NewBooking) => Promise<BookingResult>;
   updateBooking: (id: string, patch: Partial<Booking>) => Promise<ActionResult>;
+  /** Staff: take payment for a held (unpaid) booking. */
+  confirmPayment: (id: string, method: 'cash' | 'bank' | 'card' | 'wallet', ref?: string) => Promise<ActionResult>;
   /** Demo mode only. */
   resetDemo: () => void;
   /** Re-read data (pull-to-refresh, after changes elsewhere). */
@@ -53,7 +56,14 @@ function loadLocal(): StoreData {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as StoreData;
-      if (parsed && parsed.version === STORE_VERSION && Array.isArray(parsed.buses)) return parsed;
+      if (parsed && parsed.version === STORE_VERSION && Array.isArray(parsed.buses)) {
+        // Release unpaid holds whose time is up.
+        const now = Date.now();
+        parsed.bookings = parsed.bookings.map((b) =>
+          b.status === 'held' && b.holdExpiresAt && new Date(b.holdExpiresAt).getTime() < now ? { ...b, status: 'cancelled' as const } : b,
+        );
+        return parsed;
+      }
     }
   } catch {
     /* corrupted or blocked storage — fall through to seed */
@@ -100,6 +110,7 @@ function availabilityBookings(seats: any[], bikeUsage: any[], visible: Booking[]
 
 async function fetchRemote(userId: string | null, staff: boolean): Promise<StoreData> {
   const sb = supabase();
+  await sb.rpc('release_expired_holds'); // free seats from unpaid holds that ran out
   const today = todayISO();
   const from = addDays(today, -2);
   const to = addDays(today, 120);
@@ -143,7 +154,7 @@ async function fetchRemote(userId: string | null, staff: boolean): Promise<Store
 
 async function uploadBikePhoto(userId: string, dataUrl: string) {
   const blob = await (await fetch(dataUrl)).blob();
-  const path = `${userId}/${crypto.randomUUID()}.jpg`;
+  const path = `${userId}/${uuid()}.jpg`;
   const { error } = await supabase().storage.from('bike-photos').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
   if (error) throw error;
   return path;
@@ -326,6 +337,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               contact: input.contact,
               promo: input.promo ?? '',
               channel: input.channel,
+              payment: input.payment,
+              use_reward: input.useReward ?? false,
               bikes,
             },
           });
@@ -349,9 +362,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const left = (bus?.bikeSpaces ?? 0) - bikeSpacesUsed(d.bookings, input.scheduleId, input.date);
         if (need > left) return { ok: false, reason: 'The luggage compartment just filled up for this departure.' };
       }
-      const { promo: _promo, ...rest } = input;
+      const { promo: _promo, payment, useReward: _reward, ...rest } = input;
       void _promo;
-      const booking: Booking = { ...rest, id: genId('bk'), ref: genRef(), status: input.status ?? 'confirmed', createdAt: new Date().toISOString() };
+      void _reward;
+      const held = input.channel === 'online' && (payment === 'bank' || payment === 'counter');
+      const booking: Booking = {
+        ...rest,
+        id: genId('bk'),
+        ref: genRef(),
+        status: held ? 'held' : input.status ?? 'confirmed',
+        paymentMethod: payment ?? (input.channel === 'online' ? 'card' : 'cash'),
+        paymentStatus: held ? 'unpaid' : 'paid',
+        holdExpiresAt: held ? new Date(Date.now() + (payment === 'bank' ? 24 * 60 : 120) * 60_000).toISOString() : null,
+        createdAt: new Date().toISOString(),
+      };
       const next = { ...d, bookings: [...d.bookings, booking] };
       dataRef.current = next;
       setData(next);
@@ -390,6 +414,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [mode, refresh],
   );
 
+  const confirmPayment = useCallback<StoreContextValue['confirmPayment']>(
+    async (id, method, ref) => {
+      if (mode === 'supabase') {
+        const { error: err } = await supabase().rpc('confirm_payment', { p_id: id, p_method: method, p_ref: ref ?? null });
+        if (err) return { ok: false, reason: friendlyError(err) };
+        await refresh();
+        return { ok: true };
+      }
+      const d = dataRef.current;
+      const next = { ...d, bookings: d.bookings.map((b) => (b.id === id && b.status === 'held' ? { ...b, status: 'confirmed' as const, paymentStatus: 'paid' as const, paymentMethod: method, holdExpiresAt: null } : b)) };
+      dataRef.current = next;
+      setData(next);
+      return { ok: true };
+    },
+    [mode, refresh],
+  );
+
   const resetDemo = useCallback(() => {
     if (mode === 'demo') setData(createSeedData());
   }, [mode]);
@@ -398,8 +439,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   const value = useMemo(
-    () => ({ data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, createBooking, updateBooking, resetDemo, reload }),
-    [data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, createBooking, updateBooking, resetDemo, reload],
+    () => ({ data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, createBooking, updateBooking, confirmPayment, resetDemo, reload }),
+    [data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, createBooking, updateBooking, confirmPayment, resetDemo, reload],
   );
 
   return (

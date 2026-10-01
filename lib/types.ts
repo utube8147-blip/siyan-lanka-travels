@@ -45,6 +45,14 @@ export interface RouteStop {
   offsetMin: number;
   /** Fare from the first stop to this one (LKR). Segment fare = difference. */
   fareFromStart: number;
+  /** Map pin for "where to wait" (optional). */
+  lat?: number;
+  lng?: number;
+  /** e.g. "Clock tower roundabout, Kurunegala town" */
+  landmark?: string;
+  /** Photo of the exact spot (URL). */
+  photo?: string;
+  notes?: string;
 }
 
 export interface Route {
@@ -67,7 +75,8 @@ export interface Schedule {
   active: boolean;
 }
 
-export type BookingStatus = 'confirmed' | 'boarded' | 'cancelled' | 'no-show';
+export type BookingStatus = 'confirmed' | 'held' | 'boarded' | 'cancelled' | 'no-show';
+export type PaymentMethod = 'card' | 'wallet' | 'bank' | 'counter' | 'cash' | 'free';
 export type Gender = 'Male' | 'Female' | '';
 export type BookingChannel = 'online' | 'counter' | 'phone';
 
@@ -94,6 +103,12 @@ export interface Booking {
   discount: number;
   total: number;
   status: BookingStatus;
+  /** How it's paid; 'bank' / 'counter' bookings are held until paid. */
+  paymentMethod?: PaymentMethod;
+  paymentStatus?: 'paid' | 'unpaid' | 'refunded';
+  /** Held bookings are released automatically after this (ISO). */
+  holdExpiresAt?: string | null;
+  rewardUsed?: boolean;
   createdAt: string; // ISO
   refund?: { amount: number; at: string };
 }
@@ -131,7 +146,12 @@ export interface Trip {
 
 /** What a page passes to createBooking. Prices here are for display only:
  *  with Supabase the server recalculates everything. */
-export type NewBooking = Omit<Booking, 'id' | 'ref' | 'createdAt' | 'status'> & Partial<Pick<Booking, 'status'>> & { promo?: string };
+export type NewBooking = Omit<Booking, 'id' | 'ref' | 'createdAt' | 'status'> & Partial<Pick<Booking, 'status'>> & {
+  promo?: string;
+  /** 'card' | 'wallet' (online), 'bank' / 'counter' (seat held until paid). */
+  payment?: PaymentMethod;
+  useReward?: boolean;
+};
 
 export type ActionResult = { ok: boolean; reason?: string };
 export type BookingResult = { ok: true; booking: Booking } | { ok: false; reason: string };

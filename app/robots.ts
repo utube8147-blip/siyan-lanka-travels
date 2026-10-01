@@ -8,7 +8,7 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: '*',
         allow: '/',
         // Private or per-person pages: nothing useful for search results.
-        disallow: ['/admin', '/staff', '/auth/', '/dashboard', '/my-bookings', '/payment', '/refund', '/seats/', '/marketplace/buy/', '/offline.html'],
+        disallow: ['/admin', '/staff', '/conductor', '/auth/', '/dashboard', '/my-bookings', '/payment', '/refund', '/seats/', '/marketplace/buy/', '/offline.html', '/track'],
       },
     ],
     sitemap: `${OPERATOR.siteUrl}/sitemap.xml`,

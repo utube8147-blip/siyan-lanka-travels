@@ -10,7 +10,7 @@ import { formatDateLabel } from '@/lib/trips';
 import { AdminOnly } from '@/components/admin/AdminOnly';
 import { Card, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 
-const ROLE_LABEL: Record<AccountRole, string> = { passenger: 'Passenger', staff: 'Staff', admin: 'Super admin' };
+const ROLE_LABEL: Record<AccountRole, string> = { passenger: 'Passenger', conductor: 'Conductor', staff: 'Staff', admin: 'Super admin' };
 
 export default function AccountsPage() {
   return (
@@ -34,9 +34,9 @@ function Accounts() {
 
   return (
     <>
-      <PageHeader title="Accounts & roles" description="Staff can run departures, bookings, buses and the timetable. Super admins also see finance, crew, accounts and settings." />
+      <PageHeader title="Accounts & roles" description="Conductors use the phone conductor page (boarding, cash, trip updates). Staff run departures, bookings, buses and the timetable. Super admins also see finance, crew, accounts and settings." />
       <div className="flex flex-wrap gap-2 mb-4">
-        {(['all', 'admin', 'staff', 'passenger'] as const).map((r) => (
+        {(['all', 'admin', 'staff', 'conductor', 'passenger'] as const).map((r) => (
           <button
             key={r}
             onClick={() => setRole(r)}

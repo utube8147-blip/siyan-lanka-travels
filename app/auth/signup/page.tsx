@@ -1,13 +1,14 @@
-// app/auth/signup/page.tsx
 'use client';
-import React, { useState } from 'react';
+// Passenger sign-up: name + mobile number verified by SMS code (main), or
+// email + password.
+
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { Wordmark } from '@/components/Wordmark';
+import { AuthShell, authButton, authInput } from '@/components/auth/AuthShell';
+import { PhoneCodeForm } from '@/components/auth/PhoneCodeForm';
 
-
-/** Where to go after signing in: ?next=/some/path (same-site paths only). */
 function nextPath(fallback: string) {
   const n = new URLSearchParams(window.location.search).get('next');
   return n && n.startsWith('/') && !n.startsWith('//') ? n : fallback;
@@ -15,192 +16,93 @@ function nextPath(fallback: string) {
 
 export default function SignupPage() {
   const router = useRouter();
-  const { login, signUp, mode } = useAuth();
+  const { signUp } = useAuth();
+  const [method, setMethod] = useState<'phone' | 'email'>('phone');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const role = 'passenger' as const;
-  const [isLoading, setIsLoading] = useState(false);
+  // The phone form reads these through refs so it always sees the latest values.
+  const nameRef = useRef(name);
+  nameRef.current = name;
+  const emailRef = useRef(email);
+  emailRef.current = email;
+  const done = () => router.push(nextPath('/my-bookings'));
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const fullName = `${firstName} ${lastName}`.trim();
-    const dest = nextPath('/my-bookings');
-    if (mode === 'demo') {
-      login({ email, phone, role, fullName: fullName || 'Alex Ham' });
-      router.push(dest);
-      return;
-    }
-    if (!fullName) return setError('Please enter your name.');
-    if (password.length < 8) return setError('Use at least 8 characters for your password.');
-    setIsLoading(true);
-    const r = await signUp({ email, password, fullName, phone });
-    setIsLoading(false);
-    if (!r.ok) return setError(r.reason);
-    if (r.needsEmailConfirmation) return setInfo(`Almost done: we've sent a confirmation link to ${email}. Open it, then sign in.`);
-    router.push(dest);
-  };
+  const nameField = (
+    <label className="block">
+      <span className="text-[13px] font-semibold text-[#050a44]">Full name</span>
+      <input className={`${authInput} mt-1.5`} autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="As on your ID" required />
+    </label>
+  );
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row font-sans">
-      {/* Right side: Abstract Imagery (Swapped for Signup to provide variety) */}
-      <div className="hidden md:flex flex-1 bg-primary relative overflow-hidden items-center justify-center order-2 md:order-1">
-        <div className="absolute inset-0 z-0">
-          <img 
-            src="/brand/bus.png" 
-            alt="Travel abstract" 
-            className="w-full h-full object-cover opacity-40"
-          />
-        </div>
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#3280f9] rounded-full blur-[120px] opacity-20"></div>
-        <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-[#feb700] rounded-full blur-[120px] opacity-20"></div>
-        
-        <div className="z-10 text-white max-w-md p-8">
-          <div className="w-16 h-16 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl flex items-center justify-center mb-8">
-            <span className="material-symbols-outlined text-3xl">rocket_launch</span>
-          </div>
-          <h1 className="text-4xl font-bold mb-4 leading-tight">Travel east with Siyan Lanka.</h1>
-          <p className="text-lg opacity-80 leading-relaxed">
-            Create a free account to keep your tickets in one place and manage your trips.
-          </p>
-          
-          <div className="mt-12 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-[#feb700] text-[#6b4b00] flex items-center justify-center">
-                <span className="material-symbols-outlined text-[14px]">check</span>
-              </div>
-              <span className="text-sm font-medium">All your tickets on your phone</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 rounded-full bg-[#feb700] text-[#6b4b00] flex items-center justify-center">
-                <span className="material-symbols-outlined text-[14px]">check</span>
-              </div>
-              <span className="text-sm font-medium">Change seats or dates yourself</span>
-            </div>
-          </div>
-        </div>
+    <AuthShell
+      title="Create your account"
+      subtitle="Book in seconds next time, keep your tickets on your phone, and get trip texts."
+      footer={<>Already have an account? <Link href={`/auth/login${typeof window !== 'undefined' ? window.location.search : ''}`} className="font-bold text-[#050a44] hover:underline">Sign in</Link></>}
+    >
+      <div role="tablist" className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#f2f4f6] border border-[#e1e2e4] mb-6">
+        {(['phone', 'email'] as const).map((m) => (
+          <button key={m} role="tab" aria-selected={method === m} onClick={() => { setMethod(m); setError(null); }}
+            className={`h-10 rounded-lg text-[14px] font-semibold transition-colors ${method === m ? 'bg-white text-[#050a44] shadow-sm' : 'text-[#46464f]'}`}>
+            {m === 'phone' ? 'Mobile number' : 'Email'}
+          </button>
+        ))}
       </div>
 
-      {/* Left side: Form */}
-      <div className="flex-1 flex items-center justify-center bg-[#f8f9fb] p-8 order-1 md:order-2 overflow-y-auto">
-        <div className="w-full max-w-md my-auto py-8">
-          <div className="flex justify-end mb-8 md:hidden">
-            <Link href="/"><Wordmark badge /></Link>
-          </div>
-          
-          <h2 className="text-3xl font-bold text-primary mb-2">Create an account</h2>
-          <p className="text-[#46464f] mb-8">Book faster next time.</p>
-
-          <form onSubmit={handleSignup} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold text-primary mb-1">First Name</label>
-                <input 
-                  type="text"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Alexander" 
-                  className="w-full px-4 py-3 bg-white border border-outline/30 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                  required 
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-primary mb-1">Last Name</label>
-                <input 
-                  type="text"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Hamilton" 
-                  className="w-full px-4 py-3 bg-white border border-outline/30 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                  required 
-                />
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-bold text-primary mb-1">Email Address</label>
-              <input 
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="hello@example.com" 
-                className="w-full px-4 py-3 bg-white border border-outline/30 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                required 
-              />
-            </div>
-
-            {/* Phone number — required at signup. This becomes the number used
-                to auto-verify contact info later in the booking flow, so we
-                collect and (in a real build) verify it once, up front, instead
-                of asking again on every booking. */}
-            <div>
-              <label className="block text-sm font-bold text-primary mb-1">Phone Number</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+94 77 123 4567"
-                className="w-full px-4 py-3 bg-white border border-outline/30 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                required
-              />
-              <p className="text-xs text-[#686873] mt-1.5">We'll use this to verify your bookings — no need to re-enter it each time.</p>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-bold text-primary mb-1">Password</label>
-              <input 
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••" 
-                className="w-full px-4 py-3 bg-white border border-outline/30 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
-                required 
-              />
-              <p className="text-xs text-[#686873] mt-1.5">Must be at least 8 characters.</p>
-            </div>
-
-            <div className="pt-2">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={agreedToTerms}
-                  onChange={(e) => setAgreedToTerms(e.target.checked)}
-                  required
-                  className="mt-1 w-4 h-4 rounded border-outline/50 text-primary focus:ring-primary"
-                />
-                <span className="text-xs text-[#46464f] leading-relaxed">
-                  I agree to the <a href="#" className="font-bold text-primary hover:underline">Terms of Service</a> and <a href="#" className="font-bold text-primary hover:underline">Privacy Policy</a>.
-                </span>
-              </label>
-            </div>
-
-            <button 
-              type="submit" 
-              disabled={isLoading}
-              className="w-full bg-primary text-white font-bold py-4 rounded-xl flex items-center justify-center hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-70 disabled:active:scale-100 mt-4"
-            >
-              {isLoading ? (
-                <span className="material-symbols-outlined animate-spin">refresh</span>
-              ) : (
-                "Create Account"
-              )}
-            </button>
-            {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
-            {info && <p role="status" className="text-sm font-semibold text-[#006e1c]">{info}</p>}
-          </form>
-
-          <p className="text-center mt-8 text-sm text-[#46464f]">
-            Already have an account? <Link href="/auth/login" className="text-primary font-bold hover:underline">Sign in</Link>
-          </p>
-        </div>
-      </div>
-    </div>
+      {method === 'phone' ? (
+        <PhoneCodeForm
+          mode="signup"
+          onDone={done}
+          extra={{
+            render: () => (
+              <>
+                {nameField}
+                <label className="block">
+                  <span className="text-[13px] font-semibold text-[#050a44]">Email <span className="font-normal text-[#6b6d78]">(optional, for receipts)</span></span>
+                  <input className={`${authInput} mt-1.5`} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+                </label>
+              </>
+            ),
+            validate: () => (nameRef.current.trim().length < 2 ? 'Please enter your name.' : emailRef.current && !/^\S+@\S+\.\S+$/.test(emailRef.current) ? 'Check the email address, or leave it empty.' : null),
+            fullName: () => nameRef.current.trim(),
+            email: () => emailRef.current.trim(),
+          }}
+        />
+      ) : (
+        <form
+          className="space-y-4"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setError(null);
+            if (name.trim().length < 2) return setError('Please enter your name.');
+            if (password.length < 8) return setError('Use at least 8 characters for your password.');
+            setBusy(true);
+            const r = await signUp({ email, password, fullName: name.trim() });
+            setBusy(false);
+            if (!r.ok) return setError(r.reason);
+            if (r.needsEmailConfirmation) return setInfo(`Almost done: open the link we sent to ${email}, then sign in.`);
+            done();
+          }}
+        >
+          {nameField}
+          <label className="block">
+            <span className="text-[13px] font-semibold text-[#050a44]">Email</span>
+            <input className={`${authInput} mt-1.5`} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </label>
+          <label className="block">
+            <span className="text-[13px] font-semibold text-[#050a44]">Password</span>
+            <input className={`${authInput} mt-1.5`} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+          </label>
+          {error && <p role="alert" className="text-[13px] font-semibold text-[#ba1a1a]">{error}</p>}
+          {info && <p role="status" className="text-[13px] font-semibold text-[#006e1c]">{info}</p>}
+          <button className={authButton} disabled={busy}>{busy ? 'Creating account…' : 'Create account'}</button>
+        </form>
+      )}
+      <p className="text-[12px] text-[#6b6d78] text-center mt-5">By continuing you agree to our <Link href="/legal" className="underline">terms and privacy policy</Link>.</p>
+    </AuthShell>
   );
 }

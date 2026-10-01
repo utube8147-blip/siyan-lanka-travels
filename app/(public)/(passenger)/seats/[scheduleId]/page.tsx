@@ -8,9 +8,11 @@ import SeatSelectionDrawer, { formatTime, type Gender } from '@/components/SeatS
 import { OPERATOR } from '@/config/operator';
 import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { BikeAddon, bikesProblem } from '@/components/BikeAddon';
+import { useSavedPassengers } from '@/lib/extras';
 import type { BikeItem } from '@/lib/types';
 import { useStore, StoreLoading } from '@/lib/store';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO } from '@/lib/trips';
+import { useT } from '@/lib/i18n';
 
 const MAX_SEATS_PER_BOOKING = OPERATOR.maxSeatsPerBooking;
 const HOLD_SECONDS = OPERATOR.seatHoldMinutes * 60;
@@ -67,6 +69,7 @@ export default function BookingPage() {
 }
 
 function BookingPageInner() {
+  const { t } = useT();
   const router = useRouter();
   const params = useParams<{ scheduleId: string }>();
   const searchParams = useSearchParams();
@@ -94,6 +97,7 @@ function BookingPageInner() {
   const [passengerName, setPassengerName] = useState(accountName);
   const [passengerGender, setPassengerGender] = useState<Gender>('');
   const [passengerPhone, setPassengerPhone] = useState('');
+  const savedPassengers = useSavedPassengers(user?.id);
 
   const switchBookingFor = (next: BookingFor) => {
     setBookingFor(next);
@@ -365,7 +369,30 @@ function BookingPageInner() {
             </div>
 
             <div className="bg-[#ffffff] rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
-              <h2 className="text-[16px] font-semibold mb-[16px]">Who are you booking for?</h2>
+              <h2 className="text-[16px] font-semibold mb-[16px]">{t('Who are you booking for?')}</h2>
+
+              {savedPassengers.list.length > 0 && (
+                <div className="mb-[16px]">
+                  <p className="text-[11px] font-bold text-[#46464f] px-1 mb-1.5">{t('Travelled with us before? Tap to fill in')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {savedPassengers.list.map((p) => (
+                      <button
+                        key={p.name}
+                        type="button"
+                        onClick={() => {
+                          switchBookingFor(p.name === accountName ? 'self' : 'other');
+                          setPassengerName(p.name);
+                          if (p.gender) setPassengerGender(p.gender);
+                          if (p.phone) setPassengerPhone(p.phone);
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-[13px] font-semibold border transition-colors ${passengerName === p.name ? 'bg-[#050a44] text-white border-[#050a44]' : 'bg-white border-[#c7c5d1] text-[#050a44] hover:bg-[#f2f4f6]'}`}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex p-1 bg-[#f2f4f6] rounded-xl mb-[20px] border border-[#e1e2e4]/60 max-w-sm">
                 <button
@@ -374,7 +401,7 @@ function BookingPageInner() {
                     bookingFor === 'self' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
                   }`}
                 >
-                  Myself
+                  {t('Myself')}
                 </button>
                 <button
                   onClick={() => switchBookingFor('other')}
@@ -382,7 +409,7 @@ function BookingPageInner() {
                     bookingFor === 'other' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
                   }`}
                 >
-                  Someone else
+                  {t('Someone else')}
                 </button>
               </div>
 
@@ -394,7 +421,7 @@ function BookingPageInner() {
 
               <div className={`grid grid-cols-1 ${bookingFor === 'other' ? 'sm:grid-cols-2' : ''} gap-[12px] mb-[16px]`}>
                 <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1">Full name</label>
+                  <label className="text-[11px] font-bold text-[#46464f] px-1">{t('Full name')}</label>
                   <input
                     value={passengerName}
                     onChange={(e) => setPassengerName(e.target.value)}
@@ -539,7 +566,7 @@ function BookingPageInner() {
 
           <div className="lg:col-span-5 lg:sticky lg:top-24 lg:self-start space-y-[24px]">
             <div className="bg-[#ffffff] rounded-xl p-[32px] shadow-lg border border-[#c7c5d1]">
-              <h2 className="text-[20px] font-semibold mb-[24px]">Trip Summary</h2>
+              <h2 className="text-[20px] font-semibold mb-[24px]">{t('Trip Summary')}</h2>
 
               <div className="space-y-[16px] mb-[24px] text-[14px]">
                 <div className="flex justify-between">

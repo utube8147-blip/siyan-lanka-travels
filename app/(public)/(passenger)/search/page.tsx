@@ -1,27 +1,31 @@
 // app/(public)/(passenger)/search/page.tsx
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { OPERATOR } from '@/config/operator';
 import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
+import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
 import { addDays, allStopNames, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, todayISO } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
+import { useT } from '@/lib/i18n';
 import {
   MapPin,
   Calendar,
   ArrowLeftRight,
   Bus as BusIcon,
   Armchair,
+  ChevronDown,
   ArrowUpDown,
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { RouteMapOverlay, type RouteData, type RouteStop } from '@/components/RouteMapOverlay';
+import { RouteMapOverlay, type RouteData, type RouteStop } from '@/components/RouteMapOverlay'
 
 interface Schedule {
   id: string;
@@ -68,10 +72,12 @@ function estimateDistanceKm(durationLabel: string) {
   return `${Math.round(hours * 55)} km`;
 }
 
+type DropdownKey = null;
 type SortField = 'departure' | 'price';
 
-// Fixed number of date pills — the strip never resizes when the filter pills
-// next to it change width. The row scrolls horizontally instead.
+// Fixed number of date pills — no longer computed from remaining flex space,
+// so the strip never resizes when the filter pills next to it change width.
+// The row scrolls horizontally instead (see date strip container below).
 const DATE_STRIP_COUNT = 10;
 
 export default function SearchPage() {
@@ -83,6 +89,7 @@ export default function SearchPage() {
 }
 
 function SearchPageInner() {
+  const { t } = useT();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { data, ready } = useStore();
@@ -91,6 +98,7 @@ function SearchPageInner() {
   const initialTo = searchParams.get('to') || '';
   const initialDate = searchParams.get('date') || todayISO();
 
+  const [tripType, setTripType] = useState<'one-way' | 'round-trip'>('one-way');
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
   const [date, setDate] = useState(initialDate);
@@ -136,8 +144,14 @@ function SearchPageInner() {
     router.replace(`/search?${qs.toString()}`, { scroll: false });
   };
 
-  // Holds the schedule whose route is being viewed, if any
+  // --- Route map overlay state — holds the schedule whose route is being viewed, if any ---
   const [routeSchedule, setRouteSchedule] = useState<Schedule | null>(null);
+
+  // --- Dropdown state (Fleet only — Price is now a plain toggle) ---
+  const [openDropdown, setOpenDropdown] = useState<DropdownKey>(null);
+  const filterBarRef = useRef<HTMLDivElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   // --- Date strip state ---
   const [dateWindowOffset, setDateWindowOffset] = useState(0);
@@ -155,6 +169,7 @@ function SearchPageInner() {
       return d;
     });
   }, [dateWindowOffset]);
+
 
   const toISODate = (d: Date) => {
     const y = d.getFullYear();
@@ -174,8 +189,50 @@ function SearchPageInner() {
   const stripDayNumber = (d: Date) => d.getDate().toString().padStart(2, '0');
   const stripWeekdayShort = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
 
-  // Toggle sort: clicking the active field flips direction, clicking the other
-  // field switches to it (ascending first).
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      const insideBar = filterBarRef.current?.contains(target);
+      const insideMenu = menuPanelRef.current?.contains(target);
+      if (!insideBar && !insideMenu) {
+        setOpenDropdown(null);
+      }
+    }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpenDropdown(null);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!openDropdown) return;
+    const closeOnMove = () => setOpenDropdown(null);
+    window.addEventListener('scroll', closeOnMove, true);
+    window.addEventListener('resize', closeOnMove);
+    return () => {
+      window.removeEventListener('scroll', closeOnMove, true);
+      window.removeEventListener('resize', closeOnMove);
+    };
+  }, [openDropdown]);
+
+  const toggleDropdown = (key: Exclude<DropdownKey, null>, btnRef: React.RefObject<HTMLButtonElement | null>) => {
+    setOpenDropdown((prev) => {
+      if (prev === key) return null;
+      const rect = btnRef.current?.getBoundingClientRect();
+      if (rect) {
+        setMenuPos({ top: rect.bottom + 8, left: rect.left });
+      }
+      return key;
+    });
+  };
+
+  // Toggle sort: clicking the active field flips direction, clicking the other field switches to it (ascending first).
+  // Used by both the Departure time pill and the Price pill — both are plain toggles, no dropdown menus.
   const handleSort = (field: SortField) => {
     setSortBy((prevField) => {
       if (prevField === field) {
@@ -208,6 +265,7 @@ function SearchPageInner() {
 
   const resetFilters = () => {
     setBusTypeFilter('all');
+    setOpenDropdown(null);
   };
 
   const fromCode = cityCode(query.from);
@@ -216,7 +274,8 @@ function SearchPageInner() {
   const activeFilterCount = busTypeFilter !== 'all' ? 1 : 0;
 
   // Builds the RouteMapOverlay's mock RouteData from a schedule + the current
-  // from/to/via search fields. Swap this out for real stop/geo data later.
+  // from/to/via search fields. Swap this out for real stop/geo data later —
+  // the overlay only cares about the shape below.
   const buildRouteData = (s: Schedule): RouteData => {
     const t = s.trip;
     const route = data.routes.find((r) => r.id === t.routeId);
@@ -251,15 +310,12 @@ function SearchPageInner() {
     };
   };
 
-  const inputClass =
-    'w-full bg-white border-none rounded-xl font-medium outline-none focus:ring-1 focus:ring-[#050a44]';
-
   return (
     <div className="bg-[#f2f4f7] min-h-screen overflow-x-hidden">
       <main className="max-w-[1440px] mx-auto px-3 sm:px-4 md:px-[32px] py-4 sm:py-8">
-        <div>
+        <div className="bg-white rounded-2xl sm:rounded-[24px] shadow-sm overflow-hidden border border-[#e1e2e4]/60">
           {/* Search Bar */}
-          <section className="p-4 sm:p-6 md:p-8">
+          <section className="p-4 sm:p-6 md:p-8 bg-white border-b border-[#e1e2e4]/60">
             <datalist id="search-stop-names">
               {stopNames.map((n) => (
                 <option key={n} value={n} />
@@ -268,7 +324,8 @@ function SearchPageInner() {
             <div className="flex flex-col md:grid md:grid-cols-[1fr_auto_1fr_1fr_auto] gap-3 sm:gap-4 md:items-end">
               {/* Boarding + swap + drop-off — always one compact row on mobile.
                   md:contents makes this wrapper "disappear" at the md breakpoint so
-                  its 3 children slot directly into the outer desktop grid. */}
+                  its 3 children slot directly into the outer 6-column desktop grid,
+                  keeping the original desktop layout exactly as it was. */}
               <div className="grid grid-cols-[1fr_auto_1fr] gap-1.5 items-end md:contents">
                 <div className="space-y-1 sm:space-y-2 min-w-0">
                   <label className="text-[10px] sm:text-[12px] font-bold text-[#46464f] px-1">Boarding point</label>
@@ -280,7 +337,7 @@ function SearchPageInner() {
                       aria-label="Boarding point"
                       onChange={(e) => setFrom(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                      className={`${inputClass} pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 text-xs sm:text-sm`}
+                      className="w-full pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 bg-[#f1f3f9]/60 border-none rounded-xl text-xs sm:text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44]"
                       type="text"
                     />
                   </div>
@@ -306,7 +363,7 @@ function SearchPageInner() {
                       aria-label="Drop-off point"
                       onChange={(e) => setTo(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                      className={`${inputClass} pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 text-xs sm:text-sm`}
+                      className="w-full pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 bg-[#f1f3f9]/60 border-none rounded-xl text-xs sm:text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44]"
                       type="text"
                     />
                   </div>
@@ -314,14 +371,14 @@ function SearchPageInner() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-[12px] font-bold text-[#46464f] px-1">Departure date</label>
+                <label className="text-[12px] font-bold text-[#46464f] px-1">{t('Departure date')}</label>
                 <div className="relative">
                   <Calendar className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-[#c7c5d1]" />
                   <input
                     value={date}
                     min={todayISO()}
                     onChange={(e) => setDate(e.target.value)}
-                    className={`${inputClass} pl-12 pr-4 py-3.5 text-sm`}
+                    className="w-full pl-12 pr-4 py-3.5 bg-[#f1f3f9]/60 border-none rounded-xl text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44]"
                     type="date"
                   />
                 </div>
@@ -332,84 +389,65 @@ function SearchPageInner() {
                   onClick={() => runSearch()}
                   className="w-full md:w-auto h-[52px] px-8 bg-[#050a44] text-white rounded-xl font-bold text-sm hover:opacity-90 transition-all shadow-sm whitespace-nowrap"
                 >
-                  Search bus
+                  {t('Search bus')}
                 </button>
               </div>
             </div>
           </section>
 
-          {/* Filters — desktop: one row (pills left, date strip right), each scrolling
-              independently. Below md the two groups stack into separate rows. */}
-          <section className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">
+          {/*
+            Filters — on desktop/laptop this is a single row: filter pills on the left,
+            date strip filling the remaining space on the right, each scrolling
+            independently so neither one resizes the other when a filter is toggled.
+            Only on mobile (below md) do the two groups stack into separate rows,
+            since there isn't enough width to show both comfortably on one line.
+          */}
+          <section className="px-4 sm:px-6 md:px-8 py-3 sm:py-4 bg-white border-b border-[#e1e2e4]/60">
             <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-              {/* Filter pills */}
-              <div className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto no-scrollbar md:shrink-0">
-                {/* Departure time sort — plain toggle */}
-                <button
-                  onClick={() => handleSort('departure')}
-                  className={`flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold border transition-colors whitespace-nowrap shrink-0 ${
-                    sortBy === 'departure'
-                      ? 'border-[#050a44] bg-[#050a44] text-white'
-                      : 'border-[#e1e2e4] bg-white text-[#050a44] hover:bg-[#f1f3f9]'
-                  }`}
-                >
-                  <ArrowUpDown
-                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
-                      sortBy === 'departure' && !sortAsc ? 'rotate-180' : ''
-                    } ${sortBy === 'departure' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
-                  />
-                  Departure time
-                </button>
+            {/* Filter pills */}
+            <div ref={filterBarRef} className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto no-scrollbar md:shrink-0">
+              {/* Departure time sort — plain toggle */}
+              <button
+                onClick={() => handleSort('departure')}
+                className={`flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold border transition-colors whitespace-nowrap shrink-0 ${
+                  sortBy === 'departure'
+                    ? 'border-[#050a44] bg-[#050a44] text-white'
+                    : 'border-[#e1e2e4] bg-white text-[#050a44] hover:bg-[#f1f3f9]'
+                }`}
+              >
+                <ArrowUpDown
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
+                    sortBy === 'departure' && !sortAsc ? 'rotate-180' : ''
+                  } ${sortBy === 'departure' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
+                />
+                Departure time
+              </button>
 
-                {/* Price sort — plain toggle */}
-                <button
-                  onClick={() => handleSort('price')}
-                  className={`flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold border transition-colors whitespace-nowrap shrink-0 ${
-                    sortBy === 'price'
-                      ? 'border-[#050a44] bg-[#050a44] text-white'
-                      : 'border-[#e1e2e4] bg-white text-[#050a44] hover:bg-[#f1f3f9]'
-                  }`}
-                >
-                  <ArrowUpDown
-                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
-                      sortBy === 'price' && !sortAsc ? 'rotate-180' : ''
-                    } ${sortBy === 'price' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
-                  />
-                  Price
-                </button>
+              {/* Price sort — plain toggle, same pattern as Departure time (no dropdown) */}
+              <button
+                onClick={() => handleSort('price')}
+                className={`flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold border transition-colors whitespace-nowrap shrink-0 ${
+                  sortBy === 'price'
+                    ? 'border-[#050a44] bg-[#050a44] text-white'
+                    : 'border-[#e1e2e4] bg-white text-[#050a44] hover:bg-[#f1f3f9]'
+                }`}
+              >
+                <ArrowUpDown
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
+                    sortBy === 'price' && !sortAsc ? 'rotate-180' : ''
+                  } ${sortBy === 'price' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
+                />
+                Price
+              </button>
 
-                {/* Bus type — two compact toggle pills. Tapping a selected type
-                    again clears it back to "all". */}
-                <div className="hidden sm:flex items-center gap-1 shrink-0">
-                  <button
-                    onClick={() => setBusTypeFilter((prev) => (prev === 'AC' ? 'all' : 'AC'))}
-                    className={`px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-sm font-bold whitespace-nowrap border transition-colors ${
-                      busTypeFilter === 'AC'
-                        ? 'border-[#050a44] bg-[#050a44] text-white'
-                        : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
-                    }`}
-                  >
-                    AC
-                  </button>
-                  <button
-                    onClick={() => setBusTypeFilter((prev) => (prev === 'Non-AC' ? 'all' : 'Non-AC'))}
-                    className={`px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-sm font-bold whitespace-nowrap border transition-colors ${
-                      busTypeFilter === 'Non-AC'
-                        ? 'border-[#050a44] bg-[#050a44] text-white'
-                        : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
-                    }`}
-                  >
-                    <span className="sm:hidden">Non</span>
-                    <span className="hidden sm:inline">Non-AC</span>
-                  </button>
-                </div>
-
-                {/* Compact AC toggle for narrow mobile widths, where the full
-                    AC/Non-AC control above is hidden. */}
+              {/* Bus Type — two compact toggle pills instead of a 3-way segmented control.
+                  Tapping a selected type again clears it back to "all", so there's no
+                  need for a separate "All" pill — saves roughly a third of the width
+                  this control used to take on mobile. */}
+              <div className="hidden sm:flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => setBusTypeFilter((prev) => (prev === 'AC' ? 'all' : 'AC'))}
-                  aria-pressed={busTypeFilter === 'AC'}
-                  className={`sm:hidden shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
+                  className={`px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-sm font-bold whitespace-nowrap border transition-colors ${
                     busTypeFilter === 'AC'
                       ? 'border-[#050a44] bg-[#050a44] text-white'
                       : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
@@ -417,77 +455,109 @@ function SearchPageInner() {
                 >
                   AC
                 </button>
-
-                {/* Reset / remove filters — compact, icon-first */}
                 <button
-                  onClick={resetFilters}
-                  disabled={activeFilterCount === 0}
-                  aria-label="Reset filters"
-                  className={`flex items-center gap-1.5 pl-2.5 sm:pl-3 pr-2.5 sm:pr-3 py-2 sm:py-2.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
-                    activeFilterCount > 0
-                      ? 'text-[#E74C3C] border border-[#E74C3C]/30 bg-[#E74C3C]/5 hover:bg-[#E74C3C]/10'
-                      : 'text-[#c7c5d1] border border-[#e1e2e4] cursor-not-allowed'
+                  onClick={() => setBusTypeFilter((prev) => (prev === 'Non-AC' ? 'all' : 'Non-AC'))}
+                  className={`px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-sm font-bold whitespace-nowrap border transition-colors ${
+                    busTypeFilter === 'Non-AC'
+                      ? 'border-[#050a44] bg-[#050a44] text-white'
+                      : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
                   }`}
                 >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">
-                    Reset{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-                  </span>
+                  <span className="sm:hidden">Non</span>
+                  <span className="hidden sm:inline">Non-AC</span>
                 </button>
               </div>
 
-              {/* Date strip — inline to the right of the pills on desktop; own row on mobile */}
-              <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 md:flex-1 md:justify-end">
-                <button
-                  onClick={() => setDateWindowOffset((o) => Math.max(0, o - 1))}
-                  className="p-1.5 sm:p-2 rounded-full text-[#46464f] hover:bg-white transition-colors shrink-0"
-                  aria-label="Earlier dates"
-                >
-                  <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar snap-x snap-mandatory min-w-0 flex-1">
-                  {dateStrip.map((d) => {
-                    const iso = toISODate(d);
-                    const isSelected = iso === date;
-                    return (
-                      <button
-                        key={iso}
-                        onClick={() => setDate(iso)}
-                        className={`flex flex-col sm:block items-center justify-center gap-0.5 basis-[calc((100%-24px)/5)] sm:basis-auto snap-start px-0 sm:px-4 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-colors shrink-0 ${
-                          isSelected ? 'bg-[#050a44] text-white' : 'text-[#46464f] hover:bg-white'
+              {/* Compact AC toggle — fills the empty space on narrow mobile widths,
+                  where the full AC/Non-AC control above is hidden. Placed before
+                  Reset so Reset always stays as the last pill in the row. Hidden
+                  again from sm up, since the full control is visible by then. */}
+              <button
+                onClick={() => setBusTypeFilter((prev) => (prev === 'AC' ? 'all' : 'AC'))}
+                aria-pressed={busTypeFilter === 'AC'}
+                className={`sm:hidden shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
+                  busTypeFilter === 'AC'
+                    ? 'border-[#050a44] bg-[#050a44] text-white'
+                    : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
+                }`}
+              >
+                AC
+              </button>
+
+              {/* Reset / remove filters — compact, icon-first */}
+              <button
+                onClick={resetFilters}
+                disabled={activeFilterCount === 0}
+                aria-label="Reset filters"
+                className={`flex items-center gap-1.5 pl-2.5 sm:pl-3 pr-2.5 sm:pr-3 py-2 sm:py-2.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
+                  activeFilterCount > 0
+                    ? 'text-[#E74C3C] border border-[#E74C3C]/30 bg-[#E74C3C]/5 hover:bg-[#E74C3C]/10'
+                    : 'text-[#c7c5d1] border border-[#e1e2e4] cursor-not-allowed'
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">
+                  Reset{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+                </span>
+              </button>
+            </div>
+
+            {/* Date strip — sits inline to the right of the pills on desktop; own row on mobile */}
+            <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 md:flex-1 md:justify-end">
+              <button
+                onClick={() => setDateWindowOffset((o) => Math.max(0, o - 1))}
+                className="p-1.5 sm:p-2 rounded-full text-[#46464f] hover:bg-[#f1f3f9] transition-colors shrink-0"
+                aria-label="Earlier dates"
+              >
+                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+              <div className="flex items-center gap-1.5 sm:gap-1.5 overflow-x-auto no-scrollbar min-w-0 flex-1">
+                {dateStrip.map((d) => {
+                  const iso = toISODate(d);
+                  const isSelected = iso === date;
+                  return (
+                    <button
+                      key={iso}
+                      onClick={() => setDate(iso)}
+                      className={`flex flex-col sm:block items-center justify-center gap-0.5 w-11 sm:w-auto px-0 sm:px-4 py-1.5 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-colors shrink-0 ${
+                        isSelected
+                          ? 'bg-[#050a44] text-white'
+                          : 'text-[#46464f] hover:bg-[#f1f3f9]'
+                      }`}
+                    >
+                      {/* Mobile: compact card — day number over weekday abbreviation */}
+                      <span className="sm:hidden text-base font-extrabold leading-none">
+                        {stripDayNumber(d)}
+                      </span>
+                      <span
+                        className={`sm:hidden text-[9px] font-bold uppercase tracking-wide leading-none ${
+                          isSelected ? 'text-white/70' : 'text-[#6b6d78]'
                         }`}
                       >
-                        {/* Mobile: compact card — day number over weekday abbreviation */}
-                        <span className="sm:hidden text-base font-extrabold leading-none">{stripDayNumber(d)}</span>
-                        <span
-                          className={`sm:hidden text-[9px] font-bold uppercase tracking-wide leading-none ${
-                            isSelected ? 'text-white/70' : 'text-[#6b6d78]'
-                          }`}
-                        >
-                          {stripWeekdayShort(d)}
-                        </span>
-                        {/* Desktop/tablet: full "Sun, 05 Jul" pill */}
-                        <span className="hidden sm:inline">{formatStripDate(d)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  onClick={() => setDateWindowOffset((o) => o + 1)}
-                  className="p-1.5 sm:p-2 rounded-full text-[#46464f] hover:bg-white transition-colors shrink-0"
-                  aria-label="Later dates"
-                >
-                  <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
+                        {stripWeekdayShort(d)}
+                      </span>
+                      {/* Desktop/tablet: full "Sun, 05 Jul" pill */}
+                      <span className="hidden sm:inline">{formatStripDate(d)}</span>
+                    </button>
+                  );
+                })}
               </div>
+              <button
+                onClick={() => setDateWindowOffset((o) => o + 1)}
+                className="p-1.5 sm:p-2 rounded-full text-[#46464f] hover:bg-[#f1f3f9] transition-colors shrink-0"
+                aria-label="Later dates"
+              >
+                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            </div>
             </div>
           </section>
 
           {/* Results list */}
-          <div className="p-4 sm:p-6 md:p-8">
+          <div className="p-4 sm:p-6 md:p-8 bg-white">
             <div className="flex justify-between items-center mb-6 sm:mb-8 px-1 sm:px-2 flex-wrap gap-2">
               <h1 className="text-lg sm:text-xl font-bold text-[#050a44]">
-                Buses from {query.from} to {query.to}
+                {t('Buses from {from} to {to}', { from: query.from, to: query.to })}
               </h1>
               <span className="text-sm font-semibold text-[#46464f]">
                 {filteredSchedules.length} result{filteredSchedules.length !== 1 ? 's' : ''} found
@@ -528,7 +598,8 @@ function SearchPageInner() {
                     key={s.id}
                     className="bg-white rounded-xl border border-[#c7c5d1] shadow-sm p-[24px] hover:shadow-md transition-shadow"
                   >
-                    {/* Header: navy operator badge + gold class pill */}
+                    {/* Header: navy OperatorBadge + gold class pill, same pattern as
+                        dashboard/my-bookings/marketplace ticket rows */}
                     <div className="flex justify-between items-center mb-[20px]">
                       <div className="flex items-center gap-[12px]">
                         <div className="w-11 h-11 rounded-lg bg-[#050a44] text-white flex items-center justify-center text-[13px] font-bold flex-shrink-0">
@@ -544,7 +615,9 @@ function SearchPageInner() {
                       </span>
                     </div>
 
-                    {/* Route visualization — click to open the route map overlay */}
+                    {/* Route visualization — click to open the route map overlay for this bus.
+                        Wrapped in the bg-[#f2f4f6] rounded-xl panel used for boarding/drop-off
+                        on the seats page and the route blocks on dashboard + my-bookings. */}
                     <button
                       type="button"
                       onClick={() => setRouteSchedule(s)}
@@ -563,7 +636,9 @@ function SearchPageInner() {
                         <div className="relative w-full border-t border-dashed border-[#c7c5d1] group-hover:border-[#050a44] transition-colors">
                           <BusIcon className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-4 h-4 bg-[#f2f4f6] px-0.5 text-[#050a44]" />
                         </div>
-                        <span className="text-[11px] font-bold text-[#46464f] mt-2">{s.stopLabel}</span>
+                        <span className="text-[11px] font-bold text-[#46464f] mt-2">
+                          {s.stopLabel}
+                        </span>
                         <span className="text-[10px] font-bold text-[#050a44] mt-1 tracking-wide uppercase group-hover:underline">
                           View route
                         </span>
@@ -575,12 +650,13 @@ function SearchPageInner() {
                       </div>
                     </button>
 
-                    {/* Footer: seats + price + CTA */}
+                    {/* Footer: seats + price + CTA, same button treatment as
+                        Buy Now / Grab Now / Select Seats elsewhere in the app */}
                     <div className="flex flex-wrap justify-between items-center gap-y-3">
                       <div className="flex items-center gap-[6px]">
                         <Armchair className="w-[18px] h-[18px] text-[#46464f]" />
                         <span className={`text-[13px] font-bold ${s.seatsRemaining <= 5 ? 'text-[#ba1a1a]' : 'text-[#46464f]'}`}>
-                          {s.seatsRemaining === 0 ? 'Full' : <><AnimatedNumber value={s.seatsRemaining} /> seats left</>}
+                          {s.seatsRemaining === 0 ? t('Full') : <><AnimatedNumber value={s.seatsRemaining} /> {t('seats left')}</>}
                         </span>
                         {s.trip.bikeSpaces > 0 && (
                           <span
@@ -590,22 +666,22 @@ function SearchPageInner() {
                             title="Space for bikes in the luggage compartment"
                           >
                             <span className="material-symbols-outlined text-[15px]">two_wheeler</span>
-                            {s.trip.bikeSpacesLeft > 0 ? 'Bike space' : 'No bike space'}
+                            {s.trip.bikeSpacesLeft > 0 ? t('Bike space') : 'No bike space'}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-[16px] ml-auto">
                         <p className="text-[22px] font-extrabold text-[#050a44]">{formatLKR(s.fare)}</p>
-                        {s.closed || s.seatsRemaining === 0 ? (
-                          <span className="bg-[#e1e2e4] text-[#46464f] rounded-xl px-6 py-2.5 text-[13px] font-bold whitespace-nowrap">
-                            {s.closed ? 'Booking closed' : 'Sold out'}
-                          </span>
+                        {s.closed ? (
+                          <span className="bg-[#e1e2e4] text-[#46464f] rounded-xl px-6 py-2.5 text-[13px] font-bold whitespace-nowrap">{t('Booking closed')}</span>
+                        ) : s.seatsRemaining === 0 ? (
+                          <WaitlistButton scheduleId={s.id} date={s.trip.date} from={s.trip.from} to={s.trip.to} />
                         ) : (
                           <Link
                             href={`/seats/${s.id}?${new URLSearchParams({ from: s.trip.from, to: s.trip.to, date: s.trip.date }).toString()}`}
                             className="bg-[#050a44] text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-90 active:scale-95 transition-all whitespace-nowrap"
                           >
-                            Select seats
+                            {t('Select seats')}
                           </Link>
                         )}
                       </div>

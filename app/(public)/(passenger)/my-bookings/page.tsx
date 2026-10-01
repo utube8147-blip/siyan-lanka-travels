@@ -7,11 +7,15 @@ import Link from 'next/link';
 import SeatSelectionDrawer, { type Gender } from '@/components/SeatSelectionDrawer';
 import { OPERATOR } from '@/config/operator';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
+import { useQrDataUrl } from '@/lib/qr';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
+import { NextTripPanel } from '@/components/trip/NextTripPanel';
+import { LoyaltyCard, PastTripsCard, WaitlistCard } from '@/components/trip/SidebarCards';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { toBookingView, type BookingView, type ViewStatus } from '@/lib/bookingView';
 import { addDays, cityCode, formatDateLabel, formatLKR, formatTime12, getTrip, refundQuote, takenSeats } from '@/lib/trips';
+import { useT } from '@/lib/i18n';
 
 type BookingStatus = ViewStatus;
 type Booking = BookingView;
@@ -240,6 +244,7 @@ function RescheduleModal({
 }
 
 function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => void }) {
+  const qr = useQrDataUrl(JSON.stringify({ ref: booking.bookingRef, op: 'SLT' }), 360);
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 print:relative print:inset-auto print:p-0 print:block">
       <div
@@ -317,14 +322,14 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
 
           <div className="border-t border-dashed border-[#c7c5d1]" />
 
-          <div className="flex items-center justify-center gap-[3px] py-[8px]">
-            {Array.from({ length: 36 }).map((_, i) => (
-              <div
-                key={i}
-                className="bg-[#050a44]"
-                style={{ width: 2, height: (i * 37) % 5 === 0 ? 34 : 20 + ((i * 13) % 14) }}
-              />
-            ))}
+          <div className="flex flex-col items-center py-[8px]">
+            {qr ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qr} alt={`Ticket QR code ${booking.bookingRef}`} width={180} height={180} className="w-[180px] h-[180px] rounded-lg" />
+            ) : (
+              <div className="w-[180px] h-[180px] rounded-lg skeleton" />
+            )}
+            <p className="text-[11px] text-[#46464f] mt-1">Show this to the conductor when you board</p>
           </div>
           <p className="text-center text-[11px] font-bold text-[#46464f] tracking-widest">{booking.bookingRef}</p>
         </div>
@@ -564,6 +569,7 @@ function PaymentSettleModal({
 }
 
 export default function MyBookingsPage() {
+  const { t } = useT();
   const router = useRouter();
   const { user, mode: authMode } = useAuth();
   const { data, ready, updateBooking } = useStore();
@@ -810,11 +816,12 @@ export default function MyBookingsPage() {
           </section>
 
           {/* Upcoming journeys */}
+          <NextTripPanel />
           <section>
             <div className="flex items-center justify-between mb-[16px]">
               <h2 className="text-[18px] font-bold text-[#050a44] flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#feb700]">event_upcoming</span>
-                Upcoming Journeys
+                {t('Upcoming Journeys')}
               </h2>
               {upcoming.length > 0 && (
                 <button className="text-[#050a44] font-bold text-[12px] hover:underline">View All</button>
@@ -902,6 +909,14 @@ export default function MyBookingsPage() {
                               Cancelling…
                             </button>
                           ) : (
+                            <>
+                            <a
+                              href={`/track?ref=${booking.bookingRef}`}
+                              className="bg-[#feb700] text-[#14120a] px-3 py-2.5 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">my_location</span>
+                              Track
+                            </a>
                             <button
                               onClick={() => setTicketTarget(booking)}
                               className="bg-[#050a44] text-white px-4 py-2.5 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
@@ -909,6 +924,7 @@ export default function MyBookingsPage() {
                               View Ticket
                               <span className="material-symbols-outlined text-[14px]">confirmation_number</span>
                             </button>
+                            </>
                           )}
                         </div>
                       </div>
@@ -941,9 +957,9 @@ export default function MyBookingsPage() {
         <aside className="w-full lg:w-[300px] flex-shrink-0 space-y-[20px]">
           <NotificationOptIn />
           <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
-            {authMode === 'demo' && (
-<div className="absolute left-0 top-0 w-1.5 h-full bg-gradient-to-b from-[#feb700] to-[#ffe08a]" />
-)}
+            <LoyaltyCard />
+          <WaitlistCard />
+          <PastTripsCard />
             <h4 className="font-bold text-[#050a44] text-[14px]">{OPERATOR.shortName} Rewards</h4>
             <p className="text-[12px] text-[#46464f]">
               You're only <span className="font-bold text-[#050a44]">{pointsToNextReward} pts</span> away from a free Gold-class upgrade!

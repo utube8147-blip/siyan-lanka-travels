@@ -36,6 +36,8 @@ export function screenTitle(path: string, params: URLSearchParams): string {
     ['/profile', 'Profile'],
     ['/bus', 'Routes & timetables'],
     ['/legal', 'Terms & policies'],
+    ['/services', 'Parcels & bus hire'],
+    ['/track', 'Track my bus'],
   ];
   return map.find(([b]) => startsWith(path, b))?.[1] ?? '';
 }
@@ -51,6 +53,8 @@ export function parentOf(path: string) {
     ['/bus', '/'],
     ['/dashboard', '/profile'],
     ['/legal', '/profile'],
+    ['/services', '/profile'],
+    ['/track', '/my-bookings'],
     ['/refund', '/my-bookings'],
   ];
   return map.find(([b]) => path.startsWith(b))?.[1] ?? '/';

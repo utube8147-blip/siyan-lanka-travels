@@ -7,14 +7,18 @@
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase, friendlyError } from '@/lib/supabase/client';
+import { toE164LK } from '@/lib/phone';
 
 /**
  * 'operator' = staff (operations: departures, bookings, fleet, timetable).
  * 'admin'    = super admin (everything staff can do + finance, expenses,
  *              crew, accounts, settings).
  */
-export type UserRole = 'passenger' | 'operator' | 'admin';
-export const isStaffRole = (r?: UserRole | null) => r === 'operator' || r === 'admin';
+export type UserRole = 'passenger' | 'conductor' | 'operator' | 'admin';
+/** Anyone working for the company (incl. conductors). */
+export const isStaffRole = (r?: UserRole | null) => r === 'operator' || r === 'admin' || r === 'conductor';
+/** Office staff (staff area); conductors only get the conductor page. */
+export const isOfficeRole = (r?: UserRole | null) => r === 'operator' || r === 'admin';
 
 export type MockUser = {
   id: string;
@@ -38,6 +42,10 @@ type AuthContextValue = {
   signIn: (email: string, password: string) => Promise<Result>;
   signUp: (p: { email: string; password: string; fullName: string; phone?: string }) => Promise<Result>;
   resetPassword: (email: string) => Promise<Result>;
+  /** Text a 6-digit code to a Sri Lankan mobile. createUser=false for sign-in only. */
+  sendPhoneCode: (phone: string, opts?: { createUser?: boolean; fullName?: string }) => Promise<Result>;
+  /** Check the code; signs the person in (and finishes sign-up). */
+  verifyPhoneCode: (phone: string, code: string, opts?: { fullName?: string; email?: string }) => Promise<Result>;
   logout: () => Promise<void>;
 };
 
@@ -70,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       id: u.id,
       email: u.email ?? '',
       phone: prof?.phone ?? u.phone ?? '',
-      role: prof?.role === 'admin' ? 'admin' : prof?.role === 'staff' ? 'operator' : 'passenger',
+      role: prof?.role === 'admin' ? 'admin' : prof?.role === 'staff' ? 'operator' : prof?.role === 'conductor' ? 'conductor' : 'passenger',
       user_metadata: {
         full_name: prof?.full_name || (u.user_metadata?.full_name as string) || (u.email ?? 'Traveller').split('@')[0],
         avatar_url: '',
@@ -116,10 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = (params: LoginParams = {}) => {
     if (mode === 'supabase') return; // real accounts only
     const { identifier, email, phone, role = 'passenger' } = params;
-    const fullName = params.fullName || (role === 'admin' ? 'Owner (super admin)' : role === 'operator' ? 'Operations Desk' : DEMO_USER.user_metadata.full_name);
+    const fullName = params.fullName || (role === 'admin' ? 'Owner (super admin)' : role === 'operator' ? 'Operations Desk' : role === 'conductor' ? 'Suresh (conductor)' : DEMO_USER.user_metadata.full_name);
     const looksLikeEmail = (identifier ?? '').includes('@');
     setDemoUser({
-      id: role === 'admin' ? 'mock-admin-1' : role === 'operator' ? 'mock-staff-1' : DEMO_USER.id,
+      id: role === 'admin' ? 'mock-admin-1' : role === 'operator' ? 'mock-staff-1' : role === 'conductor' ? 'mock-conductor-1' : DEMO_USER.id,
       email: email || (looksLikeEmail ? identifier! : DEMO_USER.email),
       phone: phone || (!looksLikeEmail && identifier ? identifier : DEMO_USER.phone),
       role,
@@ -158,6 +166,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return error ? { ok: false, reason: friendlyError(error) } : { ok: true };
   };
 
+  const sendPhoneCode = async (phone: string, opts: { createUser?: boolean; fullName?: string } = {}): Promise<Result> => {
+    const e164 = toE164LK(phone);
+    if (!e164) return { ok: false, reason: 'Enter a Sri Lankan mobile number, like 077 123 4567.' };
+    if (mode === 'demo') return { ok: true };
+    const { error } = await supabase().auth.signInWithOtp({
+      phone: e164,
+      options: { shouldCreateUser: opts.createUser ?? false, channel: 'sms', data: opts.fullName ? { full_name: opts.fullName, phone: e164 } : undefined },
+    });
+    if (!error) return { ok: true };
+    if (/signups not allowed|user not found/i.test(error.message)) return { ok: false, reason: 'No account with this number yet. Sign up first, it takes a minute.' };
+    if (/rate|too many|seconds/i.test(error.message)) return { ok: false, reason: 'Please wait a minute before asking for another code.' };
+    return { ok: false, reason: friendlyError(error) };
+  };
+
+  const verifyPhoneCode = async (phone: string, code: string, opts: { fullName?: string; email?: string } = {}): Promise<Result> => {
+    const e164 = toE164LK(phone);
+    if (!e164) return { ok: false, reason: 'Check the mobile number.' };
+    const token = code.replace(/\D/g, '');
+    if (token.length !== 6) return { ok: false, reason: 'Enter the 6-digit code from the text message.' };
+    if (mode === 'demo') {
+      if (token !== '123456') return { ok: false, reason: 'Wrong code. (Demo mode: the code is 123456.)' };
+      login({ phone: e164, identifier: e164, fullName: opts.fullName, email: opts.email });
+      return { ok: true };
+    }
+    const { data, error } = await supabase().auth.verifyOtp({ phone: e164, token, type: 'sms' });
+    if (error) return { ok: false, reason: /expired|invalid/i.test(error.message) ? 'That code is wrong or has expired. Ask for a new one.' : friendlyError(error) };
+    // Keep the profile in step (name from sign-up, number from the verified phone).
+    const uid = data.user?.id;
+    if (uid) {
+      const patch: Record<string, string> = { phone: e164 };
+      if (opts.fullName) patch.full_name = opts.fullName;
+      await supabase().from('profiles').update(patch).eq('id', uid);
+      if (opts.email) await supabase().auth.updateUser({ email: opts.email }).catch(() => undefined);
+      await applySession(data.session);
+    }
+    return { ok: true };
+  };
+
   const logout = async () => {
     if (mode === 'supabase') await supabase().auth.signOut();
     else setDemoUser(null);
@@ -165,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ mode, user, isLoggedIn: !!user, isLoading, login, signIn, signUp, resetPassword, logout }}>
+    <AuthContext.Provider value={{ mode, user, isLoggedIn: !!user, isLoading, login, signIn, signUp, resetPassword, sendPhoneCode, verifyPhoneCode, logout }}>
       {children}
     </AuthContext.Provider>
   );

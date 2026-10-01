@@ -14,6 +14,7 @@ import {
   Route as RouteIcon,
   ShieldCheck,
   Store,
+  Package,
   Ticket,
   Undo2,
   Wallet,
@@ -24,6 +25,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ThemeSegmented } from '@/components/ThemeToggle';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
 import { InstallAppButton } from '@/components/InstallAppButton';
+import { LanguageSwitcher, useT } from '@/lib/i18n';
 
 type RowProps = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; hint?: string; external?: boolean };
 
@@ -64,6 +66,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 }
 
 export default function ProfilePage() {
+  const { t } = useT();
   const { user, logout } = useAuth();
   const resaleOn = useResaleEnabled();
   const router = useRouter();
@@ -85,7 +88,7 @@ export default function ProfilePage() {
           {user ? initials : '?'}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[17px] font-semibold text-[#050a44] truncate">{user ? name : 'Not signed in'}</p>
+          <p className="text-[17px] font-semibold text-[#050a44] truncate">{user ? name : t('Not signed in')}</p>
           <p className="text-[13px] text-[#6b6d78] truncate">{user ? user.email : 'Sign in to see your tickets on any device'}</p>
         </div>
         {user ? (
@@ -99,20 +102,23 @@ export default function ProfilePage() {
         )}
       </div>
 
-      <Group title="Travel">
-        <Row href="/my-bookings" icon={Ticket} label="My trips" hint="Tickets, seat changes, cancellations" />
-        <Row href="/dashboard" icon={Wallet} label="Wallet & rewards" hint="Credits, points, booking history" />
-        {resaleOn && <Row href="/marketplace" icon={Store} label="Resale tickets" hint="Buy or sell a seat" />}
-        <Row href="/bus" icon={RouteIcon} label="Routes & timetables" hint="Stops, times and fares" />
+      <Group title={t('Travel')}>
+        <Row href="/my-bookings" icon={Ticket} label={t('My trips')} hint={t('Tickets, seat changes, cancellations')} />
+        <Row href="/dashboard" icon={Wallet} label={t('Wallet & rewards')} hint="Credits, points, booking history" />
+        {resaleOn && <Row href="/marketplace" icon={Store} label={t('Resale tickets')} hint="Buy or sell a seat" />}
+        <Row href="/bus" icon={RouteIcon} label={t('Routes & timetables')} hint="Stops, times and fares" />
+        <Row href="/services" icon={Package} label={t('Send a parcel or hire a bus')} hint="Get a quote" />
       </Group>
 
       <section className="space-y-3">
         <h2 className="px-4 text-[12px] font-semibold uppercase text-[#6b6d78]" style={{ fontFamily: 'var(--font-sans)', letterSpacing: '0.08em' }}>
-          App
+          {t('App')}
         </h2>
         <div className="bg-white rounded-2xl border border-[#edeef0] p-4 space-y-3">
-          <p className="text-[15px] font-medium text-[#050a44]">Appearance</p>
+          <p className="text-[15px] font-medium text-[#050a44]">{t('Appearance')}</p>
           <ThemeSegmented />
+          <p className="text-[15px] font-medium text-[#050a44] pt-2">{t('Language')}</p>
+          <LanguageSwitcher />
         </div>
         <NotificationOptIn />
         <div className="empty:hidden">
@@ -120,16 +126,16 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <Group title="Help">
-        <Row href={`mailto:${OPERATOR.contact.email}`} icon={Mail} label="Email us" hint={OPERATOR.contact.email} external />
-        {OPERATOR.contact.phone ? <Row href={OPERATOR.contact.phoneHref} icon={Phone} label="Call us" hint={OPERATOR.contact.phone} external /> : null}
-        <Row href="/bus" icon={MapPin} label="Where the bus leaves from" hint={OPERATOR.contact.address} />
+      <Group title={t('Help')}>
+        <Row href={`mailto:${OPERATOR.contact.email}`} icon={Mail} label={t('Email us')} hint={OPERATOR.contact.email} external />
+        {OPERATOR.contact.phone ? <Row href={OPERATOR.contact.phoneHref} icon={Phone} label={t('Call us')} hint={OPERATOR.contact.phone} external /> : null}
+        <Row href="/bus" icon={MapPin} label={t('Where the bus leaves from')} hint={OPERATOR.contact.address} />
       </Group>
 
-      <Group title="Legal">
-        <Row href="/legal#terms" icon={FileText} label="Terms of travel" />
-        <Row href="/legal#privacy" icon={ShieldCheck} label="Privacy policy" />
-        <Row href="/legal#refunds" icon={Undo2} label="Cancellation & refund policy" />
+      <Group title={t('Legal')}>
+        <Row href="/legal#terms" icon={FileText} label={t('Terms of travel')} />
+        <Row href="/legal#privacy" icon={ShieldCheck} label={t('Privacy policy')} />
+        <Row href="/legal#refunds" icon={Undo2} label={t('Cancellation & refund policy')} />
       </Group>
 
       {user && (
@@ -140,7 +146,7 @@ export default function ProfilePage() {
           }}
           className="w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-white border border-[#edeef0] text-[15px] font-semibold text-[#ba1a1a]"
         >
-          <LogOut className="w-[18px] h-[18px]" /> Sign out
+          <LogOut className="w-[18px] h-[18px]" /> {t('Sign out')}
         </button>
       )}
 

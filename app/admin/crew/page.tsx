@@ -9,6 +9,7 @@ import { useErp, type CrewMember, type CrewRole } from '@/lib/erp';
 import { formatLKR, genId, todayISO } from '@/lib/trips';
 import { AdminOnly, ExpiryBadge } from '@/components/admin/AdminOnly';
 import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { uuid } from '@/lib/uuid';
 
 const ROLES: CrewRole[] = ['driver', 'conductor', 'cleaner', 'mechanic', 'office'];
 
@@ -34,7 +35,7 @@ function Crew() {
   const paySalaries = async () => {
     for (const c of crew.filter((x) => x.active && x.monthlySalary > 0)) {
       const r = await erp.expenses.save({
-        id: genId('exp'), spentOn: todayISO(), category: 'salary', amount: c.monthlySalary, busId: c.busId ?? null,
+        id: uuid(), spentOn: todayISO(), category: 'salary', amount: c.monthlySalary, busId: c.busId ?? null,
         description: `${c.role[0].toUpperCase() + c.role.slice(1)}: ${c.fullName}`, vendor: '', paymentMethod: 'bank',
       });
       if (!r.ok) return toast(r.reason ?? 'Could not record salaries', 'error');
@@ -53,7 +54,7 @@ function Crew() {
             <Button variant="secondary" disabled={!payroll} onClick={() => setPaying(true)}>
               <Wallet className="w-4 h-4" /> Pay salaries
             </Button>
-            <Button variant="gold" onClick={() => setEditing({ id: genId('crew'), fullName: '', role: 'driver', phone: '', licenseNo: '', licenseExpires: null, monthlySalary: 0, busId: data.buses[0]?.id ?? null, active: true, notes: '' })}>
+            <Button variant="gold" onClick={() => setEditing({ id: uuid(), fullName: '', role: 'driver', phone: '', licenseNo: '', licenseExpires: null, monthlySalary: 0, busId: data.buses[0]?.id ?? null, active: true, notes: '' })}>
               <Plus className="w-4 h-4" /> Add person
             </Button>
           </>
