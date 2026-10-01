@@ -67,7 +67,7 @@ export function TopNav() {
   return (
     <>
       {/* Top bar — desktop nav lives here, mobile just shows logo + avatar/bell */}
-      <nav className={`hidden md:flex sticky top-0 z-40 bg-white/90 backdrop-blur-md h-20 w-full px-4 md:px-[64px] justify-between items-center border-b border-[#edeef0] transition-transform duration-300 ease-out motion-reduce:transition-none ${headerHidden ? '-translate-y-full' : 'translate-y-0'}`}
+      <nav className={`hidden md:flex sticky top-0 z-40 bg-white/90 backdrop-blur-md h-20 w-full px-4 md:px-[32px] justify-between items-center border-b border-[#edeef0] transition-transform duration-300 ease-out motion-reduce:transition-none ${headerHidden ? '-translate-y-full' : 'translate-y-0'}`}
         onFocusCapture={() => setHidden(false)}
       >
         <Link href="/" aria-label={`${OPERATOR.name} home`}>
