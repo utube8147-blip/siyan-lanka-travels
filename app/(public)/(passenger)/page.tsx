@@ -56,6 +56,21 @@ export default function LandingPage() {
   }, [paused]);
 
   const stopsRef = useStaggerIn<HTMLOListElement>();
+
+  // "Where we stop" snake layout below xl: how many stops fit in one row.
+  const [stopCols, setStopCols] = useState(3);
+  useEffect(() => {
+    const calc = () => {
+      const w = window.innerWidth;
+      setStopCols(w < 640 ? 3 : w < 1024 ? 5 : 7);
+    };
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
+  const stopRows = firstRoute
+    ? Array.from({ length: Math.ceil(firstRoute.stops.length / stopCols) }, (_, r) => firstRoute.stops.slice(r * stopCols, r * stopCols + stopCols))
+    : [];
   const bikesRef = useStaggerIn<HTMLDivElement>();
   const weeklyDepartures = data.schedules.filter((s) => s.active).reduce((n, s) => n + s.days.length, 0);
   const activeBuses = data.buses.filter((b) => b.status === 'active');
@@ -83,13 +98,17 @@ export default function LandingPage() {
         <section className="relative w-full lg:min-h-[560px] lg:h-[calc(100dvh-80px)]">
           <div className="hidden lg:block absolute inset-0 z-0 overflow-hidden">
             <img alt="" className="w-full h-full object-cover object-[65%_center]" src={HERO_IMAGE} />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/15" />
+            {/* Flat faint overlay so the whole photo is evenly toned down */}
+            <div className="absolute inset-0 bg-black/25" />
+            {/* Directional gradient: darkest behind the headline, lighter toward the right */}
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/35" />
           </div>
 
           <div className="relative z-10 h-full lg:px-16 lg:py-6 grid grid-cols-1 lg:grid-cols-2 lg:gap-[48px] items-center max-w-[1440px] mx-auto">
             <div className="relative overflow-hidden lg:overflow-visible text-center lg:text-left px-6 md:px-12 lg:px-0 pt-14 pb-14 md:pt-20 md:pb-20 lg:py-0">
               <div className="lg:hidden absolute inset-0" aria-hidden>
                 <img alt="" className="w-full h-full object-cover object-[60%_center]" src={HERO_IMAGE} />
+                <div className="absolute inset-0 bg-black/15" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/55 to-black/80" />
               </div>
               <div className="relative">
@@ -193,7 +212,9 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Stops along the way */}
+        {/* Stops along the way.
+            Below xl: a vertical timeline that unfolds downwards (no sideways scrolling).
+            xl and up: the horizontal timeline. */}
         {firstRoute && (
           <section className="py-[56px] bg-[#fcfcfd]">
             <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
@@ -201,9 +222,57 @@ export default function LandingPage() {
               <p className="text-[15px] text-[#46464f] mb-10 max-w-xl">
                 Get on or off at any of these. Fares shown from {firstRoute.stops[0].name}; you only pay for the part you ride.
               </p>
-              <div className="overflow-x-auto no-scrollbar -mx-4 px-4">
+
+              {/* Snake layout below xl: row 1 runs left to right, drops down at the
+                  edge, row 2 runs right to left, and so on. */}
+              <div className="xl:hidden">
+                {stopRows.map((row, r) => {
+                  const reversed = r % 2 === 1;
+                  const isLastRow = r === stopRows.length - 1;
+                  const cell = 100 / stopCols;
+                  const edge = `calc(${cell / 2}% - 1.5px)`;
+                  return (
+                    <ol key={r} className={`relative flex ${reversed ? 'flex-row-reverse' : 'flex-row'} ${isLastRow ? '' : 'pb-10'}`}>
+                      {/* Horizontal line through this row's dots */}
+                      {row.length > 1 && (
+                        <div
+                          className="absolute top-[11px] h-[3px] bg-[#9a99a8]/60 rounded-full"
+                          style={{ width: `${(row.length - 1) * cell}%`, [reversed ? 'right' : 'left']: `${cell / 2}%` }}
+                          aria-hidden
+                        />
+                      )}
+                      {/* Drop down to the next row at the edge where this row ends */}
+                      {!isLastRow && (
+                        <div
+                          className="absolute top-[11px] -bottom-[11px] w-[3px] bg-[#9a99a8]/60 rounded-full"
+                          style={{ [reversed ? 'left' : 'right']: edge }}
+                          aria-hidden
+                        />
+                      )}
+                      {row.map((stop, j) => {
+                        const i = r * stopCols + j;
+                        const ends = i === 0 || i === firstRoute.stops.length - 1;
+                        return (
+                          <li key={stop.name} className="relative flex flex-col items-center text-center" style={{ width: `${cell}%` }}>
+                            <span
+                              className={`relative z-10 w-6 h-6 rounded-full border-4 border-[#fcfcfd] ${ends ? 'bg-[#050a44]' : 'bg-[#feb700]'}`}
+                              aria-hidden
+                            />
+                            <span className="mt-3 text-[13px] sm:text-[14px] font-bold text-[#050a44] leading-tight px-1">{stop.name}</span>
+                            <span className="text-[11px] sm:text-[12px] font-medium text-[#46464f]">{i === 0 ? 'Start' : formatDuration(stop.offsetMin)}</span>
+                            {i > 0 && <span className="mt-1 text-[11px] sm:text-[12px] font-bold text-[#7c5800]">{formatLKR(stop.fareFromStart)}</span>}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  );
+                })}
+              </div>
+
+              {/* Horizontal (wide screens) */}
+              <div className="hidden xl:block overflow-x-auto no-scrollbar -mx-4 px-4">
                 <ol ref={stopsRef} className="relative flex min-w-[1080px]">
-                  <div className="absolute left-3 right-3 top-[11px] h-[3px] bg-[#050a44]/15 rounded-full" aria-hidden />
+                  <div className="absolute left-3 right-3 top-[11px] h-[3px] bg-[#9a99a8]/60 rounded-full" aria-hidden />
                   {firstRoute.stops.map((stop, i) => {
                     const ends = i === 0 || i === firstRoute.stops.length - 1;
                     return (
