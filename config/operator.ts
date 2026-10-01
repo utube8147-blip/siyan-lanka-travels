@@ -75,7 +75,6 @@ export const OPERATOR = {
    */
   bikes: {
     kinds: {
-      bicycle: { label: 'Bicycle', icon: 'pedal_bike', spaces: 1, fullRouteFee: 600 },
       scooter: { label: 'Scooter / e-bike', icon: 'moped', spaces: 2, fullRouteFee: 1200 },
       motorbike: { label: 'Motorbike', icon: 'two_wheeler', spaces: 2, fullRouteFee: 1500 },
     },

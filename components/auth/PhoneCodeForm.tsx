@@ -80,11 +80,15 @@ export function PhoneCodeForm({
           <label className="block">
             <span className="text-[13px] font-semibold text-[#050a44]">Mobile number</span>
             <div className="mt-1.5 flex gap-2">
-              <span className="h-12 px-3 rounded-xl bg-[#f2f4f6] border border-[#c7c5d1] flex items-center text-[15px] font-semibold text-[#050a44]" aria-hidden>
-                🇱🇰 +94
+              <span
+                className="h-12 px-3 shrink-0 rounded-xl bg-[#f2f4f6] border border-[#c7c5d1] flex items-center gap-1.5 text-[15px] font-semibold text-[#050a44] whitespace-nowrap"
+                aria-hidden
+              >
+                <span className="text-[11px] font-bold text-[#6b6d78]">LK</span>
+                +94
               </span>
               <input
-                className={authInput}
+                className={`${authInput} min-w-0 flex-1`}
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel-national"

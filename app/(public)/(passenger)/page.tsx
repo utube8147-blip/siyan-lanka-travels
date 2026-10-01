@@ -246,7 +246,7 @@ export default function LandingPage() {
                   {t('Book a seat and a bike space')} <ArrowRight className="w-5 h-5" />
                 </Link>
               </div>
-              <div ref={bikesRef} className="grid grid-cols-3 gap-3 sm:gap-4">
+              <div ref={bikesRef} className="grid grid-cols-2 gap-3 sm:gap-4">
                 {Object.values(OPERATOR.bikes.kinds).map((k) => (
                   <div key={k.label} className="rounded-2xl border border-[#c7c5d1] p-3 sm:p-5 bg-[#fcfcfd]">
                     <span className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#050a44] text-[#feb700] flex items-center justify-center">
@@ -266,7 +266,7 @@ export default function LandingPage() {
         )}
 
         {/* Parcels & bus hire */}
-        <section className="py-[40px] bg-[#fcfcfd] border-t border-[#edeef0]">
+        {/* <section className="py-[40px] bg-[#fcfcfd] border-t border-[#edeef0]">
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto flex flex-col md:flex-row md:items-center justify-between gap-5">
             <div>
               <h2 className="text-[22px] md:text-[28px] font-bold text-[#050a44]">{t('Send a parcel or hire a bus')}</h2>
@@ -276,7 +276,7 @@ export default function LandingPage() {
               {t('Get a quote')} <ArrowRight className="w-5 h-5" />
             </Link>
           </div>
-        </section>
+        </section> */}
 
         {/* The coach + fleet */}
         <section className="py-[56px] bg-white overflow-hidden">
