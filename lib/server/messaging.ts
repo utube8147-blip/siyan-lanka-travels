@@ -1,4 +1,5 @@
-// SMS (Notify.lk) and WhatsApp (Meta WhatsApp Cloud API) senders.
+// Booking / trip message senders: SMS (Notify.lk) and WhatsApp (Meta Cloud API).
+// Sign-in codes are NOT sent from here: Supabase sends those via MessageBird.
 // Without credentials they return 'skipped' so the queue still drains.
 
 export type SendResult = { status: 'sent' | 'failed' | 'skipped'; error?: string };

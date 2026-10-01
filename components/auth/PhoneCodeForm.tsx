@@ -1,5 +1,6 @@
 'use client';
-// Mobile number → 6-digit SMS code (sent through Notify.lk). Used for both
+// Mobile number → 6-digit SMS code. Supabase sends the code via MessageBird
+// (set in the Supabase dashboard; README → Phone sign-in). Used for both
 // signing in and signing up.
 
 import { useEffect, useRef, useState } from 'react';
@@ -11,9 +12,12 @@ export function PhoneCodeForm({
   mode,
   onDone,
   extra,
+  onUseEmail,
 }: {
   mode: 'signin' | 'signup';
   onDone: () => void;
+  /** Switch to the email form (offered when texts can't be sent). */
+  onUseEmail?: () => void;
   /** Sign-up fields (name, email) rendered above the number. Return null when valid, or an error. */
   extra?: { render: () => React.ReactNode; validate: () => string | null; fullName: () => string; email: () => string };
 }) {
@@ -24,6 +28,7 @@ export function PhoneCodeForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wait, setWait] = useState(0);
+  const [smsDown, setSmsDown] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -51,7 +56,10 @@ export function PhoneCodeForm({
     setBusy(true);
     const r = await sendPhoneCode(phone, { createUser: mode === 'signup', fullName: extra?.fullName() });
     setBusy(false);
-    if (!r.ok) return setError(r.reason);
+    if (!r.ok) {
+      setSmsDown('code' in r && r.code === 'sms_unavailable');
+      return setError(r.reason);
+    }
     setStep('code');
     setWait(30);
     setTimeout(() => codeRef.current?.focus(), 50);
@@ -80,15 +88,11 @@ export function PhoneCodeForm({
           <label className="block">
             <span className="text-[13px] font-semibold text-[#050a44]">Mobile number</span>
             <div className="mt-1.5 flex gap-2">
-              <span
-                className="h-12 px-3 shrink-0 rounded-xl bg-[#f2f4f6] border border-[#c7c5d1] flex items-center gap-1.5 text-[15px] font-semibold text-[#050a44] whitespace-nowrap"
-                aria-hidden
-              >
-                <span className="text-[11px] font-bold text-[#6b6d78]">LK</span>
-                +94
+              <span className="h-12 px-3 shrink-0 whitespace-nowrap rounded-xl bg-[#f2f4f6] border border-[#c7c5d1] flex items-center gap-1 text-[15px] font-semibold text-[#050a44]" aria-hidden>
+                🇱🇰 +94
               </span>
               <input
-                className={`${authInput} min-w-0 flex-1`}
+                className={authInput}
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel-national"
@@ -104,6 +108,11 @@ export function PhoneCodeForm({
             </span>
           </label>
           {error && <p role="alert" className="text-[13px] font-semibold text-[#ba1a1a]">{error}</p>}
+          {smsDown && onUseEmail && (
+            <button type="button" onClick={onUseEmail} className="w-full h-12 rounded-xl border border-[#050a44] text-[#050a44] text-[15px] font-semibold">
+              {mode === 'signup' ? 'Sign up with email instead' : 'Sign in with email instead'}
+            </button>
+          )}
           <button className={authButton} disabled={busy}>{busy ? 'Sending code…' : 'Send code'}</button>
         </>
       ) : (

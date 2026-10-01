@@ -30,7 +30,7 @@ export type MockUser = {
 export type AppUser = MockUser;
 
 export type LoginParams = { identifier?: string; email?: string; phone?: string; role?: UserRole; fullName?: string };
-type Result = { ok: true; needsEmailConfirmation?: boolean } | { ok: false; reason: string };
+type Result = { ok: true; needsEmailConfirmation?: boolean } | { ok: false; reason: string; code?: 'sms_unavailable' };
 
 type AuthContextValue = {
   mode: 'supabase' | 'demo';
@@ -176,6 +176,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (!error) return { ok: true };
     if (/signups not allowed|user not found/i.test(error.message)) return { ok: false, reason: 'No account with this number yet. Sign up first, it takes a minute.' };
+    if (/unsupported phone provider|phone.*(disabled|not enabled)|sms|provider|twilio|vonage|messagebird/i.test(error.message)) {
+      // Supabase couldn't send the text: Phone provider off or SMS provider not set up (README → Phone sign-in).
+      console.warn('[phone sign-in] Supabase could not send the SMS:', error.message, '→ Supabase → Authentication → Sign In / Providers → Phone: turn on, provider MessageBird, add the access key + originator (README → Phone sign-in).');
+      return { ok: false, reason: "We can't send text codes right now. Please use email instead, or try again later.", code: 'sms_unavailable' };
+    }
     if (/rate|too many|seconds/i.test(error.message)) return { ok: false, reason: 'Please wait a minute before asking for another code.' };
     return { ok: false, reason: friendlyError(error) };
   };

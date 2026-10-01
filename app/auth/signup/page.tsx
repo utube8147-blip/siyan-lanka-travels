@@ -57,6 +57,7 @@ export default function SignupPage() {
         <PhoneCodeForm
           mode="signup"
           onDone={done}
+          onUseEmail={() => { setMethod('email'); setError(null); }}
           extra={{
             render: () => (
               <>

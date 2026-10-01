@@ -95,22 +95,33 @@ Same pages, two layouts, switched at the `md` breakpoint (768px):
   offline notice (`components/OfflineIndicator.tsx`) replace spinners and
   blank pages.
 
-## Phone sign-in (Notify.lk)
+## Phone sign-in (MessageBird, through Supabase)
 Passengers sign up and sign in with their mobile number and a 6-digit text
-code (email + password is still offered). Supabase sends the code through
-our own route, which texts it with Notify.lk:
-1. Notify.lk: create an account at https://app.notify.lk, top up, request a
-   sender ID (e.g. "SiyanLanka"; until it's approved use "NotifyDEMO"), and
-   copy the User ID and API key into `NOTIFYLK_USER_ID`, `NOTIFYLK_API_KEY`,
-   `NOTIFYLK_SENDER_ID`.
-2. Supabase → Authentication → Sign In / Providers → **Phone**: enable it
-   (no SMS provider needed there).
-3. Supabase → Authentication → **Hooks** → *Send SMS hook* → HTTPS →
-   `https://your-domain/api/auth/sms-hook`. Generate the secret and put it in
-   `SUPABASE_SMS_HOOK_SECRET`.
-4. Optional: Authentication → Rate limits (SMS per hour) and OTP expiry.
-The route checks Supabase's signature before sending, so nobody else can use
-it to send texts. Demo mode: no text is sent; the code is **123456**.
+code (email + password is still offered). **Supabase sends the codes itself
+via MessageBird**; there's no MessageBird code or key in this app, and it
+works on `localhost` too.
+
+1. **MessageBird** (now part of *Bird*): create an account, add credit, and
+   copy a **live API access key** (Developers → API access). Choose an
+   originator (sender name, max 11 letters/digits, e.g. `SiyanLanka`).
+   Sri Lankan networks may require the sender name to be registered first;
+   until then use a number as the originator. Note: Supabase uses the
+   classic MessageBird SMS API. If a new Bird account doesn't offer a classic
+   live access key, Twilio Verify or Vonage work the same way in step 2.
+2. Supabase → Authentication → **Sign In / Providers → Phone**: turn on,
+   SMS provider **MessageBird**, paste the access key and originator, save.
+   The text template ("Your code is {{ .Code }}") and code expiry are here too.
+3. Authentication → **Rate Limits**: check the SMS-per-hour limit.
+4. Testing without paying for texts: in the same Phone settings add **test
+   phone numbers** with a fixed code (e.g. `94771234567=123456`).
+
+If MessageBird isn't set up (Supabase answers "Unsupported phone provider"),
+passengers see "We can't send text codes right now" with a one-tap "use
+email instead", and the browser console says what to fix.
+Demo mode (no Supabase): no text is sent; the code is **123456**.
+
+**All other texts use Notify.lk** (booking confirmed, seat held, cancelled,
+trip updates, waitlist offers): sent by `/api/messages/dispatch`; see Messages.
 
 ## Payments
 - Passengers choose **Card / Mobile wallet** (PayHere: Visa, Mastercard,
