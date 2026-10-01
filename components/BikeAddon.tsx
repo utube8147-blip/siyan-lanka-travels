@@ -11,7 +11,6 @@ import { bikeFee, bikeSpacesFor, compressPhoto, formatLKR, genId } from '@/lib/t
 import { useT } from '@/lib/i18n';
 
 const KINDS = Object.keys(OPERATOR.bikes.kinds) as BikeKind[];
-const needsPlate = (k: BikeKind) => k !== 'bicycle';
 
 /** Human-readable reason the bikes can't be booked yet, or null when all good. */
 export function bikesProblem(bikes: BikeItem[]): string | null {
@@ -19,7 +18,7 @@ export function bikesProblem(bikes: BikeItem[]): string | null {
     const n = bikes.length > 1 ? ` for bike ${i + 1}` : '';
     if (!b.photo) return `Upload a photo${n}.`;
     if (b.description.trim().length < 3) return `Add the make and colour${n}.`;
-    if (needsPlate(b.kind) && b.regNo.trim().length < 4) return `Add the number plate${n}.`;
+    if (b.regNo.trim().length < 4) return `Add the number plate${n}.`;
   }
   return null;
 }
@@ -189,8 +188,8 @@ function BikeCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-[8px]" role="radiogroup" aria-label="Kind of bike">
-        {(Object.keys(OPERATOR.bikes.kinds) as BikeKind[]).map((k) => {
+      <div className="grid grid-cols-2 gap-[8px]" role="radiogroup" aria-label="Kind of bike">
+        {KINDS.map((k) => {
           const meta = OPERATOR.bikes.kinds[k];
           const selected = bike.kind === k;
           const fits = meta.spaces <= spacesForSwitch;
@@ -268,24 +267,22 @@ function BikeCard({
               id={`${inputId}-desc`}
               value={bike.description}
               onChange={(e) => onChange({ description: e.target.value })}
-              placeholder={bike.kind === 'bicycle' ? 'e.g. Mountain bike, green' : 'e.g. Honda Dio, red'}
+              placeholder="e.g. Honda Dio, red"
               className={fieldClass}
             />
           </div>
-          {needsPlate(bike.kind) && (
-            <div>
-              <label className="text-[11px] font-bold text-[#46464f] px-1" htmlFor={`${inputId}-reg`}>
-                Number plate
-              </label>
-              <input
-                id={`${inputId}-reg`}
-                value={bike.regNo}
-                onChange={(e) => onChange({ regNo: e.target.value.toUpperCase() })}
-                placeholder="e.g. EP BGK-1234"
-                className={fieldClass}
-              />
-            </div>
-          )}
+          <div>
+            <label className="text-[11px] font-bold text-[#46464f] px-1" htmlFor={`${inputId}-reg`}>
+              Number plate
+            </label>
+            <input
+              id={`${inputId}-reg`}
+              value={bike.regNo}
+              onChange={(e) => onChange({ regNo: e.target.value.toUpperCase() })}
+              placeholder="e.g. EP BGK-1234"
+              className={fieldClass}
+            />
+          </div>
           <p className="text-[11px] text-[#46464f]">
             Uses {OPERATOR.bikes.kinds[bike.kind].spaces} space{OPERATOR.bikes.kinds[bike.kind].spaces > 1 ? 's' : ''} in the compartment. The crew checks it against your photo at loading.
           </p>
