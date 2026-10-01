@@ -102,7 +102,15 @@ function availabilityBookings(seats: any[], bikeUsage: any[], visible: Booking[]
       date: u.travel_date,
       seats: [],
       passenger: { name: '', gender: '', phone: '' },
-      bikes: Array.from({ length: others }, (_, i) => ({ id: `b${i}`, kind: 'bicycle' as const, description: '', regNo: '', photo: '', fee: 0 })),
+      // One placeholder bike per bikeSpacesFor('scooter') spaces; rounds up so the compartment is never oversold.
+      bikes: Array.from({ length: Math.ceil(others / bikeSpacesFor('scooter')) }, (_, i) => ({
+        id: `b${i}`,
+        kind: 'scooter' as const,
+        description: '',
+        regNo: '',
+        photo: '',
+        fee: 0,
+      })),
     });
   }
   return out;
