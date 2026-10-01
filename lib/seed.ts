@@ -6,7 +6,7 @@
 // browser; "Reset demo data" restores this file).
 
 import { OPERATOR } from '@/config/operator';
-import type { Booking, Bus, Gender, Route, Schedule, StoreData } from './types';
+import type { Booking, BikeKind, Bus, Gender, Route, Schedule, StoreData } from './types';
 import { addDays, busCapacity, departureDate, parseISODate, seatIds, todayISO } from './trips';
 
 export const STORE_VERSION = 3;
@@ -182,16 +182,20 @@ function seedBookings(): Booking[] {
         // Now and then a passenger brings a bike, while there's space.
         const used = out.filter((x) => x.scheduleId === sch.id && x.date === date).reduce((n, x) => n + (x.bikes?.length ?? 0) * 2, 0);
         if (r() < 0.12 && used + 2 <= SEED_BUSES[0].bikeSpaces) {
-          const kind = r() < 0.6 ? 'motorbike' : 'bicycle';
+          const kind: BikeKind = r() < 0.6 ? 'motorbike' : 'scooter';
           const share = fare / route.stops[route.stops.length - 1].fareFromStart;
           const fee = Math.max(OPERATOR.bikes.minFee, Math.round((OPERATOR.bikes.kinds[kind].fullRouteFee * share) / 50) * 50);
           const last = out[out.length - 1];
+          const models =
+            kind === 'motorbike'
+              ? ['Honda Dio, red', 'Bajaj Pulsar 150, black', 'TVS Apache, blue']
+              : ['Honda Dio, white', 'TVS Jupiter, grey', 'Yamaha Fascino, teal'];
           last.bikes = [
             {
               id: `bike-${last.id}`,
               kind,
-              description: kind === 'motorbike' ? ['Honda Dio, red', 'Bajaj Pulsar 150, black', 'TVS Apache, blue'][Math.floor(r() * 3)] : 'Mountain bike, green',
-              regNo: kind === 'motorbike' ? `EP ${['BGK', 'BHC', 'BFT'][Math.floor(r() * 3)]}-${1000 + Math.floor(r() * 8999)}` : '',
+              description: models[Math.floor(r() * 3)],
+              regNo: `EP ${['BGK', 'BHC', 'BFT'][Math.floor(r() * 3)]}-${1000 + Math.floor(r() * 8999)}`,
               photo: '',
               fee,
             },
