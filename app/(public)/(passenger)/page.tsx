@@ -13,10 +13,10 @@ import { useStore } from '@/lib/store';
 import { addDays, allStopNames, busCapacity, findTrips, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route } from '@/lib/types';
 
-const HERO_IMAGE = '/brand/bus.jpg';
+const HERO_IMAGE = '/brand/bus.png';
 
 const INTERIOR_CARDS = [
-  { image: '/brand/interior.jpg', title: 'Reclining leather seats', subtitle: 'Room to sleep on the overnight run east' },
+  { image: '/brand/interior.png', title: 'Reclining leather seats', subtitle: 'Room to sleep on the overnight run east' },
   { image: '/brand/poster.jpg', title: 'ND 2323, Siyan Lanka Travels', subtitle: 'Your coach, every trip' },
 ];
 

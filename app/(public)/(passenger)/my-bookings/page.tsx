@@ -803,7 +803,7 @@ export default function MyBookingsPage() {
                 <img
                   alt="Siyan Lanka coach interior"
                   className="w-full h-full object-cover"
-                  src="/brand/interior.jpg"
+                  src="/brand/interior.png"
                 />
               </div>
             </div>

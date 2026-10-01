@@ -54,7 +54,7 @@ export default function SignupPage() {
       <div className="hidden md:flex flex-1 bg-primary relative overflow-hidden items-center justify-center order-2 md:order-1">
         <div className="absolute inset-0 z-0">
           <img 
-            src="/brand/bus.jpg" 
+            src="/brand/bus.png" 
             alt="Travel abstract" 
             className="w-full h-full object-cover opacity-40"
           />

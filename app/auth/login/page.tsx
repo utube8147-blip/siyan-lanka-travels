@@ -121,7 +121,7 @@ export default function LoginPage() {
       <div className="hidden md:flex flex-1 bg-primary relative overflow-hidden items-center justify-center">
         <div className="absolute inset-0 z-0">
           <img
-            src="/brand/interior.jpg"
+            src="/brand/interior.png"
             alt="Travel abstract"
             className="w-full h-full object-cover opacity-40"
           />

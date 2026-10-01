@@ -160,7 +160,7 @@ export default function TicketResaleMarketplace() {
             <img
               alt="Siyan Lanka coach interior"
               className="w-full h-full object-cover"
-              src="/brand/interior.jpg"
+              src="/brand/interior.png"
             />
           </div>
         </div>
@@ -324,7 +324,7 @@ export default function TicketResaleMarketplace() {
               >
                 <img
                   className="absolute inset-0 w-full h-full object-cover opacity-10"
-                  src="/brand/interior.jpg"
+                  src="/brand/interior.png"
                   alt="Coach interior"
                 />
                 <div className="relative z-10 flex-1">
