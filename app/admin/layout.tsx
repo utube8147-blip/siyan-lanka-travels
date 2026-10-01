@@ -85,7 +85,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Wordmark />
           <span className="block text-[11px] font-semibold text-white/50 mt-2">{isAdmin ? 'Super admin' : 'Staff'} · {user.user_metadata.full_name}</span>
         </Link>
-        <nav className="flex-1 overflow-y-auto space-y-5" aria-label="Staff">
+
+        <nav className="flex-1 min-h-0 overflow-y-auto no-scrollbar space-y-5" aria-label="Staff">
           {sections.map((sec) => (
             <div key={sec.title} className="space-y-1">
               <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/40">{sec.title}</p>
