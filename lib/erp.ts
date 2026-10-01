@@ -59,6 +59,11 @@ export interface CrewMember {
 }
 export type AccountRole = 'passenger' | 'conductor' | 'staff' | 'admin';
 export interface Account { id: string; email: string; fullName: string; phone: string; role: AccountRole; createdAt: string; lastSignIn?: string | null }
+
+/** Bike kinds come from the operator config, so the two can never drift apart. */
+export type BikeKind = keyof typeof OPERATOR.bikes.kinds; // 'scooter' | 'motorbike'
+export type BikeKindSettings = { spaces: number; fullRouteFee: number };
+
 export interface Settings {
   bookingFee: number;
   promoCode: string;
@@ -66,7 +71,7 @@ export interface Settings {
   maxSeats: number;
   cutoffMinutes: number;
   refundPolicy: { hoursBefore: number; percent: number }[];
-  bikes: { minFee: number; maxPerBooking: number; kinds: Record<'bicycle' | 'scooter' | 'motorbike', { spaces: number; fullRouteFee: number }> };
+  bikes: { minFee: number; maxPerBooking: number; kinds: Record<BikeKind, BikeKindSettings> };
   resaleEnabled: boolean;
   paymentsMode: 'demo' | 'payhere';
   bankDetails: string;
@@ -110,7 +115,27 @@ const crewTo = (c: CrewMember) => ({
   id: asUuid(c.id), full_name: c.fullName, role: c.role, phone: c.phone, license_no: c.licenseNo, license_expires: c.licenseExpires || null,
   monthly_salary: c.monthlySalary, bus_id: c.busId || null, active: c.active, notes: c.notes,
 });
-const settingsFrom = (r: any): Settings => ({
+
+/** Keeps only the bike kinds that exist in the config; drops stale ones (e.g. bicycle) and fills missing ones. */
+function normalizeSettings(s: Settings): Settings {
+  const kinds = {} as Record<BikeKind, BikeKindSettings>;
+  for (const k of Object.keys(OPERATOR.bikes.kinds) as BikeKind[]) {
+    kinds[k] = {
+      spaces: s.bikes?.kinds?.[k]?.spaces ?? OPERATOR.bikes.kinds[k].spaces,
+      fullRouteFee: s.bikes?.kinds?.[k]?.fullRouteFee ?? OPERATOR.bikes.kinds[k].fullRouteFee,
+    };
+  }
+  return {
+    ...s,
+    bikes: {
+      minFee: s.bikes?.minFee ?? OPERATOR.bikes.minFee,
+      maxPerBooking: s.bikes?.maxPerBooking ?? OPERATOR.bikes.maxPerBooking,
+      kinds,
+    },
+  };
+}
+
+const settingsFrom = (r: any): Settings => normalizeSettings({
   bookingFee: r.booking_fee, promoCode: r.promo_code ?? '', promoPercent: r.promo_percent, maxSeats: r.max_seats_per_booking,
   cutoffMinutes: r.booking_cutoff_minutes, refundPolicy: r.refund_policy, bikes: r.bikes, resaleEnabled: !!r.resale_enabled,
   paymentsMode: r.payments_mode ?? 'demo', bankDetails: r.bank_details ?? '', holdMinutesCounter: r.hold_minutes_counter ?? 120,
@@ -134,7 +159,6 @@ export const DEFAULT_SETTINGS: Settings = {
     minFee: OPERATOR.bikes.minFee,
     maxPerBooking: OPERATOR.bikes.maxPerBooking,
     kinds: {
-      bicycle: { spaces: OPERATOR.bikes.kinds.bicycle.spaces, fullRouteFee: OPERATOR.bikes.kinds.bicycle.fullRouteFee },
       scooter: { spaces: OPERATOR.bikes.kinds.scooter.spaces, fullRouteFee: OPERATOR.bikes.kinds.scooter.fullRouteFee },
       motorbike: { spaces: OPERATOR.bikes.kinds.motorbike.spaces, fullRouteFee: OPERATOR.bikes.kinds.motorbike.fullRouteFee },
     },
@@ -212,7 +236,11 @@ function demoSeed(): ErpData {
 function loadDemo(): ErpData {
   try {
     const raw = localStorage.getItem(DEMO_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ErpData;
+      // Old saved demo data may still contain a removed bike kind (e.g. bicycle)
+      return { ...parsed, settings: normalizeSettings(parsed.settings ?? DEFAULT_SETTINGS) };
+    }
   } catch {
     /* ignore */
   }

@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { OPERATOR } from '@/config/operator';
-import { useErp, type Settings } from '@/lib/erp';
+import { useErp, type Settings, type BikeKind } from '@/lib/erp';
 import { formatLKR } from '@/lib/trips';
 import { AdminOnly } from '@/components/admin/AdminOnly';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
@@ -23,11 +23,17 @@ function SettingsForm() {
   const { toast, Toast } = useToast();
   const [s, setS] = useState<Settings | null>(null);
   useEffect(() => {
-    if (erp.data) setS(structuredClone(erp.data.settings));
+    if (erp.data) {
+      const clone = structuredClone(erp.data.settings);
+      // Drop any stale "bicycle" entry that may still be stored
+      delete (clone.bikes.kinds as Record<string, unknown>).bicycle;
+      setS(clone);
+    }
   }, [erp.data]);
   if (!s) return <div className="skeleton h-64 rounded-2xl" />;
   const n = (v: string) => Math.max(0, Number(v) || 0);
-  const kinds = Object.keys(s.bikes.kinds) as (keyof Settings['bikes']['kinds'])[];
+  // Loop over the config (single source of truth), not stored data
+  const kinds = Object.keys(OPERATOR.bikes.kinds) as BikeKind[];
 
   return (
     <>
