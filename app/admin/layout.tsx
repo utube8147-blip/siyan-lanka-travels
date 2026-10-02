@@ -93,26 +93,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <Wordmark />
           <span className="block text-[11px] font-semibold text-white/50 mt-2">{isAdmin ? 'Super admin' : 'Staff'} · {user.user_metadata.full_name}</span>
         </Link>
-        <nav className="flex-1 overflow-y-auto space-y-5" aria-label="Staff">
+
+        {/* Scrolls with wheel / trackpad / touch, but the scrollbar is hidden
+            (.no-scrollbar is defined in globals.css). */}
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar space-y-5" aria-label="Staff">
           {sections.map((sec) => (
             <div key={sec.title} className="space-y-1">
               <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/40">{sec.title}</p>
-          {sec.items.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active(href) ? 'page' : undefined}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-semibold transition-colors ${
-                active(href) ? 'bg-white text-[#050a44]' : 'text-white/80 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <Icon className="w-[18px] h-[18px]" />
-              {label}
-            </Link>
-          ))}
+              {sec.items.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active(href) ? 'page' : undefined}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-semibold transition-colors ${
+                    active(href) ? 'bg-white text-[#050a44]' : 'text-white/80 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-[18px] h-[18px]" />
+                  {label}
+                </Link>
+              ))}
             </div>
           ))}
         </nav>
+
         <div className="space-y-1 border-t border-white/10 pt-4">
           <Link href="/" target="_blank" className="flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
             <ExternalLink className="w-4 h-4" /> View customer site

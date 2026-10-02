@@ -11,7 +11,7 @@ import { showFab } from './routes';
 
 export function Fab() {
   const pathname = usePathname() || '/';
-  const compact = useHideOnScroll({ topOffset: 120 });
+  const compact = useHideOnScroll(120);
   if (!showFab(pathname)) return null;
   return (
     <Link
