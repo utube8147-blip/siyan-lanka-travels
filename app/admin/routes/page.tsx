@@ -19,7 +19,7 @@ async function uploadStopPhoto(file: File) {
   return supabase().storage.from('stop-photos').getPublicUrl(path).data.publicUrl;
 }
 import type { Route, RouteStop, Schedule, Weekday } from '@/lib/types';
-import { describeRuns, formatDuration, formatLKR, formatTime12, fromMinutes, genId, isAlternating, routeLabel, scheduleConflicts, todayISO, toMinutes } from '@/lib/trips';
+import { addDays, describeRuns, formatDuration, formatLKR, formatTime12, fromMinutes, genId, isAlternating, routeLabel, scheduleConflicts, todayISO, toMinutes } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, WEEKDAYS, formatDays, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
 
@@ -207,11 +207,14 @@ export default function RoutesPage() {
         <ScheduleForm
           schedule={editingSchedule}
           onClose={() => setEditingSchedule(null)}
-          onSave={async (s) => {
-            const res = await saveSchedule(s);
-            if (!res.ok) return toast(res.reason ?? 'Could not save', 'error');
+          onSave={async (s, also) => {
+            // `also`: the same bus's other departure, moved to the alternate days in the same save.
+            for (const one of [s, ...also]) {
+              const res = await saveSchedule(one);
+              if (!res.ok) return toast(res.reason ?? 'Could not save', 'error');
+            }
             setEditingSchedule(null);
-            toast('Timetable updated');
+            toast(also.length ? 'Timetable updated: both departures now run on alternate days' : 'Timetable updated');
           }}
         />
       )}
@@ -406,10 +409,21 @@ function flatStops(stops: RouteStop[], price: number): RouteStop[] {
   });
 }
 
-function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClose: () => void; onSave: (s: Schedule) => void }) {
+/** "Sunday 4 October 2026": unambiguous, whatever order the date box uses. */
+const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClose: () => void; onSave: (s: Schedule, also: Schedule[]) => void }) {
   const { data } = useStore();
   const [s, setS] = useState<Schedule>(schedule);
-  const conflicts = s.active ? scheduleConflicts(data, s) : [];
+  // Switching one bus from weekdays to every other day means changing BOTH of
+  // its departures (out and back). Editing one at a time can't work: the first
+  // always clashes with the other, which is still on weekdays. So the other
+  // departure can be moved onto the alternate days here and saved together.
+  const [paired, setPaired] = useState<string[]>([]);
+  const onAlternateDays = (o: Schedule): Schedule => ({ ...o, everyDays: s.everyDays, startDate: addDays(s.startDate ?? todayISO(), 1), days: [0, 1, 2, 3, 4, 5, 6] });
+  const pairing = isAlternating(s) ? data.schedules.filter((o) => paired.includes(o.id) && o.id !== s.id) : [];
+  const view = { ...data, schedules: data.schedules.map((o) => (pairing.some((p) => p.id === o.id) ? onAlternateDays(o) : o)) };
+  const conflicts = s.active ? scheduleConflicts(view, s) : [];
   const route = data.routes.find((r) => r.id === s.routeId);
   const arrive = route ? toMinutes(s.departure) + route.stops[route.stops.length - 1].offsetMin : 0;
   const alternating = isAlternating(s);
@@ -426,7 +440,7 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
             Cancel
           </Button>
           {/* Alternate-day departures keep all weekdays ticked underneath; the database then checks the every-N-days rule. */}
-          <Button disabled={!valid} onClick={() => onSave(alternating ? { ...s, days: [0, 1, 2, 3, 4, 5, 6] } : { ...s, everyDays: null, startDate: null })}>
+          <Button disabled={!valid} onClick={() => onSave(alternating ? { ...s, days: [0, 1, 2, 3, 4, 5, 6] } : { ...s, everyDays: null, startDate: null }, pairing.map(onAlternateDays))}>
             Save departure
           </Button>
         </>
@@ -483,6 +497,8 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
             <label className="block">
               <span className="block text-[11px] font-bold text-[#686873] mb-1">First run on</span>
               <input type="date" className={inputClass} value={s.startDate ?? ''} onChange={(e) => e.target.value && setS({ ...s, startDate: e.target.value })} />
+              {/* Spelled out, because the date box shows month/day or day/month depending on the computer. */}
+              {s.startDate && <span className="block text-[12px] font-semibold text-[#050a44] mt-1">{longDate(s.startDate)}</span>}
             </label>
             <p className="col-span-2 text-[12px] text-[#6b6d78]">
               For one bus going out one night and back the next: set the outward departure to start on one date and the return departure to start the day after. The pattern keeps going without a gap at the end of the week.
@@ -508,17 +524,37 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
         <input type="checkbox" checked={s.active} onChange={(e) => setS({ ...s, active: e.target.checked })} className="w-4 h-4 accent-[#050a44]" />
         Open for booking
       </label>
+      {pairing.length > 0 && (
+        <div className="rounded-xl bg-[#e8f6ea] border border-[#006e1c]/25 p-3 text-[13px] text-[#0b4a1a] space-y-1">
+          <p className="font-bold">Saving will also change:</p>
+          {pairing.map((o) => (
+            <p key={o.id}>
+              {formatTime12(o.departure)} {routeLabel(data.routes.find((r) => r.id === o.routeId))} → {describeRuns(onAlternateDays(o)).toLowerCase()} ({longDate(onAlternateDays(o).startDate!)}){' '}
+              <button type="button" className="underline font-bold" onClick={() => setPaired((p) => p.filter((id) => id !== o.id))}>Undo</button>
+            </p>
+          ))}
+        </div>
+      )}
       {conflicts.length > 0 && (
         <div className="rounded-xl bg-[#ba1a1a]/5 border border-[#ba1a1a]/20 p-3 text-[13px] text-[#93000a]">
           <p className="font-bold">This bus is already on the road then.</p>
-          <ul className="mt-1 space-y-0.5">
+          <ul className="mt-1 space-y-2">
             {conflicts.map((c) => (
               <li key={c.id}>
                 {formatTime12(c.departure)} {routeLabel(data.routes.find((r) => r.id === c.routeId))} · {describeRuns(c)}
+                {alternating && !paired.includes(c.id) && (
+                  <button type="button" onClick={() => setPaired((p) => [...p, c.id])} className="mt-1 block w-full sm:w-auto px-3 py-2 rounded-lg bg-[#050a44] text-white text-[13px] font-bold text-left">
+                    Move that departure to the alternate days too (first run {longDate(addDays(s.startDate ?? todayISO(), 1))})
+                  </button>
+                )}
               </li>
             ))}
           </ul>
-          <p className="mt-1">Pick other days or times (leaving an hour to turn around), or use another bus.</p>
+          <p className="mt-2">
+            {alternating
+              ? 'A bus that goes out one night and back the next needs both departures on "every other day", one day apart. Use the button above to change the other one in the same save, or pick other times or another bus.'
+              : 'Pick other days or times (leaving an hour to turn around), or use another bus.'}
+          </p>
         </div>
       )}
     </Modal>

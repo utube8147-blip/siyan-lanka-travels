@@ -1,5 +1,6 @@
 // /components/SeatSelectionDrawer.tsx
 'use client';
+import { busSeatMap, layoutSegments, normalWidth, seatPosition, type SeatMap } from '@/lib/seatLayout';
 import React, { useEffect, useState } from 'react';
 import { motion, useDragControls } from 'motion/react';
 
@@ -37,7 +38,7 @@ interface SeatSelectionDrawerProps {
   /** Label for the footer button. Defaults to "Done". */
   confirmLabel?: string;
   /** Bus layout. */
-  layout: { rows: number; backRowSeats: number; ladiesSeats: string[]; reservedSeats?: string[] };
+  layout: { rows: number; backRowSeats: number; ladiesSeats: string[]; reservedSeats?: string[]; seatMap?: SeatMap | null };
   /** Seats already sold on this departure → gender of the passenger holding it. */
   taken: Map<string, Gender>;
 }
@@ -61,7 +62,7 @@ export default function SeatSelectionDrawer({
   const deltaAmount = deltaCount * seatPrice;
 
   const seatBaseClass =
-    'h-11 w-11 rounded-lg text-[11px] font-bold flex items-center justify-center border-[1.5px] transition-all duration-150 select-none shrink-0';
+    'aspect-square w-full min-w-0 rounded-lg text-[11px] font-bold flex items-center justify-center border-[1.5px] transition-all duration-150 select-none';
 
   const dragControls = useDragControls();
   // Decide before the first frame (the sheet only opens after a tap, so
@@ -88,6 +89,12 @@ export default function SeatSelectionDrawer({
   const FEMALE_ONLY_SEATS = layout.ladiesSeats;
   const isBookedByMale = (id: string) => taken.has(id) && taken.get(id) !== 'Female';
   const isBookedByFemale = (id: string) => taken.get(id) === 'Female';
+  // The bus's seat grid and its drawn size: seats are 44px wide when they fit, smaller on wide layouts / narrow phones.
+  const seatMap = busSeatMap(layout);
+  const widest = normalWidth(seatMap);
+  const GAP = widest > 5 ? 8 : 10;
+  const GRID_WIDTH = widest * 44 + (widest - 1) * GAP;
+
   // Seats the owner keeps back: shown as not available (only staff can sell them, with the owner's code).
   const RESERVED_SEATS = layout.reservedSeats ?? [];
   const PENDING_SEATS: string[] = [];
@@ -100,7 +107,12 @@ export default function SeatSelectionDrawer({
   // (All hooks are above this line, so returning early here is safe.)
   if (!isOpen) return null;
 
+  // "window" / "aisle", worked out from where each seat sits in its row.
+  const positions = new Map<string, string>();
+  seatMap.cells.forEach((row, r) => row.forEach((cell, c) => cell && positions.set(cell, seatPosition(seatMap, r, c))));
   const seatMeaning = (seatId: string) =>
+    (positions.get(seatId) && positions.get(seatId) !== 'middle' ? `${positions.get(seatId)} seat, ` : '') + seatState(seatId);
+  const seatState = (seatId: string) =>
     isBookedByFemale(seatId)
       ? 'booked by a female passenger'
       : isBookedByMale(seatId)
@@ -155,9 +167,9 @@ export default function SeatSelectionDrawer({
   };
 
   /** `narrow`: a 6-seat back bench shares the row width, so its seats are slimmer. */
-  const renderSeat = (row: number, col: string, narrow = false) => {
-    const seatId = `${row}${col}`;
-    const seatClass = (id: string) => (narrow ? getSeatClass(id).replace('w-11', 'w-[35px]') : getSeatClass(id));
+  /** One seat. It fills its grid cell (square), so layouts with more seats across simply get smaller seats. */
+  const renderSeat = (seatId: string) => {
+    const seatClass = (id: string) => getSeatClass(id);
     const isBookedMale = isBookedByMale(seatId);
     const isBookedFemale = isBookedByFemale(seatId);
     const isPending = PENDING_SEATS.includes(seatId) || RESERVED_SEATS.includes(seatId);
@@ -285,19 +297,6 @@ export default function SeatSelectionDrawer({
         {/* Seat map: vertical scroll only, never horizontal */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 sm:px-5 py-6">
           <div className="w-fit max-w-full mx-auto py-6 px-3 sm:px-6 border-4 border-[#050a44]/10 rounded-[40px] bg-[#f2f4f6]/40">
-            {/* Column headers */}
-            <div
-              className="grid mb-7"
-              style={{ gridTemplateColumns: '20px 44px 44px 44px 44px 44px', gap: '10px', alignItems: 'center' }}
-            >
-              <div></div>
-              <div className="text-center text-[#46464f] text-[10px] font-bold">A</div>
-              <div className="text-center text-[#46464f] text-[10px] font-bold">B</div>
-              <div></div>
-              <div className="text-center text-[#46464f] text-[10px] font-bold">C</div>
-              <div className="text-center text-[#46464f] text-[10px] font-bold">D</div>
-            </div>
-
             {/* Entrance & driver */}
             <div className="flex justify-between items-center mb-8 px-2">
               <div className="flex flex-col items-center">
@@ -318,44 +317,40 @@ export default function SeatSelectionDrawer({
               </div>
             </div>
 
-            {/* Rows 1-9 */}
-            <div
-              className="grid"
-              style={{ gridTemplateColumns: '20px 44px 44px 44px 44px 44px', columnGap: '10px', rowGap: '18px', alignItems: 'center' }}
-            >
-              {Array.from({ length: layout.rows }, (_, i) => i + 1).map((row) => (
-                <React.Fragment key={row}>
-                  <div className="text-[10px] font-bold text-[#46464f] text-center opacity-40">{row}</div>
-                  {renderSeat(row, 'A')}
-                  {renderSeat(row, 'B')}
-                  <div />
-                  {renderSeat(row, 'C')}
-                  {renderSeat(row, 'D')}
-                </React.Fragment>
-              ))}
+            {/* The seats, drawn from the bus's own layout (Staff area → Buses → Edit): any number of
+                seats either side of the aisle, gaps where there is no seat, and a back bench of any
+                width. Every row spans the same width, so the outer edges line up. */}
+            <div className="space-y-[14px] mx-auto" style={{ width: GRID_WIDTH, maxWidth: '100%' }}>
+              {layoutSegments(seatMap).map((seg, i) =>
+                seg.kind === 'row' ? (
+                  <div key={i} className="grid items-center" style={{ gridTemplateColumns: `repeat(${seg.cells.length}, minmax(0, 1fr))`, columnGap: seg.cells.length > widest ? 6 : GAP }}>
+                    {seg.cells.map((cell, c) => (cell ? renderSeat(cell) : <div key={`gap-${c}`} aria-hidden />))}
+                  </div>
+                ) : (
+                  // The two sides as separate stacks sharing the same length of bus (e.g. 11 rows on
+                  // the left, 12 on the right): the rows are not level with each other.
+                  <div key={i} className="flex items-stretch">
+                    {([seg.left, seg.right] as const).map((side, k) => (
+                      <React.Fragment key={k}>
+                        {k === 1 && <div aria-hidden style={{ flex: `${44 + 2 * GAP} 0 0` }} />}
+                        {/* The side with fewer rows keeps the normal spacing and sets the length; the side
+                            with more rows fits the same length with its rows a little closer together. */}
+                        <div
+                          className="flex flex-col justify-between min-w-0"
+                          style={{ flex: `${(k === 0 ? seatMap.left : seatMap.right) * (44 + GAP) - GAP} 0 0`, rowGap: side.length > Math.min(seg.left.length, seg.right.length) ? 4 : 14 }}
+                        >
+                          {side.map((cells, r) => (
+                            <div key={r} className="grid items-center" style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`, columnGap: GAP }}>
+                              {cells.map((cell, c) => (cell ? renderSeat(cell) : <div key={`gap-${c}`} aria-hidden />))}
+                            </div>
+                          ))}
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                ),
+              )}
             </div>
-
-            {/* Back bench. The aisle above is exactly one seat wide, so the bench
-                spans the same width as a normal row and its outer edges line up:
-                5 seats fill A, B, aisle, C, D; 4 sit under A B and C D; 6 share the width. */}
-            {layout.backRowSeats > 0 && (
-              <div className="flex items-center mt-[18px]">
-                <div className="text-[10px] font-bold text-[#46464f] text-center opacity-40 shrink-0" style={{ width: 20 }}>
-                  {layout.rows + 1}
-                </div>
-                <div
-                  className="grid ml-[10px]"
-                  style={{ width: 260, columnGap: 10, gridTemplateColumns: layout.backRowSeats === 6 ? 'repeat(6, 35px)' : 'repeat(5, 44px)' }}
-                >
-                  {['A', 'B', 'C', 'D', 'E', 'F'].slice(0, layout.backRowSeats).map((c, i) => (
-                    <React.Fragment key={c}>
-                      {layout.backRowSeats === 4 && i === 2 && <div />}
-                      {renderSeat(layout.rows + 1, c, layout.backRowSeats === 6)}
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {passengerGender === 'Female' && (

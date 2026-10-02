@@ -27,6 +27,7 @@ import { BikeLoadingList } from '@/components/admin/BikeList';
 import { TripTools } from '@/components/admin/TripTools';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
 import { slipOnFile, slipUrl, useSlips } from '@/lib/money';
+import { busSeatMap, layoutSegments } from '@/lib/seatLayout';
 import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
 import { FileDown } from 'lucide-react';
@@ -376,10 +377,8 @@ function SeatGrid({
   selected: string[];
   onToggle: (seat: string) => void;
 }) {
-  const ids = seatIds(run.bus);
-  const rows: string[][] = [];
-  for (let r = 1; r <= run.bus.rows; r++) rows.push(ids.filter((id) => id.match(/^\d+/)?.[0] === String(r)));
-  const back = ids.filter((id) => id.match(/^\d+/)?.[0] === String(run.bus.rows + 1));
+  // Drawn from the bus's own layout (Staff area → Buses → Edit): gaps stay gaps, a bench can be wider than a row.
+  const seatMap = busSeatMap(run.bus);
 
   const seat = (id: string) => {
     const o = owner.get(id);
@@ -420,19 +419,29 @@ function SeatGrid({
     <div className="rounded-2xl bg-[#f2f4f6] p-3">
       <p className="text-[10px] font-bold text-[#686873] text-right mb-2 pr-1">Front · driver</p>
       <div className="space-y-2">
-        {rows.map((r, i) => (
-          <div key={i} className="grid grid-cols-[1fr_1fr_14px_1fr_1fr] gap-1.5">
-            {seat(r[0])}
-            {seat(r[1])}
-            <span />
-            {seat(r[2])}
-            {seat(r[3])}
-          </div>
-        ))}
-        {back.length > 0 && (
-          <div className="grid gap-1.5 pt-1" style={{ gridTemplateColumns: `repeat(${back.length}, 1fr)` }}>
-            {back.map(seat)}
-          </div>
+        {layoutSegments(seatMap).map((seg, i) =>
+          seg.kind === 'row' ? (
+            <div key={i} className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${seg.cells.length}, minmax(0, 1fr))` }}>
+              {seg.cells.map((cell, c) => (cell ? seat(cell) : <span key={`gap-${c}`} aria-hidden />))}
+            </div>
+          ) : (
+            // Sides with different numbers of rows: each side is spread over the same length of bus.
+            <div key={i} className="flex items-stretch">
+              {([seg.left, seg.right] as const).map((side, k) => (
+                <React.Fragment key={k}>
+                  {k === 1 && <span aria-hidden style={{ flex: '1 0 0' }} />}
+                  {/* Fewer rows: normal spacing, sets the length. More rows: same length, a little closer together. */}
+                  <div className="flex flex-col justify-between min-w-0" style={{ flex: `${k === 0 ? seatMap.left : seatMap.right} 0 0`, rowGap: side.length > Math.min(seg.left.length, seg.right.length) ? 2 : 8 }}>
+                    {side.map((cells, r) => (
+                      <div key={r} className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))` }}>
+                        {cells.map((cell, c) => (cell ? seat(cell) : <span key={`gap-${c}`} aria-hidden />))}
+                      </div>
+                    ))}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          ),
         )}
       </div>
     </div>

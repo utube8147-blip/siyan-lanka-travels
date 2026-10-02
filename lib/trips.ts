@@ -4,6 +4,7 @@
 // move to a server/API route unchanged when a real backend is added.
 
 import { OPERATOR } from '@/config/operator';
+import { busSeatMap, seatIdsOf } from './seatLayout';
 import { bikeKind, getBikeConfig } from './bikeConfig';
 import type { BikeKind, Booking, Bus, Gender, Route, Schedule, StoreData, Trip } from './types';
 
@@ -138,16 +139,13 @@ export function routeLabel(route: Route | undefined) {
 const SIDE_COLS = ['A', 'B', 'C', 'D'];
 const BACK_COLS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-export function busCapacity(bus: Pick<Bus, 'rows' | 'backRowSeats'>) {
-  return bus.rows * 4 + bus.backRowSeats;
+export function busCapacity(bus: Pick<Bus, 'rows' | 'backRowSeats' | 'seatMap'>) {
+  return seatIds(bus).length;
 }
 
 /** Every seat id on the bus, front to back. */
-export function seatIds(bus: Pick<Bus, 'rows' | 'backRowSeats'>) {
-  const ids: string[] = [];
-  for (let r = 1; r <= bus.rows; r++) SIDE_COLS.forEach((c) => ids.push(`${r}${c}`));
-  for (let i = 0; i < bus.backRowSeats; i++) ids.push(`${bus.rows + 1}${BACK_COLS[i]}`);
-  return ids;
+export function seatIds(bus: Pick<Bus, 'rows' | 'backRowSeats' | 'seatMap'>) {
+  return seatIdsOf(busSeatMap(bus));
 }
 
 export function isLiveBooking(b: Booking) {

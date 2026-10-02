@@ -116,3 +116,26 @@ set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-00000000
 select pg_temp.try('per-stop mode, gets off in the middle', pg_temp.fare('9D', 'Colombo', 'Dambulla'));
 reset role;
 select 'per-stop price: ' || from_stop || ' → ' || to_stop || ' LKR ' || fare from bookings where travel_date = (select fri from t9) and seats = '{9D}';
+
+select '--- flexible seat layout (the printed sheet: 51 seats, right side has 12 rows, left 11)';
+create temp table bus_before as select seat_map, ladies_seats from buses where id = 'bus-1';
+select pg_temp.try('layout with a seat number used twice', $q$update buses set seat_map = '{"left":2,"right":2,"cells":[["1","1",null,"2","3"]]}' where id = 'bus-1'$q$);
+select pg_temp.try('layout with a bad seat number', $q$update buses set seat_map = '{"left":2,"right":2,"cells":[["1","2",null,"3","seat 4"]]}' where id = 'bus-1'$q$);
+update buses set ladies_seats = '{1,2}', seat_map = jsonb_build_object('left', 2, 'right', 2, 'cells',
+  (select jsonb_agg(jsonb_build_array((4*n)::text, (4*n-1)::text, null, (4*n-3)::text, (4*n-2)::text) order by n) from generate_series(1, 11) n)
+  || '[[null,null,null,"45","46"],["48","47","49","50","51"]]'::jsonb) where id = 'bus-1';
+select 'seats on the bus: ' || public.bus_capacity(b) || ', first row: ' || (b.seat_map -> 'cells' -> 0)::text || ', last: ' || (b.seat_map -> 'cells' -> 12)::text from buses b where id = 'bus-1';
+create or replace function pg_temp.num(seat text, gender text) returns text language sql as $$
+  select format($q$select create_booking('{"schedule_id":"sch-cmb-2100","date":"%s","from":"Colombo","to":"Akkaraipattu","seats":["%s"],"passenger":{"name":"Walk-in","gender":"%s"},"channel":"counter","payment":"cash"}')$q$, (select fri from t9) + 7, seat, gender) $$;
+set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select pg_temp.try('book seat 17', pg_temp.num('17', 'Male'));
+select pg_temp.try('book seat 51 (back bench)', pg_temp.num('51', 'Male'));
+select pg_temp.try('book seat 17 again', pg_temp.num('17', 'Male'));
+select pg_temp.try('book seat 52 (not on the bus)', pg_temp.num('52', 'Male'));
+select pg_temp.try('book old-style seat 1A', pg_temp.num('1A', 'Male'));
+select pg_temp.try('a man books ladies seat 1', pg_temp.num('1', 'Male'));
+select pg_temp.try('a woman books ladies seat 1', pg_temp.num('1', 'Female'));
+reset role;
+delete from bookings where travel_date = (select fri from t9) + 7;
+update buses set seat_map = (select seat_map from bus_before), ladies_seats = (select ladies_seats from bus_before) where id = 'bus-1';
+select 'classic layout still works: 1A on the bus ' || public.seat_is_on_bus(b, '1A') || ', 17 on the bus ' || public.seat_is_on_bus(b, '17') || ', capacity ' || public.bus_capacity(b) from buses b where id = 'bus-1';

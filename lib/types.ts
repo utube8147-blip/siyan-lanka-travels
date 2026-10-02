@@ -2,6 +2,8 @@
 // Domain model for a single bus operator. Designed so adding bus #2, #3...
 // is just adding records: routes and schedules reference buses by id.
 
+import type { SeatMap } from './seatLayout';
+
 export type BusType = 'AC' | 'Non-AC';
 export type BusStatus = 'active' | 'maintenance' | 'retired';
 
@@ -18,6 +20,11 @@ export interface Bus {
   backRowSeats: number;
   /** Seat ids set aside for female passengers, e.g. ["1A","1B"]. */
   ladiesSeats: string[];
+  /**
+   * The seat grid (any arrangement and any seat numbers), set in Staff area →
+   * Buses → Edit. Missing = the classic 2+2 rows from `rows` / `backRowSeats`.
+   */
+  seatMap?: SeatMap | null;
   /** Seats kept back by the owner. Not bookable online; staff can sell one only with the owner's code. */
   reservedSeats?: string[];
   amenities: string[];

@@ -3,6 +3,8 @@
 // the seat maps passengers see, so capacity changes apply everywhere.
 
 import { describeRuns } from '@/lib/trips';
+import { busSeatMap, layoutName, seatIdsOf, seatMapProblems, type SeatMap } from '@/lib/seatLayout';
+import { SeatLayoutEditor } from '@/components/admin/SeatLayoutEditor';
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useStore } from '@/lib/store';
@@ -58,7 +60,7 @@ export default function FleetPage() {
                 <div>
                   <p className="text-[18px] font-bold text-[#050a44]">{bus.name}</p>
                   <p className="text-[13px] text-[#46464f]">
-                    {bus.regNo} · {bus.type} · {busCapacity(bus)} seats (2+2, {bus.rows} rows{bus.backRowSeats ? ` + ${bus.backRowSeats} at the back` : ''})
+                    {bus.regNo} · {bus.type} · {busCapacity(bus)} seats ({layoutName(busSeatMap(bus))}, {busSeatMap(bus).cells.length} rows)
                   </p>
                   <p className="text-[13px] text-[#46464f] flex items-center gap-1 mt-0.5">
                     <span className="material-symbols-outlined text-[16px]">two_wheeler</span>
@@ -139,7 +141,10 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
   const [ladies, setLadies] = useState(bus.ladiesSeats.join(', '));
   const [reserved, setReserved] = useState((bus.reservedSeats ?? []).join(', '));
   const set = <K extends keyof Bus>(k: K, v: Bus[K]) => setB((p) => ({ ...p, [k]: v }));
-  const validSeats = new Set(seatIds(b));
+  // The seat grid: the bus's own, or the classic 2+2 one for buses saved before layouts could be edited.
+  const [map, setMap] = useState<SeatMap>(() => busSeatMap(bus));
+  const [layoutChanged, setLayoutChanged] = useState(false);
+  const validSeats = new Set(seatIdsOf(map));
   const ladiesList = ladies
     .split(/[,\s]+/)
     .map((s) => s.trim().toUpperCase())
@@ -150,7 +155,7 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
     .map((s) => s.trim().toUpperCase())
     .filter(Boolean);
   const badReserved = reservedList.filter((s) => !validSeats.has(s));
-  const valid = b.name.trim() && b.regNo.trim() && b.rows >= 1 && b.rows <= 16 && badLadies.length === 0 && badReserved.length === 0;
+  const valid = b.name.trim() && b.regNo.trim() && seatMapProblems(map).length === 0 && badLadies.length === 0 && badReserved.length === 0;
 
   return (
     <Modal
@@ -161,7 +166,7 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!valid} onClick={() => onSave({ ...b, name: b.name.trim(), regNo: b.regNo.trim().toUpperCase(), ladiesSeats: ladiesList, reservedSeats: reservedList })}>
+          <Button disabled={!valid} onClick={() => onSave({ ...b, name: b.name.trim(), regNo: b.regNo.trim().toUpperCase(), ladiesSeats: ladiesList, reservedSeats: reservedList, seatMap: layoutChanged || bus.seatMap || isNew ? map : null })}>
             {isNew ? 'Add bus' : 'Save changes'}
           </Button>
         </>
@@ -182,20 +187,22 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
             <option value="Non-AC">Non-AC</option>
           </select>
         </Field>
-        <Field label="Rows (2+2)">
-          <input className={inputClass} type="number" min={1} max={16} value={b.rows} onChange={(e) => set('rows', Number(e.target.value))} />
-        </Field>
-        <Field label="Back bench">
-          <select className={inputClass} value={b.backRowSeats} onChange={(e) => set('backRowSeats', Number(e.target.value))}>
-            {[0, 4, 5, 6].map((n) => (
-              <option key={n} value={n}>
-                {n === 0 ? 'None' : `${n} seats`}
-              </option>
-            ))}
-          </select>
-        </Field>
       </div>
-      <p className="text-[13px] font-semibold text-[#050a44]">{busCapacity(b)} seats in total</p>
+      <div>
+        <p className="text-[14px] font-bold text-[#050a44] mb-2">Seat layout</p>
+        <SeatLayoutEditor
+          value={map}
+          onChange={(m) => {
+            setMap(m);
+            setLayoutChanged(true);
+          }}
+        />
+        {!isNew && layoutChanged && (
+          <p className="text-[12px] text-[#7c5800] font-semibold mt-2">
+            Tickets already sold keep the seat numbers they were sold with. If you change numbers on a bus with upcoming bookings, check those departures afterwards.
+          </p>
+        )}
+      </div>
       <Field label="Bike spaces in the luggage compartment" hint="A bicycle uses 1 space; a scooter or motorbike uses 2. Set 0 if this bus can't carry bikes.">
         <input className={inputClass} type="number" min={0} max={12} value={b.bikeSpaces ?? 0} onChange={(e) => set('bikeSpaces', Math.max(0, Number(e.target.value)))} />
       </Field>

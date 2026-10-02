@@ -10,9 +10,10 @@ export function manifestFor(data: StoreData, scheduleId: string, date: string) {
   const schedule = data.schedules.find((s) => s.id === scheduleId);
   const route = data.routes.find((r) => r.id === schedule?.routeId);
   const order = new Map((route?.stops ?? []).map((s, i) => [s.name, i]));
+  // Works for "17" as well as "3A": the number first, then any letter.
   const seatKey = (s: string) => {
-    const m = s.match(/^(\d+)([A-F])$/);
-    return m ? Number(m[1]) * 10 + m[2].charCodeAt(0) - 64 : 999;
+    const m = s.match(/^(\d+)([A-Z]?)/);
+    return m ? Number(m[1]) * 30 + (m[2] ? m[2].charCodeAt(0) - 64 : 0) : 99999;
   };
   const list = data.bookings
     .filter((b) => b.scheduleId === scheduleId && b.date === date && !b.id.startsWith('avail-') && (b.status === 'confirmed' || b.status === 'boarded' || b.status === 'held' || b.status === 'no-show'))
@@ -63,7 +64,8 @@ type Actions = {
 /** What happens when a ticket (or a typed ref / seat number) is scanned on a departure. */
 export async function scanTicket(text: string, bookings: Booking[], act: Actions): Promise<ScanResult> {
   const ref = refFromScan(text);
-  const bySeat = /^\d{1,2}[A-F]$/.test(ref) ? bookings.find((b) => b.seats.includes(ref) && b.status !== 'cancelled') : undefined;
+  // A typed seat number ("17", "3A") finds the passenger in that seat; booking references are longer.
+  const bySeat = /^[A-Z0-9]{1,4}$/.test(ref) ? bookings.find((b) => b.seats.includes(ref) && b.status !== 'cancelled') : undefined;
   const b = bySeat ?? bookings.find((x) => x.ref.toUpperCase() === ref);
   if (!b) return { ok: false, msg: 'Not on this bus', detail: `${ref}: wrong date or departure? Check the ticket.` };
   const who = `${b.passenger.name} · seat ${b.seats.join(', ')}`;

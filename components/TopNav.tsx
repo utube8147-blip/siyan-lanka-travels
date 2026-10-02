@@ -19,7 +19,6 @@ import { Wordmark } from './Wordmark';
 import { ThemeToggle } from './ThemeToggle';
 import { InstallAppButton } from './InstallAppButton';
 import { LanguageSwitcher, useT } from '@/lib/i18n';
-import { label } from 'motion/react-client';
 
 // Desktop/tablet header (md and up). Phones use components/mobile/* instead:
 // a slim top bar and a bottom tab bar, like a native app.

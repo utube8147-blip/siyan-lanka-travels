@@ -178,6 +178,39 @@ minimum fee and bikes-per-booking limit are on the same card. Passengers'
 pages, staff screens and the database all read this one list; the categories
 in `config/operator.ts` are only the starting values.
 
+## Seat layout (any arrangement, any seat numbers)
+Staff area → Buses → Edit → **Seat layout** (migration 13). Each bus has its
+own grid of seats:
+1. **Build the layout:** for each side separately, the number of rows and
+   the seats per row (1–3); then the back bench seats, and how to number them:
+   "1, 2, 3… right side first" (like the printed booking sheet), "1, 2, 3…
+   left to right", or "1A, 1B…".
+2. **Adjust any seat:** every position is a box. Type a seat number, or clear
+   the box where there is no seat (a door, a gap, a side with one row fewer).
+   Rows can be added, removed, and made wider or narrower (a bench with more
+   seats across).
+3. **Renumber the seats** numbers what is left, in order; any single number
+   can still be typed by hand.
+
+Example, the 51-seat bus on the printed sheet: left side 11 rows of 2, right
+side 12 rows of 2, a 5-seat bench, "right side first"; press Build. Row 1 reads 4 3 | 1 2, row 12 has only 45 46, the bench reads
+48 47 49 50 51.
+
+**Sides that don't line up.** Some buses have more rows on one side over the
+same length (the printed sheet: 12 on the right, 11 on the left), so the rows
+are not level. Tick "One side has more rows than the other" in step 3: leave
+the shorter side's boxes empty in any one row. The side with fewer rows keeps
+the normal spacing; the side with more rows fits the same length with its
+seats a little closer together. The editor shows a preview. Leave it unticked when the empty
+boxes are a real gap, such as a door.
+
+The passenger seat picker, the staff seat map, ladies-only and reserved
+seats, the printed passenger list and the database's own seat check all use
+the bus's grid. Buses that were never edited keep the classic 2+2 layout
+(1A, 1B…). Tickets already sold keep the seat numbers they were sold with, so
+change numbers on a bus before it has upcoming bookings, or check those
+departures afterwards.
+
 ## Seat overrides
 Set per bus in Staff area → Buses → Edit (migration 9).
 - **Reserved seats (owner's approval):** list the seats, e.g. `1C, 1D`.
