@@ -56,8 +56,6 @@ export default function SeatSelectionDrawer({
   layout,
   taken,
 }: SeatSelectionDrawerProps) {
-  if (!isOpen) return null;
-
   const isEditingExisting = originalSeatCount !== undefined;
   const deltaCount = isEditingExisting ? selectedSeats.length - (originalSeatCount as number) : 0;
   const deltaAmount = deltaCount * seatPrice;
@@ -75,6 +73,18 @@ export default function SeatSelectionDrawer({
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
+
+  // Phones only: false = normal bottom sheet (88dvh), true = full screen.
+  const [expanded, setExpanded] = useState(false);
+  // Leave full-screen mode when switching to the desktop side panel.
+  useEffect(() => {
+    if (!isPhone) setExpanded(false);
+  }, [isPhone]);
+  // Always reopen at normal height.
+  useEffect(() => {
+    if (!isOpen) setExpanded(false);
+  }, [isOpen]);
+
   const FEMALE_ONLY_SEATS = layout.ladiesSeats;
   const isBookedByMale = (id: string) => taken.has(id) && taken.get(id) !== 'Female';
   const isBookedByFemale = (id: string) => taken.get(id) === 'Female';
@@ -86,6 +96,10 @@ export default function SeatSelectionDrawer({
   // tapping on a phone) shows what the seat's colour means, in a small bubble
   // on the seat and in a line under the map.
   const [hint, setHint] = useState<string | null>(null);
+
+  // (All hooks are above this line, so returning early here is safe.)
+  if (!isOpen) return null;
+
   const seatMeaning = (seatId: string) =>
     isBookedByFemale(seatId)
       ? 'booked by a female passenger'
@@ -182,8 +196,10 @@ export default function SeatSelectionDrawer({
     );
   };
 
-  const drawerPositionClass =
-    'absolute inset-x-0 bottom-0 w-full rounded-t-3xl max-h-[88vh] sm:inset-x-auto sm:top-0 sm:right-0 sm:bottom-auto sm:h-full sm:max-h-none sm:rounded-none sm:w-[420px] bg-white shadow-2xl flex flex-col overflow-hidden';
+  // Phone height is animated by motion (88dvh <-> 100dvh), so no max-h here.
+  const drawerPositionClass = `absolute inset-x-0 bottom-0 w-full bg-white shadow-2xl flex flex-col overflow-hidden ${
+    expanded ? 'rounded-t-none' : 'rounded-t-3xl'
+  } sm:inset-x-auto sm:top-0 sm:right-0 sm:bottom-auto sm:h-full sm:max-h-none sm:rounded-none sm:w-[420px]`;
 
   return (
     <div className="fixed inset-0 z-[90]">
@@ -195,27 +211,37 @@ export default function SeatSelectionDrawer({
         onClick={onClose}
       />
 
-      {/* Drawer: bottom sheet on mobile, right-side panel from sm: up.
-          No fixed pixel width, sizes itself to content, never forces
-          horizontal scrolling. */}
+      {/* Drawer: bottom sheet on mobile (pull up for full screen), right-side
+          panel from sm: up. No fixed pixel width, sizes itself to content,
+          never forces horizontal scrolling. */}
       <motion.div
         className={drawerPositionClass}
-        initial={isPhone ? { y: '100%' } : { x: '100%' }}
-        animate={{ x: 0, y: 0 }}
+        initial={isPhone ? { y: '100%', height: '88dvh' } : { x: '100%' }}
+        animate={isPhone ? { x: 0, y: 0, height: expanded ? '100dvh' : '88dvh' } : { x: 0, y: 0 }}
         transition={{ type: 'spring', stiffness: 380, damping: 38 }}
         drag={isPhone ? 'y' : false}
         dragControls={dragControls}
         dragListener={false}
         dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0, bottom: 0.7 }}
+        dragElastic={{ top: 0.25, bottom: 0.7 }}
         onDragEnd={(_, info) => {
-          if (info.offset.y > 110 || info.velocity.y > 600) onClose();
+          const pulledUp = info.offset.y < -60 || info.velocity.y < -500;
+          const pulledDown = info.offset.y > 110 || info.velocity.y > 600;
+
+          if (pulledUp) {
+            setExpanded(true);
+          } else if (pulledDown) {
+            if (expanded) setExpanded(false); // full screen -> normal
+            else onClose(); // normal -> close
+          }
         }}
       >
-        {/* Drag handle (phones): pull down to close */}
+        {/* Drag handle (phones): pull up for full screen, pull down to shrink/close */}
         <div
           className="sm:hidden pt-2.5 pb-1 flex justify-center touch-none cursor-grab active:cursor-grabbing"
+          style={{ paddingTop: expanded ? 'max(env(safe-area-inset-top), 10px)' : undefined }}
           onPointerDown={(e) => dragControls.start(e)}
+          onClick={() => setExpanded((v) => !v)}
           aria-hidden
         >
           <span className="w-10 h-1.5 rounded-full bg-[#c7c5d1]" />
@@ -228,7 +254,7 @@ export default function SeatSelectionDrawer({
             </div>
             <div>
               <h2 className="text-[20px] font-bold leading-tight">
-                {isEditingExisting ? 'Change Your Seats' : 'Select Your Seats'}
+                {isEditingExisting ? 'Change Your Seats' : 'Select Your Seat'}
               </h2>
               <p className="text-[12px] text-[#46464f] mt-0.5">Up to {maxSeatsPerBooking} seats per booking</p>
             </div>
@@ -342,8 +368,8 @@ export default function SeatSelectionDrawer({
         {/* Drawer footer */}
         <div className="px-6 py-5 border-t border-[#c7c5d1]/30 bg-white shrink-0">
           {/* What the seat under the pointer (or the last one tapped) means. */}
-          <p aria-live="polite" className={`text-[12px] font-semibold text-[#050a44] mb-2 min-h-[18px] ${hint ? '' : 'invisible'}`}>{hint ?? '.'}</p>
-          <div className="flex flex-wrap gap-2 min-h-[34px] mb-4">
+          <div className="flex items-center justify-between gap-3 mb-4 min-h-[34px]">
+          <div className="flex flex-wrap gap-2 min-w-0 flex-1">
             {selectedSeats.length === 0 ? (
               <p className="text-[#6b6d78] italic text-sm self-center">No seats selected yet.</p>
             ) : (
@@ -363,6 +389,8 @@ export default function SeatSelectionDrawer({
                 </div>
               ))
             )}
+          </div>
+          <p aria-live="polite" className={`shrink-0 max-w-[48%] text-right text-[12px] font-semibold leading-snug text-[#050a44] ${hint ? '' : 'invisible'}`}>{hint ?? '.'}</p>
           </div>
 
           {isEditingExisting ? (
