@@ -27,6 +27,8 @@ import { BikeLoadingList } from '@/components/admin/BikeList';
 import { TripTools } from '@/components/admin/TripTools';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
 import { slipOnFile, slipUrl, useSlips } from '@/lib/money';
+import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
+import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
 import { FileDown } from 'lucide-react';
 
 export default function DeparturesPage() {
@@ -376,26 +378,29 @@ function SeatGrid({
   const seat = (id: string) => {
     const o = owner.get(id);
     const isSel = selected.includes(id);
-    // Sold seats: green = on board, navy = paid, amber = not paid yet
-    // (an amber ring on green = on board but still to pay).
+    // Seat colours: red = booked and paid, orange = booked but not fully paid,
+    // green = on board (orange ring = on board, still to pay), rose = ladies
+    // only, purple stripes = reserved, plain = free.
     const due = !!o && o.paymentStatus === 'unpaid';
     const cls = o
       ? o.status === 'boarded'
-        ? `bg-[#006e1c] text-white ${due ? 'ring-2 ring-[#feb700] ring-offset-1' : ''}`
+        ? `bg-[#006e1c] text-white ${due ? 'ring-2 ring-[#f97316] ring-offset-1' : ''}`
         : due
-          ? 'bg-[#feb700] text-[#3b2a00]'
-          : 'bg-[#050a44] text-white'
+          ? 'bg-[#f97316] text-white'
+          : 'bg-[#dc2626] text-white'
       : isSel
-        ? 'bg-[#feb700] text-[#050a44] border-[#feb700]'
+        ? 'bg-[#050a44] text-white border-[#050a44]'
+        : (run.bus.reservedSeats ?? []).includes(id)
+          ? 'bg-[repeating-linear-gradient(135deg,#ede9fe_0,#ede9fe_4px,#fff_4px,#fff_8px)] border border-dashed border-[#6d28d9] text-[#4c1d95]'
         : run.bus.ladiesSeats.includes(id)
-          ? 'bg-pink-50 border border-pink-300 text-pink-700'
+          ? 'bg-rose-50 border border-rose-400 text-rose-700'
           : 'bg-white border border-[#c7c5d1] text-[#46464f] hover:border-[#050a44]';
     return (
       <button
         key={id}
         type="button"
         onClick={() => onToggle(id)}
-        title={o ? `${id}: ${o.passenger.name} (${o.from} → ${o.to}) · ${due ? `NOT PAID, ${formatLKR(o.total)} to collect` : `paid ${formatLKR(o.total)}`}${o.status === 'boarded' ? ' · on board' : ''}` : run.bus.ladiesSeats.includes(id) ? `${id}: free, ladies only` : `${id}: free`}
+        title={o ? `${id}: ${o.passenger.name} (${o.from} → ${o.to}) · ${due ? `NOT PAID, ${formatLKR(o.total)} to collect` : `paid ${formatLKR(o.total)}`}${o.status === 'boarded' ? ' · on board' : ''}` : (run.bus.reservedSeats ?? []).includes(id) ? `${id}: reserved. Needs the owner's code to sell` : run.bus.ladiesSeats.includes(id) ? `${id}: free, ladies only` : `${id}: free`}
         aria-label={o ? `Seat ${id}, sold to ${o.passenger.name}` : `Seat ${id}, free${isSel ? ', selected' : ''}`}
         aria-pressed={isSel}
         className={`h-9 rounded-lg text-[11px] font-bold transition-colors ${cls} ${taken.has(id) ? 'cursor-pointer' : ''}`}
@@ -451,7 +456,50 @@ function SellSeatsModal({
   const validSegment = stops.indexOf(from) < stops.indexOf(to);
   const fare = validSegment && trip ? trip.fare : 0;
   const ladiesClash = gender === 'Male' && seats.some((s) => run.bus.ladiesSeats.includes(s));
-  const valid = validSegment && name.trim().length > 1 && phone.trim().length >= 9 && gender !== '' && !ladiesClash;
+  // Office staff may override the ladies-only rule for this one sale.
+  const { user } = useAuth();
+  const canOverride = isOfficeRole(user?.role);
+  const [overrideLadies, setOverrideLadies] = useState(false);
+
+  // Reserved seats: the owner gets a code by text and reads it to the seller.
+  const reservedPicked = seats.filter((s) => (run.bus.reservedSeats ?? []).includes(s));
+  const [approvalId, setApprovalId] = useState<string | null>(null);
+  const [ownerCode, setOwnerCode] = useState('');
+  const [approved, setApproved] = useState(false);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalMsg, setApprovalMsg] = useState<{ text: string; bad?: boolean } | null>(null);
+  const askOwner = async () => {
+    if (!isSupabaseConfigured) {
+      setApproved(true); // demo mode has no owner to text
+      return setApprovalMsg({ text: 'Demo mode: approval skipped.' });
+    }
+    setApprovalBusy(true);
+    setApprovalMsg(null);
+    const res = await fetch('/api/owner-approval', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scheduleId: run.schedule.id, date: run.date, seats: reservedPicked, note: name.trim() }),
+    }).catch(() => null);
+    const j = res ? await res.json().catch(() => ({})) : {};
+    setApprovalBusy(false);
+    if (!res || !res.ok) return setApprovalMsg({ text: j.error ?? "Couldn't send the code. Check the connection and try again.", bad: true });
+    setApprovalId(j.id);
+    setOwnerCode('');
+    setApprovalMsg({ text: `Code sent to the owner (${j.sentTo}). Ask them for it; it works for 10 minutes.` });
+  };
+  const checkOwnerCode = async () => {
+    if (!approvalId) return;
+    setApprovalBusy(true);
+    const { data: ok, error } = await supabase().rpc('verify_seat_approval', { p_id: approvalId, p_code: ownerCode });
+    setApprovalBusy(false);
+    if (error) return setApprovalMsg({ text: friendlyError(error), bad: true });
+    if (!ok) return setApprovalMsg({ text: "That code isn't right. Check it with the owner (5 tries).", bad: true });
+    setApproved(true);
+    setApprovalMsg({ text: 'Owner approved. Issue the ticket within 15 minutes.' });
+  };
+
+  const valid =
+    validSegment && name.trim().length > 1 && phone.trim().length >= 9 && gender !== '' && (!ladiesClash || (canOverride && overrideLadies)) && (reservedPicked.length === 0 || approved);
 
   return (
     <Modal
@@ -479,6 +527,7 @@ function SellSeatsModal({
                 fee: 0,
                 discount: 0,
                 total: fare * seats.length,
+                overrideLadies: ladiesClash && canOverride && overrideLadies,
               })
             }
           >
@@ -519,7 +568,54 @@ function SellSeatsModal({
           </select>
         </Field>
       </div>
-      {ladiesClash && <p className="text-[12px] font-semibold text-[#ba1a1a]">Seats {run.bus.ladiesSeats.join(', ')} are for female passengers.</p>}
+      {ladiesClash && (
+        <div className="rounded-xl bg-pink-50 border border-pink-200 p-3 space-y-2">
+          <p className="text-[12px] font-semibold text-[#9d174d]">Seats {run.bus.ladiesSeats.join(', ')} are for female passengers.</p>
+          {canOverride ? (
+            <label className="flex items-start gap-2 text-[13px] font-semibold text-[#050a44]">
+              <input type="checkbox" className="mt-0.5 w-4 h-4" checked={overrideLadies} onChange={(e) => setOverrideLadies(e.target.checked)} />
+              Override ladies-only for this sale
+            </label>
+          ) : (
+            <p className="text-[12px] text-[#46464f]">Only office staff can override this.</p>
+          )}
+        </div>
+      )}
+      {reservedPicked.length > 0 && (
+        <div className="rounded-xl bg-[#f5f3ff] border border-[#ddd6fe] p-3 space-y-2">
+          <p className="text-[13px] font-bold text-[#4c1d95]">
+            Seat{reservedPicked.length > 1 ? 's' : ''} {reservedPicked.join(', ')} {reservedPicked.length > 1 ? 'are' : 'is'} reserved: the owner must agree
+          </p>
+          {approved ? (
+            <p className="text-[13px] font-semibold text-[#006e1c]">✓ Owner approved</p>
+          ) : (
+            <>
+              <p className="text-[12px] text-[#46464f]">We text a code to the owner. If they agree, they give it to you.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" disabled={approvalBusy} onClick={askOwner}>
+                  {approvalId ? 'Send a new code' : 'Send code to the owner'}
+                </Button>
+                {approvalId && (
+                  <>
+                    <input
+                      className={`${inputClass} w-[130px] tracking-widest text-center`}
+                      value={ownerCode}
+                      onChange={(e) => setOwnerCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      inputMode="numeric"
+                      placeholder="6-digit code"
+                      aria-label="Owner's code"
+                    />
+                    <Button size="sm" disabled={approvalBusy || ownerCode.length < 6} onClick={checkOwnerCode}>
+                      Check code
+                    </Button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+          {approvalMsg && <p className={`text-[12px] font-semibold ${approvalMsg.bad ? 'text-[#ba1a1a]' : 'text-[#46464f]'}`}>{approvalMsg.text}</p>}
+        </div>
+      )}
       <Field label="Sold via">
         <div className="flex gap-2">
           {(['counter', 'phone'] as const).map((c) => (

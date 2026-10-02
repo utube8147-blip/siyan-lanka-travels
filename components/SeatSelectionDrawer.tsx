@@ -37,7 +37,7 @@ interface SeatSelectionDrawerProps {
   /** Label for the footer button. Defaults to "Done". */
   confirmLabel?: string;
   /** Bus layout. */
-  layout: { rows: number; backRowSeats: number; ladiesSeats: string[] };
+  layout: { rows: number; backRowSeats: number; ladiesSeats: string[]; reservedSeats?: string[] };
   /** Seats already sold on this departure → gender of the passenger holding it. */
   taken: Map<string, Gender>;
 }
@@ -78,6 +78,8 @@ export default function SeatSelectionDrawer({
   const FEMALE_ONLY_SEATS = layout.ladiesSeats;
   const isBookedByMale = (id: string) => taken.has(id) && taken.get(id) !== 'Female';
   const isBookedByFemale = (id: string) => taken.get(id) === 'Female';
+  // Seats the owner keeps back: shown as not available (only staff can sell them, with the owner's code).
+  const RESERVED_SEATS = layout.reservedSeats ?? [];
   const PENDING_SEATS: string[] = [];
 
   // No colour legend: each seat explains itself. Hovering (or focusing, or
@@ -89,6 +91,8 @@ export default function SeatSelectionDrawer({
       ? 'booked by a female passenger'
       : isBookedByMale(seatId)
         ? 'booked by a male passenger'
+        : RESERVED_SEATS.includes(seatId)
+          ? 'reserved, not available online'
         : PENDING_SEATS.includes(seatId)
           ? 'held by another passenger'
           : selectedSeats.includes(seatId)
@@ -115,21 +119,25 @@ export default function SeatSelectionDrawer({
 
   const getSeatClass = (seatId: string) => {
     if (isBookedByMale(seatId)) {
-      return `${seatBaseClass} bg-[#e1e2e4] border-transparent text-[#686873] opacity-60 cursor-not-allowed`;
+      // Seat colours: booked = red, booked by a lady = rose, ladies-only = rose outline, free = plain, your pick = navy.
+      return `${seatBaseClass} bg-[#dc2626] border-transparent text-white cursor-not-allowed`;
     }
     if (isBookedByFemale(seatId)) {
-      return `${seatBaseClass} bg-[#f4a6c6] border-transparent text-[#7a1d47] opacity-80 cursor-not-allowed`;
+      return `${seatBaseClass} bg-[#fb7185] border-transparent text-white cursor-not-allowed`;
+    }
+    if (RESERVED_SEATS.includes(seatId)) {
+      return `${seatBaseClass} bg-[repeating-linear-gradient(135deg,#e1e2e4_0,#e1e2e4_4px,#f2f4f6_4px,#f2f4f6_8px)] border-[#c7c5d1] text-[#686873] opacity-70 cursor-not-allowed`;
     }
     if (PENDING_SEATS.includes(seatId)) {
       return `${seatBaseClass} bg-[#feb700]/15 border-[#feb700] text-[#6b4b00] cursor-not-allowed`;
     }
     if (selectedSeats.includes(seatId)) {
-      return `${seatBaseClass} bg-[#ff5263] border-[#ff5263] text-white shadow-[0_4px_12px_rgba(255,82,99,0.3)] cursor-pointer`;
+      return `${seatBaseClass} bg-[#050a44] border-[#050a44] text-white shadow-[0_4px_12px_rgba(5,10,68,0.35)] cursor-pointer`;
     }
     if (FEMALE_ONLY_SEATS.includes(seatId)) {
-      return `${seatBaseClass} bg-pink-50 border-pink-300 text-pink-600 cursor-pointer hover:border-pink-500 hover:bg-pink-100`;
+      return `${seatBaseClass} bg-rose-50 border-rose-400 text-rose-600 cursor-pointer hover:border-rose-500 hover:bg-rose-100`;
     }
-    return `${seatBaseClass} bg-transparent border-[#c7c5d1] text-[#46464f] cursor-pointer hover:border-[#ff5263] hover:bg-[#ff5263]/10`;
+    return `${seatBaseClass} bg-transparent border-[#c7c5d1] text-[#46464f] cursor-pointer hover:border-[#050a44] hover:bg-[#050a44]/5`;
   };
 
   /** `narrow`: a 6-seat back bench shares the row width, so its seats are slimmer. */
@@ -138,7 +146,7 @@ export default function SeatSelectionDrawer({
     const seatClass = (id: string) => (narrow ? getSeatClass(id).replace('w-11', 'w-[35px]') : getSeatClass(id));
     const isBookedMale = isBookedByMale(seatId);
     const isBookedFemale = isBookedByFemale(seatId);
-    const isPending = PENDING_SEATS.includes(seatId);
+    const isPending = PENDING_SEATS.includes(seatId) || RESERVED_SEATS.includes(seatId);
 
     if (isBookedMale || isBookedFemale || isPending) {
       return (

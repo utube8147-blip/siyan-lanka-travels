@@ -145,6 +145,45 @@ trip updates, waitlist offers): sent by `/api/messages/dispatch`; see Messages.
 - ⚠️ While Settings → Payments is on *Demo*, card bookings are confirmed
   without taking money. Don't open to the public like that.
 
+## Timetable: weekdays or every other day
+A departure (Staff area → Routes & timetable → Add / Edit departure) runs
+either **on set weekdays** or **every other day** (every 2, 3 or 4 days from
+a first date; migration 10). Use the second for one bus that goes out one
+night and comes back the next: a 7-day week can't hold that pattern, because
+it would need the same direction two nights running at the end of each week.
+Set the outward departure to start on one date and the return departure to
+start the day after. Search, the seat pages, staff Departures and the
+database's own check all follow the rule, and the "bus is already on the road"
+warning is checked on real dates for the next 12 weeks.
+
+## Bike categories and prices
+Staff area → Settings → **Bikes in the luggage compartment** (migration 11).
+Each category has a name, an icon, the full-route price, how many spaces it
+takes, whether a number plate is required, and whether it is offered to
+passengers. **Add a category** makes a new one (for example a three-wheeler
+or a bicycle). Switch a category off to stop offering it; it isn't deleted,
+so bookings that already have it keep their label and their spaces. The
+minimum fee and bikes-per-booking limit are on the same card. Passengers'
+pages, staff screens and the database all read this one list; the categories
+in `config/operator.ts` are only the starting values.
+
+## Seat overrides
+Set per bus in Staff area → Buses → Edit (migration 9).
+- **Reserved seats (owner's approval):** list the seats, e.g. `1C, 1D`.
+  Passengers see them as not available and can't book them. In Departures
+  they are striped purple; staff can select one, and the Sell window then
+  asks for the owner's agreement: **Send code to the owner** texts a 6-digit
+  code to `OWNER_PHONE` (.env, server only) with who is asking, the seat, the
+  trip and the passenger's name. The owner reads the code to the seller, who
+  enters it and can then issue the ticket. A code lasts 10 minutes, allows 5
+  tries, works once, only for those seats, that departure and that staff
+  member; the approval then lasts 15 minutes. The database enforces all of
+  it. Needs `OWNER_PHONE`, `SUPABASE_SECRET_KEY` and the Notify.lk keys.
+- **Ladies-only override:** when a ladies-only seat is sold to a male
+  passenger in Departures, office staff (not conductors) can tick
+  **Override ladies-only for this sale**. Passengers booking online can never
+  override it.
+
 ## Ways to pay
 What a passenger can choose at checkout (migration 7):
 

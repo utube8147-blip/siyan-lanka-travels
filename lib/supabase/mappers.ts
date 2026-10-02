@@ -10,6 +10,7 @@ export const busFromRow = (r: any): Bus => ({
   rows: r.rows,
   backRowSeats: r.back_row_seats,
   ladiesSeats: r.ladies_seats ?? [],
+  reservedSeats: r.reserved_seats ?? [],
   amenities: r.amenities ?? [],
   status: r.status,
   bikeSpaces: r.bike_spaces ?? 0,
@@ -22,6 +23,7 @@ export const busToRow = (b: Bus) => ({
   rows: b.rows,
   back_row_seats: b.backRowSeats,
   ladies_seats: b.ladiesSeats,
+  reserved_seats: b.reservedSeats ?? [],
   amenities: b.amenities,
   status: b.status,
   bike_spaces: b.bikeSpaces ?? 0,
@@ -36,6 +38,8 @@ export const scheduleFromRow = (r: any): Schedule => ({
   busId: r.bus_id,
   departure: r.departure,
   days: (r.days ?? []) as Weekday[],
+  everyDays: r.repeat_every ?? null,
+  startDate: r.repeat_from ?? null,
   active: r.active,
 });
 export const scheduleToRow = (s: Schedule) => ({
@@ -44,6 +48,8 @@ export const scheduleToRow = (s: Schedule) => ({
   bus_id: s.busId,
   departure: s.departure,
   days: s.days,
+  repeat_every: s.everyDays && s.everyDays > 1 && s.startDate ? s.everyDays : null,
+  repeat_from: s.everyDays && s.everyDays > 1 && s.startDate ? s.startDate : null,
   active: s.active,
 });
 

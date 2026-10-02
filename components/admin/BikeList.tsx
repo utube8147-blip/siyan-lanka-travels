@@ -2,6 +2,7 @@
 // components/admin/BikeList.tsx — bikes in the luggage compartment, with
 // photos the crew can check at loading. Click a photo to see it large.
 
+import { bikeKind } from '@/lib/bikeConfig';
 import { useState } from 'react';
 import { OPERATOR } from '@/config/operator';
 import type { BikeItem, Booking } from '@/lib/types';
@@ -9,7 +10,7 @@ import { formatLKR } from '@/lib/trips';
 import { Modal } from './ui';
 
 export function BikeThumb({ bike, size = 56, onOpen }: { bike: BikeItem; size?: number; onOpen?: () => void }) {
-  const meta = OPERATOR.bikes.kinds[bike.kind];
+  const meta = bikeKind(bike.kind);
   return bike.photo ? (
     <button type="button" onClick={onOpen} className="shrink-0 rounded-lg overflow-hidden border border-[#e1e2e4] hover:ring-2 hover:ring-[#feb700]" style={{ width: size, height: size }} aria-label="View bike photo">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -30,7 +31,7 @@ export function BikeLoadingList({ bookings, stopOrder, spaces }: { bookings: Boo
     .filter((b) => b.status === 'confirmed' || b.status === 'boarded')
     .flatMap((b) => (b.bikes ?? []).map((bike) => ({ bike, booking: b })))
     .sort((a, b) => stopOrder(b.booking.to) - stopOrder(a.booking.to));
-  const used = rows.reduce((n, r) => n + OPERATOR.bikes.kinds[r.bike.kind].spaces, 0);
+  const used = rows.reduce((n, r) => n + bikeKind(r.bike.kind).spaces, 0);
 
   return (
     <div className="bg-white rounded-2xl border border-[#e1e2e4] shadow-sm">
@@ -58,7 +59,7 @@ export function BikeLoadingList({ bookings, stopOrder, spaces }: { bookings: Boo
               <BikeThumb bike={bike} onOpen={() => setOpen({ bike, booking })} />
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-bold text-[#050a44] truncate">
-                  {OPERATOR.bikes.kinds[bike.kind].label} · {bike.description}
+                  {bikeKind(bike.kind).label} · {bike.description}
                 </p>
                 <p className="text-[12px] text-[#46464f] truncate">
                   {bike.regNo ? `${bike.regNo} · ` : ''}
@@ -74,7 +75,7 @@ export function BikeLoadingList({ bookings, stopOrder, spaces }: { bookings: Boo
         </ol>
       )}
       {open && (
-        <Modal title={`${OPERATOR.bikes.kinds[open.bike.kind].label} · ${open.booking.ref}`} onClose={() => setOpen(null)}>
+        <Modal title={`${bikeKind(open.bike.kind).label} · ${open.booking.ref}`} onClose={() => setOpen(null)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={open.bike.photo} alt={open.bike.description} className="w-full rounded-xl border border-[#e1e2e4]" />
           <dl className="grid grid-cols-2 gap-3 text-[14px]">

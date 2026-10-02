@@ -1,6 +1,7 @@
 'use client';
 // app/admin/bookings/page.tsx — find any booking by reference, name or phone.
 
+import { bikeKind } from '@/lib/bikeConfig';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Download, Search } from 'lucide-react';
@@ -281,7 +282,7 @@ export default function BookingsPage() {
                   <BikeThumb bike={bike} size={64} />
                   <div className="text-[13px]">
                     <p className="font-bold text-[#050a44]">
-                      {OPERATOR.bikes.kinds[bike.kind].label} · {bike.description}
+                      {bikeKind(bike.kind).label} · {bike.description}
                     </p>
                     <p className="text-[#46464f]">
                       {bike.regNo || 'No plate'} · {formatLKR(bike.fee)}

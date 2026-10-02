@@ -1,6 +1,8 @@
 // app/(public)/(passenger)/seats/[scheduleId]/page.tsx
 'use client';
 
+import { useBikeConfig } from '@/lib/useBikeConfig';
+import { bikeKind } from '@/lib/bikeConfig';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -116,6 +118,7 @@ function BookingPageInner() {
   const [isVerified, setIsVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const pub = usePublicSettings();
+  useBikeConfig(); // bike fees follow Settings → Bikes
   const bookingCode = useBookingCode();
   const [verifying, setVerifying] = useState(false);
   // Real accounts with "code on every booking" on: the number is verified
@@ -665,7 +668,7 @@ function BookingPageInner() {
                     {bikes.map((b, i) => (
                       <div key={b.id} className="flex justify-between">
                         <span className="text-[#46464f]">
-                          {OPERATOR.bikes.kinds[b.kind].label} space{bikes.length > 1 ? ` ${i + 1}` : ''}
+                          {bikeKind(b.kind).label} space{bikes.length > 1 ? ` ${i + 1}` : ''}
                         </span>
                         <span className="font-bold">{formatLKR(b.fee)}</span>
                       </div>

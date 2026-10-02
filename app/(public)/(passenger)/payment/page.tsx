@@ -1,5 +1,7 @@
 // /app/(public)/(passenger)/payment/page.tsx
 'use client';
+import { useBikeConfig } from '@/lib/useBikeConfig';
+import { bikeKind } from '@/lib/bikeConfig';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { OPERATOR } from '@/config/operator';
@@ -87,6 +89,7 @@ function PaymentPageInner() {
   const trip = paidTrip ?? liveTrip;
 
   const pub = usePublicSettings();
+  useBikeConfig(); // bike fees follow Settings → Bikes
   const seatPrice = trip ? trip.fare : 0;
   const platformFee = OPERATOR.bookingFee;
   const basePrice = seats.length * seatPrice;
@@ -394,7 +397,7 @@ function PaymentPageInner() {
                       <div>
                         <span className="text-[11px] text-[#46464f] block">Luggage compartment</span>
                         <span className="text-[13px] font-bold">
-                          {bikes.map((b) => `${OPERATOR.bikes.kinds[b.kind].label}${b.regNo ? ` (${b.regNo})` : ''}`).join(', ')}
+                          {bikes.map((b) => `${bikeKind(b.kind).label}${b.regNo ? ` (${b.regNo})` : ''}`).join(', ')}
                         </span>
                       </div>
                     )}
@@ -799,7 +802,7 @@ function PaymentPageInner() {
                       <img src={b.photo} alt="" className="w-8 h-8 rounded-md object-cover border border-[#e1e2e4] shrink-0" />
                     ) : null}
                     <span className="truncate">
-                      {OPERATOR.bikes.kinds[b.kind].label} space{bikes.length > 1 ? ` ${i + 1}` : ''}
+                      {bikeKind(b.kind).label} space{bikes.length > 1 ? ` ${i + 1}` : ''}
                     </span>
                   </span>
                   <span className="font-bold">{formatLKR(b.fee)}</span>

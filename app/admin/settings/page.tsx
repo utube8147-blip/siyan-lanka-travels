@@ -8,6 +8,7 @@ import { OPERATOR } from '@/config/operator';
 import { useErp, type Settings, type BikeKind } from '@/lib/erp';
 import { formatLKR } from '@/lib/trips';
 import { REWARDS_ENABLED } from '@/lib/features';
+import { BIKE_ICONS, newBikeKindId } from '@/lib/bikeConfig';
 import { AdminOnly } from '@/components/admin/AdminOnly';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 
@@ -33,8 +34,8 @@ function SettingsForm() {
   }, [erp.data]);
   if (!s) return <div className="skeleton h-64 rounded-2xl" />;
   const n = (v: string) => Math.max(0, Number(v) || 0);
-  // Loop over the config (single source of truth), not stored data
-  const kinds = Object.keys(OPERATOR.bikes.kinds) as BikeKind[];
+  // Bike categories in display order (ids are fixed once created; names can change).
+  const kinds = Object.keys(s.bikes.kinds).sort((x, y) => s.bikes.kinds[x].order - s.bikes.kinds[y].order) as BikeKind[];
 
   return (
     <>
@@ -83,13 +84,47 @@ function SettingsForm() {
             <Field label="Minimum fee (LKR)"><input type="number" className={inputClass} value={s.bikes.minFee} onChange={(e) => setS({ ...s, bikes: { ...s.bikes, minFee: n(e.target.value) } })} /></Field>
             <Field label="Max bikes per booking"><input type="number" className={inputClass} value={s.bikes.maxPerBooking} onChange={(e) => setS({ ...s, bikes: { ...s.bikes, maxPerBooking: Math.max(1, n(e.target.value)) } })} /></Field>
           </div>
-          {kinds.map((k) => (
-            <div key={k} className="grid grid-cols-[1fr_1fr_1fr] gap-3 items-end">
-              <p className="text-[14px] font-semibold text-[#050a44] pb-2.5">{OPERATOR.bikes.kinds[k].label}</p>
-              <Field label="Spaces"><input type="number" className={inputClass} value={s.bikes.kinds[k].spaces} onChange={(e) => setS({ ...s, bikes: { ...s.bikes, kinds: { ...s.bikes.kinds, [k]: { ...s.bikes.kinds[k], spaces: Math.max(1, n(e.target.value)) } } } })} /></Field>
-              <Field label="Full-route fee"><input type="number" className={inputClass} value={s.bikes.kinds[k].fullRouteFee} onChange={(e) => setS({ ...s, bikes: { ...s.bikes, kinds: { ...s.bikes.kinds, [k]: { ...s.bikes.kinds[k], fullRouteFee: n(e.target.value) } } } })} /></Field>
-            </div>
-          ))}
+          <p className="text-[13px] text-[#46464f]">
+            The categories passengers can choose, and what each costs for the whole route. Shorter trips pay a share, never less than the minimum fee. Switch a category off to stop offering it; bookings that already have it keep it.
+          </p>
+          <div className="space-y-3">
+            {kinds.map((k, i) => {
+              const v = s.bikes.kinds[k];
+              const setKind = (patch: Partial<typeof v>) => setS({ ...s, bikes: { ...s.bikes, kinds: { ...s.bikes.kinds, [k]: { ...v, ...patch } } } });
+              return (
+                <div key={k} className={`rounded-xl border p-3 space-y-2 ${v.active ? 'border-[#c7c5d1]' : 'border-dashed border-[#c7c5d1] opacity-70'}`}>
+                  <div className="grid grid-cols-[1fr_150px] gap-3">
+                    <Field label={`Category ${i + 1} name`}><input className={inputClass} value={v.label} onChange={(e) => setKind({ label: e.target.value })} placeholder="e.g. Three-wheeler" /></Field>
+                    <Field label="Icon">
+                      <select className={inputClass} value={v.icon} onChange={(e) => setKind({ icon: e.target.value })}>
+                        {BIKE_ICONS.map((ic) => (
+                          <option key={ic.id} value={ic.id}>{ic.label}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Full-route price (LKR)"><input type="number" className={inputClass} value={v.fullRouteFee} onChange={(e) => setKind({ fullRouteFee: n(e.target.value) })} /></Field>
+                    <Field label="Spaces it takes"><input type="number" className={inputClass} value={v.spaces} onChange={(e) => setKind({ spaces: Math.max(1, n(e.target.value)) })} /></Field>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] font-semibold text-[#050a44]">
+                    <label className="flex items-center gap-2"><input type="checkbox" className="w-4 h-4" checked={v.active} onChange={(e) => setKind({ active: e.target.checked })} /> Offered to passengers</label>
+                    <label className="flex items-center gap-2"><input type="checkbox" className="w-4 h-4" checked={v.needsPlate} onChange={(e) => setKind({ needsPlate: e.target.checked })} /> Number plate required</label>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {kinds.some((k) => s.bikes.kinds[k].active && s.bikes.kinds[k].label.trim().length < 2) && <p className="text-[12px] font-semibold text-[#ba1a1a]">Give every category you offer a name.</p>}
+          <Button
+            variant="secondary"
+            onClick={() => {
+              const id = newBikeKindId(`category ${kinds.length + 1}`, kinds);
+              setS({ ...s, bikes: { ...s.bikes, kinds: { ...s.bikes.kinds, [id]: { label: '', icon: 'two_wheeler', spaces: 2, fullRouteFee: 1000, needsPlate: true, active: true, order: kinds.length } } } });
+            }}
+          >
+            + Add a category
+          </Button>
         </Card>
 
         <Card className="p-5 space-y-4">

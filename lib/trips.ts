@@ -4,6 +4,7 @@
 // move to a server/API route unchanged when a real backend is added.
 
 import { OPERATOR } from '@/config/operator';
+import { bikeKind, getBikeConfig } from './bikeConfig';
 import type { BikeKind, Booking, Bus, Gender, Route, Schedule, StoreData, Trip } from './types';
 
 // ---------------------------------------------------------------- money ----
@@ -225,7 +226,8 @@ function buildTrip(
     fare: Math.max(0, to.fareFromStart - from.fareFromStart),
     capacity,
     seatsBooked: taken.size,
-    seatsLeft: Math.max(0, capacity - taken.size),
+    // Reserved seats aren't on sale to passengers, so they don't count as "left".
+    seatsLeft: Math.max(0, capacity - taken.size - (bus.reservedSeats ?? []).filter((s) => !taken.has(s)).length),
     bikeSpaces: bus.bikeSpaces ?? 0,
     bikeSpacesLeft: Math.max(0, (bus.bikeSpaces ?? 0) - usedSpaces),
     routeShare: Math.min(1, Math.max(0, (to.fareFromStart - from.fareFromStart) / fullFare)),
@@ -250,7 +252,7 @@ export function findTrips(data: StoreData, from: string, to: string, date: strin
     if (fi < 0 || ti < 0 || fi >= ti) continue;
     const dayShift = Math.floor((toMinutes(schedule.departure) + route.stops[fi].offsetMin) / 1440);
     const runDate = addDays(date, -dayShift);
-    if (!schedule.days.includes(parseISODate(runDate).getDay() as Schedule['days'][number])) continue;
+    if (!runsOn(schedule, runDate)) continue;
     trips.push(buildTrip(data, schedule, route, bus, runDate, fi, ti, now));
   }
   return trips.sort((a, b) => a.departure.localeCompare(b.departure));
@@ -291,28 +293,56 @@ export function refundQuote(booking: Booking, trip: Pick<Trip, 'boardingDate' | 
   return { percent, amount: Math.round((refundable * percent) / 100) };
 }
 
+/** True when the schedule uses "every N days from a date" and not weekdays. */
+export const isAlternating = (s: Pick<Schedule, 'everyDays' | 'startDate'>) => !!s.everyDays && s.everyDays > 1 && !!s.startDate;
+
+/** Does this departure run on this date (the date it leaves its first stop)? */
+export function runsOn(s: Schedule, iso: string) {
+  if (isAlternating(s)) {
+    const diff = Math.round((parseISODate(iso).getTime() - parseISODate(s.startDate!).getTime()) / 86_400_000);
+    return diff >= 0 && diff % s.everyDays! === 0;
+  }
+  return s.days.includes(parseISODate(iso).getDay() as Schedule['days'][number]);
+}
+
+/** "Mon, Wed, Fri" / "Daily" / "Every other day from 2 Oct". */
+export function describeRuns(s: Schedule) {
+  if (isAlternating(s)) {
+    const from = parseISODate(s.startDate!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    return `Every ${s.everyDays === 2 ? 'other' : s.everyDays === 3 ? 'third' : `${s.everyDays}th`} day from ${from}`;
+  }
+  if (s.days.length === 7) return 'Daily';
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return [...s.days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => names[d]).join(', ');
+}
+
 /**
  * Other departures of the same bus that overlap this one anywhere in the week
  * (including runs that cross midnight), allowing a turnaround gap.
  */
 export function scheduleConflicts(data: Pick<StoreData, 'schedules' | 'routes'>, candidate: Schedule, turnaround = 60) {
-  const WEEK = 7 * 1440;
+  // Compared on real dates over the next 12 weeks, so weekly timetables and
+  // alternate-day ones (which drift through the week) are both checked.
+  const HORIZON = 84;
+  const today = todayISO();
   const routeLen = (id: string) => {
     const r = data.routes.find((x) => x.id === id);
     return r && r.stops.length ? r.stops[r.stops.length - 1].offsetMin : 0;
   };
-  const windows = (s: Schedule) =>
-    s.days.map((d) => {
-      const start = d * 1440 + toMinutes(s.departure);
-      return [start, start + routeLen(s.routeId) + turnaround] as const;
-    });
-  const overlaps = (a: readonly [number, number], b: readonly [number, number]) =>
-    [-WEEK, 0, WEEK].some((shift) => a[0] < b[1] + shift && b[0] + shift < a[1]);
+  const windows = (sch: Schedule) => {
+    const out: [number, number][] = [];
+    for (let i = -1; i < HORIZON; i++) {
+      if (!runsOn(sch, addDays(today, i))) continue;
+      const start = i * 1440 + toMinutes(sch.departure);
+      out.push([start, start + routeLen(sch.routeId) + turnaround]);
+    }
+    return out;
+  };
   const mine = windows(candidate);
-  return data.schedules.filter((s) => {
-    if (s.id === candidate.id || !s.active || s.busId !== candidate.busId) return false;
-    const theirs = windows(s);
-    return mine.some((a) => theirs.some((b) => overlaps(a, b)));
+  return data.schedules.filter((other) => {
+    if (other.id === candidate.id || !other.active || other.busId !== candidate.busId) return false;
+    const theirs = windows(other);
+    return mine.some((x) => theirs.some((y) => x[0] < y[1] && y[0] < x[1]));
   });
 }
 
@@ -334,9 +364,8 @@ export function listRuns(data: StoreData, startDate: string, days: number): Run[
   const runs: Run[] = [];
   for (let i = 0; i < days; i++) {
     const date = addDays(startDate, i);
-    const weekday = parseISODate(date).getDay();
     for (const schedule of data.schedules) {
-      if (!schedule.active || !schedule.days.includes(weekday as Schedule['days'][number])) continue;
+      if (!schedule.active || !runsOn(schedule, date)) continue;
       const route = data.routes.find((r) => r.id === schedule.routeId);
       const bus = data.buses.find((b) => b.id === schedule.busId);
       if (!route || !bus) continue;
@@ -364,7 +393,7 @@ export function netRevenue(b: Booking) {
 
 // ---------------------------------------------------------------- bikes ----
 export function bikeSpacesFor(kind: BikeKind) {
-  return OPERATOR.bikes.kinds[kind].spaces;
+  return bikeKind(kind).spaces;
 }
 
 /** Luggage-compartment spaces already booked on a departure. */
@@ -379,12 +408,12 @@ export function bikeSpacesUsed(bookings: Booking[], scheduleId: string, date: st
 
 /** Fee for one bike on a trip: full-route fee scaled by distance, rounded to LKR 50. */
 export function bikeFee(kind: BikeKind, routeShare: number) {
-  const full = OPERATOR.bikes.kinds[kind].fullRouteFee;
-  return Math.max(OPERATOR.bikes.minFee, Math.round((full * routeShare) / 50) * 50);
+  const full = bikeKind(kind).fullRouteFee;
+  return Math.max(getBikeConfig().minFee, Math.round((full * routeShare) / 50) * 50);
 }
 
 export function bikeLabel(kind: BikeKind) {
-  return OPERATOR.bikes.kinds[kind].label;
+  return bikeKind(kind).label;
 }
 
 /**

@@ -5,6 +5,7 @@
 // are estimates: correct them in /admin → Routes (changes are saved in the
 // browser; "Reset demo data" restores this file).
 
+import { bikeKind } from './bikeConfig';
 import { OPERATOR } from '@/config/operator';
 import type { Booking, BikeKind, Bus, Gender, Route, Schedule, StoreData } from './types';
 import { addDays, busCapacity, departureDate, parseISODate, seatIds, todayISO } from './trips';
@@ -184,7 +185,7 @@ function seedBookings(): Booking[] {
         if (r() < 0.12 && used + 2 <= SEED_BUSES[0].bikeSpaces) {
           const kind: BikeKind = r() < 0.6 ? 'motorbike' : 'scooter';
           const share = fare / route.stops[route.stops.length - 1].fareFromStart;
-          const fee = Math.max(OPERATOR.bikes.minFee, Math.round((OPERATOR.bikes.kinds[kind].fullRouteFee * share) / 50) * 50);
+          const fee = Math.max(OPERATOR.bikes.minFee, Math.round((bikeKind(kind).fullRouteFee * share) / 50) * 50);
           const last = out[out.length - 1];
           const models =
             kind === 'motorbike'

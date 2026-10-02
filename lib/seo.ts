@@ -92,7 +92,8 @@ export function allRoutePages(tt: Timetable = SEED_TIMETABLE): RoutePage[] {
               time: formatTime12(fromMinutes(dep)),
               arrival: formatTime12(fromMinutes(arr)),
               nextDay: Math.floor(arr / 1440) > shift,
-              days: days.map((d) => WEEKDAYS[d]),
+              // Alternate-day departures don't fall on fixed weekdays.
+              days: s.everyDays && s.everyDays > 1 && s.startDate ? [s.everyDays === 2 ? 'alternate days' : `every ${s.everyDays} days`] : days.map((d) => WEEKDAYS[d]),
               schemaDays: days.map((d) => SCHEMA_DAYS[d]),
             };
           }),

@@ -2,6 +2,7 @@
 // Converts a stored Booking into the display shape used by the ticket cards on
 // /my-bookings and /dashboard (formatted dates/times, bus label, status).
 
+import { bikeKind } from './bikeConfig';
 import { OPERATOR } from '@/config/operator';
 import type { Booking, StoreData } from './types';
 import { departureDate, formatDateLabel, formatTime12, getTrip } from './trips';
@@ -61,7 +62,7 @@ export function toBookingView(b: Booking, data: StoreData, now = new Date()): Bo
     reschedulable: changeable,
     seatsChangeable: changeable,
     scheduleId: b.scheduleId,
-    bikes: (b.bikes ?? []).map((x) => `${OPERATOR.bikes.kinds[x.kind].label}${x.regNo ? ` (${x.regNo})` : ''}`),
+    bikes: (b.bikes ?? []).map((x) => `${bikeKind(x.kind).label}${x.regNo ? ` (${x.regNo})` : ''}`),
     sortKey: leaves.getTime(),
   };
 }

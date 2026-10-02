@@ -2,15 +2,17 @@
 // components/BikeAddon.tsx — "Bringing a bike?" card on the passenger details
 // page. Passengers pick the kind of bike, describe it and upload a photo; the
 // crew uses the photo to check the bike at loading. Space in the luggage
-// compartment is limited per departure (see OPERATOR.bikes + bus.bikeSpaces).
+// compartment is limited per departure (bus.bikeSpaces). The categories and
+// fees come from Staff area → Settings → Bikes (lib/bikeConfig.ts).
 
+import { activeBikeKinds, bikeKind } from '@/lib/bikeConfig';
+import { useBikeConfig } from '@/lib/useBikeConfig';
 import { useId, useState } from 'react';
 import { OPERATOR } from '@/config/operator';
 import type { BikeItem, BikeKind, Trip } from '@/lib/types';
 import { bikeFee, bikeSpacesFor, compressPhoto, formatLKR, genId } from '@/lib/trips';
 import { useT } from '@/lib/i18n';
 
-const KINDS = Object.keys(OPERATOR.bikes.kinds) as BikeKind[];
 
 /** Human-readable reason the bikes can't be booked yet, or null when all good. */
 export function bikesProblem(bikes: BikeItem[]): string | null {
@@ -18,7 +20,7 @@ export function bikesProblem(bikes: BikeItem[]): string | null {
     const n = bikes.length > 1 ? ` for bike ${i + 1}` : '';
     if (!b.photo) return `Upload a photo${n}.`;
     if (b.description.trim().length < 3) return `Add the make and colour${n}.`;
-    if (b.regNo.trim().length < 4) return `Add the number plate${n}.`;
+    if (bikeKind(b.kind).needsPlate && b.regNo.trim().length < 4) return `Add the number plate${n}.`;
   }
   return null;
 }
@@ -34,7 +36,9 @@ export function BikeAddon({
 }) {
   const { t } = useT();
   const [showRules, setShowRules] = useState(false);
-  if (!trip.bikeSpaces) return null;
+  const cfg = useBikeConfig();
+  const KINDS: BikeKind[] = activeBikeKinds(cfg).map((k) => k.id);
+  if (!trip.bikeSpaces || KINDS.length === 0) return null;
 
   const usedHere = bikes.reduce((n, b) => n + bikeSpacesFor(b.kind), 0);
   const leftAfter = trip.bikeSpacesLeft - usedHere;
@@ -100,7 +104,7 @@ export function BikeAddon({
             />
           ))}
 
-          {bikes.length < OPERATOR.bikes.maxPerBooking && newBike() && (
+          {bikes.length < cfg.maxPerBooking && newBike() && (
             <button
               type="button"
               onClick={() => {
@@ -156,6 +160,9 @@ function BikeCard({
   onRemove: () => void;
 }) {
   const inputId = useId();
+  // The categories on offer, plus this bike's own category if it has since been switched off.
+  const offered = activeBikeKinds(useBikeConfig()).map((k) => k.id);
+  const KINDS: BikeKind[] = offered.includes(bike.kind) ? offered : [bike.kind, ...offered];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -188,9 +195,9 @@ function BikeCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-[8px]" role="radiogroup" aria-label="Kind of bike">
+      <div className={`grid grid-cols-2 ${KINDS.length > 2 ? 'sm:grid-cols-3' : ''} gap-[8px]`} role="radiogroup" aria-label="Kind of bike">
         {KINDS.map((k) => {
-          const meta = OPERATOR.bikes.kinds[k];
+          const meta = bikeKind(k);
           const selected = bike.kind === k;
           const fits = meta.spaces <= spacesForSwitch;
           return (
@@ -273,7 +280,7 @@ function BikeCard({
           </div>
           <div>
             <label className="text-[11px] font-bold text-[#46464f] px-1" htmlFor={`${inputId}-reg`}>
-              Number plate
+              Number plate{bikeKind(bike.kind).needsPlate ? '' : ' (if it has one)'}
             </label>
             <input
               id={`${inputId}-reg`}
@@ -284,7 +291,7 @@ function BikeCard({
             />
           </div>
           <p className="text-[11px] text-[#46464f]">
-            Uses {OPERATOR.bikes.kinds[bike.kind].spaces} space{OPERATOR.bikes.kinds[bike.kind].spaces > 1 ? 's' : ''} in the compartment. The crew checks it against your photo at loading.
+            Uses {bikeKind(bike.kind).spaces} space{bikeKind(bike.kind).spaces > 1 ? 's' : ''} in the compartment. The crew checks it against your photo at loading.
           </p>
         </div>
       </div>

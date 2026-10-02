@@ -18,13 +18,16 @@ export interface Bus {
   backRowSeats: number;
   /** Seat ids set aside for female passengers, e.g. ["1A","1B"]. */
   ladiesSeats: string[];
+  /** Seats kept back by the owner. Not bookable online; staff can sell one only with the owner's code. */
+  reservedSeats?: string[];
   amenities: string[];
   status: BusStatus;
   /** Bike spaces in the luggage compartment (0 = no bikes on this bus). */
   bikeSpaces: number;
 }
 
-export type BikeKind = 'scooter' | 'motorbike';
+/** A bike category id from Staff area → Settings → Bikes (e.g. "scooter"). */
+export type BikeKind = string;
 
 export interface BikeItem {
   id: string;
@@ -72,6 +75,15 @@ export interface Schedule {
   /** "HH:MM" 24h, departure from the route's first stop. */
   departure: string;
   days: Weekday[];
+  /**
+   * Alternate-day running: when set (2 = every other day, 3 = every third…),
+   * the bus runs every `everyDays` days counted from `startDate`, and `days`
+   * is ignored. Lets one bus go out one night and come back the next, which
+   * a 7-day week can't express.
+   */
+  everyDays?: number | null;
+  /** "YYYY-MM-DD": the first date of the alternate-day pattern. */
+  startDate?: string | null;
   active: boolean;
 }
 
@@ -156,6 +168,8 @@ export type NewBooking = Omit<Booking, 'id' | 'ref' | 'createdAt' | 'status'> & 
   /** 'card' | 'wallet' (online), 'bank' / 'counter' (seat held until paid). */
   payment?: PaymentMethod;
   useReward?: boolean;
+  /** Office staff only: sell a ladies-only seat to a male passenger for this one sale. */
+  overrideLadies?: boolean;
 };
 
 export type ActionResult = { ok: boolean; reason?: string };

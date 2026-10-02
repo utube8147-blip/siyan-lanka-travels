@@ -1,6 +1,8 @@
 // app/(public)/(passenger)/page.tsx — single-operator landing page
 'use client';
 
+import { activeBikeKinds } from '@/lib/bikeConfig';
+import { useBikeConfig } from '@/lib/useBikeConfig';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -75,7 +77,8 @@ export default function LandingPage() {
     ? Array.from({ length: Math.ceil(firstRoute.stops.length / stopCols) }, (_, r) => firstRoute.stops.slice(r * stopCols, r * stopCols + stopCols))
     : [];
 
-  const weeklyDepartures = data.schedules.filter((s) => s.active).reduce((n, s) => n + s.days.length, 0);
+  const bikeCfg = useBikeConfig(); // categories and prices from Staff area → Settings → Bikes
+  const weeklyDepartures = data.schedules.filter((s) => s.active).reduce((n, s) => n + (s.everyDays && s.everyDays > 1 && s.startDate ? Math.round(7 / s.everyDays) : s.days.length), 0);
   const activeBuses = data.buses.filter((b) => b.status === 'active');
 
   const search = () => {
@@ -317,8 +320,8 @@ export default function LandingPage() {
                 </Link>
               </div>
               <div ref={bikesRef} className="grid grid-cols-2 gap-3 sm:gap-4">
-                {Object.values(OPERATOR.bikes.kinds).map((k) => (
-                  <div key={k.label} className="rounded-2xl border border-[#c7c5d1] p-3 sm:p-5 bg-[#fcfcfd]">
+                {activeBikeKinds(bikeCfg).map((k) => (
+                  <div key={k.id} className="rounded-2xl border border-[#c7c5d1] p-3 sm:p-5 bg-[#fcfcfd]">
                     <span className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#050a44] text-[#feb700] flex items-center justify-center">
                       <span className="material-symbols-outlined text-[28px]">{k.icon}</span>
                     </span>

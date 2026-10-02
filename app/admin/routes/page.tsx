@@ -19,7 +19,7 @@ async function uploadStopPhoto(file: File) {
   return supabase().storage.from('stop-photos').getPublicUrl(path).data.publicUrl;
 }
 import type { Route, RouteStop, Schedule, Weekday } from '@/lib/types';
-import { formatDuration, formatLKR, formatTime12, fromMinutes, genId, routeLabel, scheduleConflicts, toMinutes } from '@/lib/trips';
+import { describeRuns, formatDuration, formatLKR, formatTime12, fromMinutes, genId, isAlternating, routeLabel, scheduleConflicts, todayISO, toMinutes } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, WEEKDAYS, formatDays, inputClass, useToast } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
 
@@ -99,7 +99,7 @@ export default function RoutesPage() {
                         <td className="px-4 py-3 font-semibold text-[#050a44]">{routeLabel(route)}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{bus ? `${bus.name} · ${bus.regNo}` : 'No bus'}</td>
                         <td className="px-4 py-3">
-                          {formatDays(s.days)}
+                          {describeRuns(s)}
                           {conflicts.length > 0 && s.active && <p className="text-[11px] font-bold text-[#ba1a1a] mt-0.5">Clashes with another run of this bus</p>}
                         </td>
                         <td className="px-4 py-3">
@@ -368,7 +368,8 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
   const conflicts = s.active ? scheduleConflicts(data, s) : [];
   const route = data.routes.find((r) => r.id === s.routeId);
   const arrive = route ? toMinutes(s.departure) + route.stops[route.stops.length - 1].offsetMin : 0;
-  const valid = s.routeId && s.busId && s.days.length > 0 && conflicts.length === 0;
+  const alternating = isAlternating(s);
+  const valid = s.routeId && s.busId && (alternating || s.days.length > 0) && conflicts.length === 0;
   const toggleDay = (d: Weekday) => setS((p) => ({ ...p, days: p.days.includes(d) ? p.days.filter((x) => x !== d) : [...p.days, d] }));
 
   return (
@@ -380,7 +381,8 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!valid} onClick={() => onSave(s)}>
+          {/* Alternate-day departures keep all weekdays ticked underneath; the database then checks the every-N-days rule. */}
+          <Button disabled={!valid} onClick={() => onSave(alternating ? { ...s, days: [0, 1, 2, 3, 4, 5, 6] } : { ...s, everyDays: null, startDate: null })}>
             Save departure
           </Button>
         </>
@@ -410,7 +412,39 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
           <input type="time" className={inputClass} value={s.departure} onChange={(e) => e.target.value && setS({ ...s, departure: e.target.value })} />
         </Field>
       </div>
-      <Field label="Runs on">
+      <Field label="Runs">
+        <div className="flex gap-2 mb-2">
+          {([false, true] as const).map((alt) => (
+            <button
+              key={String(alt)}
+              type="button"
+              aria-pressed={alternating === alt}
+              onClick={() => setS((p) => (alt ? { ...p, everyDays: p.everyDays && p.everyDays > 1 ? p.everyDays : 2, startDate: p.startDate || todayISO() } : { ...p, everyDays: null, startDate: null }))}
+              className={`flex-1 h-10 rounded-lg text-[13px] font-bold border ${alternating === alt ? 'bg-[#050a44] text-white border-[#050a44]' : 'border-[#c7c5d1] text-[#46464f]'}`}
+            >
+              {alt ? 'Every other day' : 'On set weekdays'}
+            </button>
+          ))}
+        </div>
+        {alternating ? (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-[11px] font-bold text-[#686873] mb-1">Runs every</span>
+              <select className={inputClass} value={s.everyDays ?? 2} onChange={(e) => setS({ ...s, everyDays: Number(e.target.value) })}>
+                <option value={2}>2 days (every other day)</option>
+                <option value={3}>3 days</option>
+                <option value={4}>4 days</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-[11px] font-bold text-[#686873] mb-1">First run on</span>
+              <input type="date" className={inputClass} value={s.startDate ?? ''} onChange={(e) => e.target.value && setS({ ...s, startDate: e.target.value })} />
+            </label>
+            <p className="col-span-2 text-[12px] text-[#6b6d78]">
+              For one bus going out one night and back the next: set the outward departure to start on one date and the return departure to start the day after. The pattern keeps going without a gap at the end of the week.
+            </p>
+          </div>
+        ) : (
         <div className="flex flex-wrap gap-1.5">
           {([1, 2, 3, 4, 5, 6, 0] as Weekday[]).map((d) => (
             <button
@@ -424,6 +458,7 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
             </button>
           ))}
         </div>
+        )}
       </Field>
       <label className="flex items-center gap-2 text-[13px] font-semibold text-[#050a44]">
         <input type="checkbox" checked={s.active} onChange={(e) => setS({ ...s, active: e.target.checked })} className="w-4 h-4 accent-[#050a44]" />
@@ -435,7 +470,7 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
           <ul className="mt-1 space-y-0.5">
             {conflicts.map((c) => (
               <li key={c.id}>
-                {formatTime12(c.departure)} {routeLabel(data.routes.find((r) => r.id === c.routeId))} · {formatDays(c.days)}
+                {formatTime12(c.departure)} {routeLabel(data.routes.find((r) => r.id === c.routeId))} · {describeRuns(c)}
               </li>
             ))}
           </ul>

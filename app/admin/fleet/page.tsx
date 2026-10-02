@@ -2,6 +2,7 @@
 // app/admin/fleet/page.tsx — add, edit and retire buses. Seat layout drives
 // the seat maps passengers see, so capacity changes apply everywhere.
 
+import { describeRuns } from '@/lib/trips';
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useStore } from '@/lib/store';
@@ -81,7 +82,7 @@ export default function FleetPage() {
                   <ul className="text-[13px] text-[#050a44] space-y-0.5">
                     {runs.map((s) => (
                       <li key={s.id}>
-                        {formatTime12(s.departure)} {routeLabel(data.routes.find((r) => r.id === s.routeId))} · {formatDays(s.days)}
+                        {formatTime12(s.departure)} {routeLabel(data.routes.find((r) => r.id === s.routeId))} · {describeRuns(s)}
                         {!s.active && ' (paused)'}
                       </li>
                     ))}
@@ -136,6 +137,7 @@ export default function FleetPage() {
 function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; onClose: () => void; onSave: (b: Bus) => void }) {
   const [b, setB] = useState<Bus>(bus);
   const [ladies, setLadies] = useState(bus.ladiesSeats.join(', '));
+  const [reserved, setReserved] = useState((bus.reservedSeats ?? []).join(', '));
   const set = <K extends keyof Bus>(k: K, v: Bus[K]) => setB((p) => ({ ...p, [k]: v }));
   const validSeats = new Set(seatIds(b));
   const ladiesList = ladies
@@ -143,7 +145,12 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
     .map((s) => s.trim().toUpperCase())
     .filter(Boolean);
   const badLadies = ladiesList.filter((s) => !validSeats.has(s));
-  const valid = b.name.trim() && b.regNo.trim() && b.rows >= 1 && b.rows <= 16 && badLadies.length === 0;
+  const reservedList = reserved
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  const badReserved = reservedList.filter((s) => !validSeats.has(s));
+  const valid = b.name.trim() && b.regNo.trim() && b.rows >= 1 && b.rows <= 16 && badLadies.length === 0 && badReserved.length === 0;
 
   return (
     <Modal
@@ -154,7 +161,7 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!valid} onClick={() => onSave({ ...b, name: b.name.trim(), regNo: b.regNo.trim().toUpperCase(), ladiesSeats: ladiesList })}>
+          <Button disabled={!valid} onClick={() => onSave({ ...b, name: b.name.trim(), regNo: b.regNo.trim().toUpperCase(), ladiesSeats: ladiesList, reservedSeats: reservedList })}>
             {isNew ? 'Add bus' : 'Save changes'}
           </Button>
         </>
@@ -196,6 +203,11 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
         <input className={inputClass} value={ladies} onChange={(e) => setLadies(e.target.value)} />
       </Field>
       {badLadies.length > 0 && <p className="text-[12px] font-semibold text-[#ba1a1a]">Not on this layout: {badLadies.join(', ')}</p>}
+      <p className="text-[12px] text-[#6b6d78] -mt-1">Office staff can sell a ladies-only seat to a male passenger from Departures by ticking &ldquo;Override ladies-only&rdquo; on that sale.</p>
+      <Field label="Reserved seats (owner's approval)" hint="Seat numbers separated by commas, e.g. 1C, 1D. Passengers can't book these online. Staff can sell one only with a code that is texted to the owner.">
+        <input className={inputClass} value={reserved} onChange={(e) => setReserved(e.target.value)} placeholder="None" />
+      </Field>
+      {badReserved.length > 0 && <p className="text-[12px] font-semibold text-[#ba1a1a]">Not on this layout: {badReserved.join(', ')}</p>}
       <Field label="Amenities">
         <div className="flex flex-wrap gap-2">
           {AMENITIES.map((a) => {

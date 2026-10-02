@@ -347,6 +347,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               channel: input.channel,
               payment: input.payment,
               use_reward: input.useReward ?? false,
+              override_ladies: input.overrideLadies ?? false,
               bikes,
             },
           });

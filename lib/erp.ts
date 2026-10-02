@@ -4,6 +4,7 @@
 // accounts and settings. Supabase when connected (RLS decides who sees what),
 // otherwise sample data kept in this browser.
 
+import { bikeConfigToJson, parseBikeConfig, setBikeConfig } from './bikeConfig';
 import { useCallback, useEffect, useState } from 'react';
 import { OPERATOR } from '@/config/operator';
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
@@ -60,9 +61,9 @@ export interface CrewMember {
 export type AccountRole = 'passenger' | 'conductor' | 'staff' | 'admin';
 export interface Account { id: string; email: string; fullName: string; phone: string; role: AccountRole; createdAt: string; lastSignIn?: string | null }
 
-/** Bike kinds come from the operator config, so the two can never drift apart. */
-export type BikeKind = keyof typeof OPERATOR.bikes.kinds; // 'scooter' | 'motorbike'
-export type BikeKindSettings = { spaces: number; fullRouteFee: number };
+/** A bike category id; the list is edited in Settings → Bikes (lib/bikeConfig.ts). */
+export type BikeKind = string;
+export type BikeKindSettings = { label: string; icon: string; spaces: number; fullRouteFee: number; needsPlate: boolean; active: boolean; order: number };
 
 export interface Settings {
   bookingFee: number;
@@ -122,23 +123,9 @@ const crewTo = (c: CrewMember) => ({
   monthly_salary: c.monthlySalary, bus_id: c.busId || null, active: c.active, notes: c.notes,
 });
 
-/** Keeps only the bike kinds that exist in the config; drops stale ones (e.g. bicycle) and fills missing ones. */
+/** Fills in anything missing on the bike categories (names, icons, order) so every screen gets complete data. */
 function normalizeSettings(s: Settings): Settings {
-  const kinds = {} as Record<BikeKind, BikeKindSettings>;
-  for (const k of Object.keys(OPERATOR.bikes.kinds) as BikeKind[]) {
-    kinds[k] = {
-      spaces: s.bikes?.kinds?.[k]?.spaces ?? OPERATOR.bikes.kinds[k].spaces,
-      fullRouteFee: s.bikes?.kinds?.[k]?.fullRouteFee ?? OPERATOR.bikes.kinds[k].fullRouteFee,
-    };
-  }
-  return {
-    ...s,
-    bikes: {
-      minFee: s.bikes?.minFee ?? OPERATOR.bikes.minFee,
-      maxPerBooking: s.bikes?.maxPerBooking ?? OPERATOR.bikes.maxPerBooking,
-      kinds,
-    },
-  };
+  return { ...s, bikes: bikeConfigToJson(parseBikeConfig(s.bikes)) };
 }
 
 const settingsFrom = (r: any): Settings => normalizeSettings({
@@ -164,10 +151,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bikes: {
     minFee: OPERATOR.bikes.minFee,
     maxPerBooking: OPERATOR.bikes.maxPerBooking,
-    kinds: {
-      scooter: { spaces: OPERATOR.bikes.kinds.scooter.spaces, fullRouteFee: OPERATOR.bikes.kinds.scooter.fullRouteFee },
-      motorbike: { spaces: OPERATOR.bikes.kinds.motorbike.spaces, fullRouteFee: OPERATOR.bikes.kinds.motorbike.fullRouteFee },
-    },
+    kinds: bikeConfigToJson(parseBikeConfig(null)).kinds,
   },
   resaleEnabled: OPERATOR.features.resale,
   bookingOtp: true,
@@ -348,8 +332,10 @@ export function useErp({ admin }: { admin: boolean }) {
       ? dbWrite(() => supabase().rpc('set_user_role', { p_user: userId, p_role: role }))
       : Promise.resolve(demoWrite((d) => ({ ...d, accounts: d.accounts.map((a) => (a.id === userId ? { ...a, role } : a)) })));
 
-  const saveSettings = (s: Settings) =>
-    db ? dbWrite(() => supabase().from('app_settings').update(settingsTo(s)).eq('id', true)) : Promise.resolve(demoWrite((d) => ({ ...d, settings: s })));
+  const saveSettings = (s: Settings) => {
+    setBikeConfig(s.bikes); // bike categories and fees apply across the app straight away
+    return db ? dbWrite(() => supabase().from('app_settings').update(settingsTo(s)).eq('id', true)) : Promise.resolve(demoWrite((d) => ({ ...d, settings: s })));
+  };
 
   const resetDemo = () => {
     try {
