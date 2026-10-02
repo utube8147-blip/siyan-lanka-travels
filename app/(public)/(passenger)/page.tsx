@@ -59,6 +59,22 @@ export default function LandingPage() {
 
   const stopsRef = useStaggerIn<HTMLOListElement>();
   const bikesRef = useStaggerIn<HTMLDivElement>();
+
+  // "Where we stop" snake layout below xl: how many stops fit in one row.
+  const [stopCols, setStopCols] = useState(3);
+  useEffect(() => {
+    const calc = () => {
+      const w = window.innerWidth;
+      setStopCols(w < 640 ? 3 : w < 1024 ? 5 : 7);
+    };
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
+  const stopRows = firstRoute
+    ? Array.from({ length: Math.ceil(firstRoute.stops.length / stopCols) }, (_, r) => firstRoute.stops.slice(r * stopCols, r * stopCols + stopCols))
+    : [];
+
   const weeklyDepartures = data.schedules.filter((s) => s.active).reduce((n, s) => n + s.days.length, 0);
   const activeBuses = data.buses.filter((b) => b.status === 'active');
 
@@ -85,13 +101,17 @@ export default function LandingPage() {
         <section className="relative w-full lg:min-h-[560px] lg:h-[calc(100dvh-80px)]">
           <div className="hidden lg:block absolute inset-0 z-0 overflow-hidden">
             <img alt="" className="w-full h-full object-cover object-[65%_center]" src={HERO_IMAGE} />
-            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/15" />
+            {/* Flat faint overlay so the whole photo is evenly toned down */}
+            <div className="absolute inset-0 bg-black/25" />
+            {/* Directional gradient: darkest behind the headline, lighter toward the right */}
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/35" />
           </div>
 
           <div className="relative z-10 h-full lg:px-16 lg:py-6 grid grid-cols-1 lg:grid-cols-2 lg:gap-[48px] items-center max-w-[1440px] mx-auto">
             <div className="relative overflow-hidden lg:overflow-visible text-center lg:text-left px-6 md:px-12 lg:px-0 pt-14 pb-14 md:pt-20 md:pb-20 lg:py-0">
               <div className="lg:hidden absolute inset-0" aria-hidden>
                 <img alt="" className="w-full h-full object-cover object-[60%_center]" src={HERO_IMAGE} />
+                <div className="absolute inset-0 bg-black/15" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/55 to-black/80" />
               </div>
               <div className="relative">
@@ -161,7 +181,7 @@ export default function LandingPage() {
                 <button
                   onClick={search}
                   disabled={!from || !to}
-                  className="w-full py-3.5 md:py-[18px] bg-[#feb700] text-[#050a44] rounded-2xl text-[17px] font-semibold hover:bg-white hover:shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
+                  className="w-full py-3.5 md:py-[18px] bg-[#feb700] text-[#050a44] rounded-2xl text-[17px] font-semibold hover:bg-[#ffc933] hover:shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
                 >
                   <span>{t('Find buses')}</span>
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -195,7 +215,10 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Stops along the way */}
+        {/* Stops along the way.
+            Below xl: a snake. Row 1 runs left to right, drops down at the edge,
+            row 2 runs right to left, and so on.
+            xl and up: one horizontal line. */}
         {firstRoute && (
           <section className="py-[56px] bg-[#fcfcfd]">
             <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
@@ -203,9 +226,56 @@ export default function LandingPage() {
               <p className="text-[15px] text-[#46464f] mb-10 max-w-xl">
                 {t('Get on or off at any of these. Fares shown from {from}; you only pay for the part you ride.', { from: firstRoute.stops[0].name })}
               </p>
-              <div className="overflow-x-auto no-scrollbar -mx-4 px-4">
+
+              {/* Snake (phones, tablets, small laptops) */}
+              <div className="xl:hidden">
+                {stopRows.map((row, r) => {
+                  const reversed = r % 2 === 1;
+                  const isLastRow = r === stopRows.length - 1;
+                  const cell = 100 / stopCols;
+                  const edge = `calc(${cell / 2}% - 1.5px)`;
+                  return (
+                    <ol key={r} className={`relative flex ${reversed ? 'flex-row-reverse' : 'flex-row'} ${isLastRow ? '' : 'pb-10'}`}>
+                      {/* Horizontal line through this row's dots */}
+                      {row.length > 1 && (
+                        <div
+                          className="absolute top-[11px] h-[3px] bg-[#9a99a8]/60 rounded-full"
+                          style={{ width: `${(row.length - 1) * cell}%`, [reversed ? 'right' : 'left']: `${cell / 2}%` }}
+                          aria-hidden
+                        />
+                      )}
+                      {/* Drop down to the next row at the edge where this row ends */}
+                      {!isLastRow && (
+                        <div
+                          className="absolute top-[11px] -bottom-[11px] w-[3px] bg-[#9a99a8]/60 rounded-full"
+                          style={{ [reversed ? 'left' : 'right']: edge }}
+                          aria-hidden
+                        />
+                      )}
+                      {row.map((stop, j) => {
+                        const i = r * stopCols + j;
+                        const ends = i === 0 || i === firstRoute.stops.length - 1;
+                        return (
+                          <li key={stop.name} className="relative flex flex-col items-center text-center" style={{ width: `${cell}%` }}>
+                            <span
+                              className={`relative z-10 w-6 h-6 rounded-full border-4 border-[#fcfcfd] ${ends ? 'bg-[#050a44]' : 'bg-[#feb700]'}`}
+                              aria-hidden
+                            />
+                            <span className="mt-3 text-[13px] sm:text-[14px] font-bold text-[#050a44] leading-tight px-1">{stop.name}</span>
+                            <span className="text-[11px] sm:text-[12px] font-medium text-[#46464f]">{i === 0 ? t('Start') : formatDuration(stop.offsetMin)}</span>
+                            {i > 0 && <span className="mt-1 text-[11px] sm:text-[12px] font-bold text-[#7c5800]">{formatLKR(stop.fareFromStart)}</span>}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  );
+                })}
+              </div>
+
+              {/* Horizontal (wide screens) */}
+              <div className="hidden xl:block overflow-x-auto no-scrollbar -mx-4 px-4">
                 <ol ref={stopsRef} className="relative flex min-w-[1080px]">
-                  <div className="absolute left-3 right-3 top-[11px] h-[3px] bg-[#050a44]/15 rounded-full" aria-hidden />
+                  <div className="absolute left-3 right-3 top-[11px] h-[3px] bg-[#9a99a8]/60 rounded-full" aria-hidden />
                   {firstRoute.stops.map((stop, i) => {
                     const ends = i === 0 || i === firstRoute.stops.length - 1;
                     return (
@@ -257,7 +327,7 @@ export default function LandingPage() {
                     <p className="text-[12px] text-[#686873] mt-0.5">Less for shorter trips</p>
                   </div>
                 ))}
-                <p className="col-span-3 text-[12px] text-[#46464f]">
+                <p className="col-span-2 text-[12px] text-[#46464f]">
                   Space is limited on each departure. Motorbike tanks no more than a quarter full.
                 </p>
               </div>
@@ -361,19 +431,19 @@ export default function LandingPage() {
         </section>
 
         {/* How it works — a real sequence, so numbering earns its place */}
-        <section className="keep-navy py-[56px] bg-[#141519] text-white">
+        <section className="py-[56px] bg-[#f2f4f6]">
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
-            <h2 className="text-[28px] md:text-[30px] font-bold leading-[1.2] mb-10">{t('Booking takes about two minutes')}</h2>
+            <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-10">{t('Booking takes about two minutes')}</h2>
             <ol className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
                 ['Choose a departure', 'Pick where you get on and off and the time that suits you.'],
                 ['Pick your seat', 'See exactly which seats are free. Ladies-only seats are marked at the front.'],
                 ['Show your ticket', 'Pay online and show the QR ticket to the conductor at Bastian Mawatha or your stop.'],
               ].map(([title, body], i) => (
-                <li key={title} className="rounded-2xl bg-white/5 border border-white/10 p-6">
+                <li key={title} className="rounded-2xl bg-white border border-[#edeef0] p-6">
                   <span className="text-[34px] font-black text-[#feb700] leading-none">{i + 1}</span>
-                  <h3 className="text-[18px] font-bold mt-4 mb-2">{t(title)}</h3>
-                  <p className="text-[14px] leading-[1.6] text-[#bdc2ff]">{t(body)}</p>
+                  <h3 className="text-[18px] font-bold text-[#050a44] mt-4 mb-2">{t(title)}</h3>
+                  <p className="text-[14px] leading-[1.6] text-[#46464f]">{t(body)}</p>
                 </li>
               ))}
             </ol>

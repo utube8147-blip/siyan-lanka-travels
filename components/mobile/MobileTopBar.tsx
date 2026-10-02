@@ -1,13 +1,17 @@
 'use client';
 // Phone top bar: logo on Home; back arrow + screen title elsewhere.
 // Slim (56px + notch), and slides away while scrolling down.
+// Right side: theme toggle on every screen; language, install and Sign in
+// (when logged out) on Home.
 
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { Wordmark } from '../Wordmark';
+import { ThemeToggle } from '../ThemeToggle';
 import { InstallAppButton } from '../InstallAppButton';
+import { useAuth } from '@/contexts/AuthContext';
 import { useHideOnScroll } from '@/lib/useHideOnScroll';
 import { TAB_ROOTS, parentOf, screenTitle } from './routes';
 import { LanguageSwitcher, useT } from '@/lib/i18n';
@@ -17,6 +21,7 @@ function Bar() {
   const pathname = usePathname() || '/';
   const params = useSearchParams();
   const router = useRouter();
+  const { isLoggedIn } = useAuth();
   const hidden = useHideOnScroll();
   const isHome = pathname === '/';
   const isRoot = TAB_ROOTS.includes(pathname);
@@ -50,7 +55,19 @@ function Bar() {
             <h1 className={`text-[17px] font-semibold truncate ${isRoot ? 'pl-3' : ''}`}>{t(title)}</h1>
           </>
         )}
-        <div className="ml-auto flex items-center gap-1">{isHome && <LanguageSwitcher />}{isHome && <InstallAppButton variant="icon" />}</div>
+        <div className="ml-auto flex items-center gap-1">
+          {isHome && <LanguageSwitcher />}
+          {isHome && <InstallAppButton variant="icon" />}
+          <ThemeToggle />
+          {isHome && !isLoggedIn && (
+            <Link
+              href={`/auth/login?next=${encodeURIComponent(pathname)}`}
+              className="ml-1 px-3 py-1.5 bg-[#feb700] text-[#050a44] rounded-xl text-[12px] font-bold hover:brightness-105 active:scale-95 transition-all whitespace-nowrap"
+            >
+              {t('Sign in')}
+            </Link>
+          )}
+        </div>
       </div>
     </header>
   );

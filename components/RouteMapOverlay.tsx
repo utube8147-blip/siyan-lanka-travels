@@ -1,13 +1,19 @@
 'use client';
-import { useEffect } from 'react';
-import { X, MapPin, Bus, Clock, Navigation, Circle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, MapPin, Bus, Clock, Navigation } from 'lucide-react';
+import 'leaflet/dist/leaflet.css';
+
+// npm i leaflet && npm i -D @types/leaflet
 
 export interface RouteStop {
   id: string;
   name: string;
   time: string;
-  /** 0 = start of route, 100 = end of route — used to place the pin along the mock path */
+  /** 0 = start of route, 100 = end of route */
   progress: number;
+  /** Required for the stop to appear on the map; stops without coordinates are skipped. */
+  lat?: number;
+  lng?: number;
   status?: 'passed' | 'current' | 'upcoming';
 }
 
@@ -19,8 +25,10 @@ export interface RouteData {
   arrivalTime: string;
   duration: string;
   distance: string;
-  /** 0–100, how far along the route the bus currently is (mock/live position) */
+  /** 0–100, how far along the route the bus is. Used when busPosition is not given. */
   busProgress: number;
+  /** Real GPS position [lat, lng]. Overrides busProgress when provided. */
+  busPosition?: [number, number];
   stops: RouteStop[];
 }
 
@@ -30,7 +38,6 @@ interface RouteMapOverlayProps {
   route: RouteData;
 }
 
-// Sample data so this component can be dropped in and previewed immediately.
 export const MOCK_ROUTE: RouteData = {
   busNumber: 'VD-204',
   origin: 'Colombo Fort',
@@ -41,34 +48,60 @@ export const MOCK_ROUTE: RouteData = {
   distance: '37 km',
   busProgress: 42,
   stops: [
-    { id: 's1', name: 'Colombo Fort', time: '08:15 AM', progress: 0, status: 'passed' },
-    { id: 's2', name: 'Wattala', time: '08:35 AM', progress: 28, status: 'passed' },
-    { id: 's3', name: 'Ja-Ela', time: '08:52 AM', progress: 42, status: 'current' },
-    { id: 's4', name: 'Seeduwa', time: '09:08 AM', progress: 61, status: 'upcoming' },
-    { id: 's5', name: 'Katunayake', time: '09:22 AM', progress: 78, status: 'upcoming' },
-    { id: 's6', name: 'Negombo Bus Stand', time: '09:40 AM', progress: 100, status: 'upcoming' },
+    { id: 's1', name: 'Colombo Fort', time: '08:15 AM', progress: 0, lat: 6.9344, lng: 79.85, status: 'passed' },
+    { id: 's2', name: 'Wattala', time: '08:35 AM', progress: 28, lat: 6.9894, lng: 79.8913, status: 'passed' },
+    { id: 's3', name: 'Ja-Ela', time: '08:52 AM', progress: 42, lat: 7.0744, lng: 79.8919, status: 'current' },
+    { id: 's4', name: 'Seeduwa', time: '09:08 AM', progress: 61, lat: 7.1236, lng: 79.8841, status: 'upcoming' },
+    { id: 's5', name: 'Katunayake', time: '09:22 AM', progress: 78, lat: 7.1697, lng: 79.8706, status: 'upcoming' },
+    { id: 's6', name: 'Negombo Bus Stand', time: '09:40 AM', progress: 100, lat: 7.2083, lng: 79.8358, status: 'upcoming' },
   ],
 };
 
-// Builds a gentle S-curve path across the mock map viewBox (700 x 380) so
-// stops don't sit on a straight boring line. Purely decorative — not a real geo path.
-function pathPoint(progress: number) {
-  const t = progress / 100;
-  const x = 60 + t * 580;
-  const y = 190 + Math.sin(t * Math.PI * 1.4) * 110;
-  return { x, y };
+type LatLng = [number, number];
+type LocatedStop = RouteStop & { lat: number; lng: number };
+
+const hasCoords = (s: RouteStop): s is LocatedStop =>
+  typeof s.lat === 'number' && typeof s.lng === 'number' && Number.isFinite(s.lat) && Number.isFinite(s.lng);
+
+/** Interpolates the bus position between the two stops surrounding `progress`. */
+function interpolateBus(stops: LocatedStop[], progress: number): LatLng {
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i];
+    const b = stops[i + 1];
+    if (progress >= a.progress && progress <= b.progress) {
+      const t = b.progress === a.progress ? 0 : (progress - a.progress) / (b.progress - a.progress);
+      return [a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t];
+    }
+  }
+  const last = stops[stops.length - 1];
+  return [last.lat, last.lng];
 }
 
-function buildSvgPath(steps = 40) {
-  let d = '';
-  for (let i = 0; i <= steps; i++) {
-    const { x, y } = pathPoint((i / steps) * 100);
-    d += i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`;
-  }
-  return d;
-}
+const SNAP_THRESHOLD = 60; // px of drag needed to change snap point
+const CLOSE_THRESHOLD = 140; // px of downward drag from the half state to dismiss
 
 export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps) {
+  const mapEl = useRef<HTMLDivElement>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [viewportH, setViewportH] = useState(0);
+  const [snap, setSnap] = useState<'half' | 'full'>('half');
+  const [dragDelta, setDragDelta] = useState<number | null>(null);
+  const startY = useRef(0);
+
+  // Track viewport (desktop vs mobile, and pixel height for the sheet)
+  useEffect(() => {
+    if (!isOpen) return;
+    const update = () => {
+      setIsDesktop(window.matchMedia('(min-width: 768px)').matches);
+      setViewportH(window.innerHeight);
+    };
+    update();
+    setSnap('half');
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [isOpen]);
+
+  // Escape key + lock page scroll behind the sheet
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -80,10 +113,113 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
     };
   }, [isOpen, onClose]);
 
+  // Real map (Leaflet + OpenStreetMap tiles)
+  useEffect(() => {
+    const located = route.stops.filter(hasCoords);
+    if (!isOpen || !mapEl.current || located.length === 0) return;
+    let cancelled = false;
+    let cleanup = () => {};
+
+    (async () => {
+      const L = (await import('leaflet')).default;
+      if (cancelled || !mapEl.current) return;
+
+      const map = L.map(mapEl.current, { zoomControl: false, attributionControl: true });
+      L.control.zoom({ position: 'topright' }).addTo(map);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+
+      const stopCoords: LatLng[] = located.map((s) => [s.lat, s.lng]);
+      const busPos = route.busPosition ?? interpolateBus(located, route.busProgress);
+
+      // Full route (faded) + travelled portion
+      L.polyline(stopCoords, { color: '#c7c5d1', weight: 6, lineCap: 'round' }).addTo(map);
+      const travelled: LatLng[] = [
+        ...located.filter((s) => s.progress < route.busProgress).map((s): LatLng => [s.lat, s.lng]),
+        busPos,
+      ];
+      L.polyline(travelled, { color: '#050a44', weight: 6, lineCap: 'round' }).addTo(map);
+
+      // Stops
+      located.forEach((s) => {
+        const done = s.status === 'passed' || s.status === 'current';
+        const size = s.status === 'current' ? 18 : 14;
+        L.marker([s.lat, s.lng], {
+          icon: L.divIcon({
+            className: '',
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+            html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;border:3px solid #050a44;background:${
+              done ? '#050a44' : '#fff'
+            }"></div>`,
+          }),
+        })
+          .bindTooltip(s.name, { direction: 'top', offset: [0, -8] })
+          .addTo(map);
+      });
+
+      // Bus
+      L.marker(busPos, {
+        zIndexOffset: 1000,
+        icon: L.divIcon({
+          className: '',
+          iconSize: [34, 34],
+          iconAnchor: [17, 17],
+          html: `<div style="width:34px;height:34px;border-radius:9999px;background:#feb700;border:3px solid #050a44;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 0 6px rgba(254,183,0,.3)">🚌</div>`,
+        }),
+      })
+        .bindTooltip(`${route.busNumber} is here`, { direction: 'top', offset: [0, -14] })
+        .addTo(map);
+
+      if (stopCoords.length === 1) map.setView(stopCoords[0], 15);
+      else map.fitBounds(L.latLngBounds(stopCoords), { padding: [32, 32] });
+
+      // Keep tiles correct while the sheet resizes (drag / snap / rotate)
+      const ro = new ResizeObserver(() => map.invalidateSize());
+      ro.observe(mapEl.current);
+
+      cleanup = () => {
+        ro.disconnect();
+        map.remove();
+      };
+    })();
+
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+  }, [isOpen, route]);
+
   if (!isOpen) return null;
 
-  const busPos = pathPoint(route.busProgress);
-  const pathD = buildSvgPath();
+  const hasMap = route.stops.some(hasCoords);
+
+  // ---- Drag handling (mobile only) ----
+  const baseH = snap === 'full' ? viewportH : viewportH * 0.8;
+  const liveH =
+    dragDelta === null ? baseH : Math.min(viewportH, Math.max(viewportH * 0.4, baseH - dragDelta));
+  const isFull = !isDesktop && snap === 'full' && dragDelta === null;
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    startY.current = e.clientY;
+    setDragDelta(0);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragDelta === null) return;
+    setDragDelta(e.clientY - startY.current);
+  };
+  const onPointerUp = () => {
+    if (dragDelta === null) return;
+    if (dragDelta < -SNAP_THRESHOLD) setSnap('full');
+    else if (dragDelta > CLOSE_THRESHOLD && snap === 'half') onClose();
+    else if (dragDelta > SNAP_THRESHOLD) setSnap('half');
+    setDragDelta(null);
+  };
+
+  const mapHeightClass = snap === 'full' ? 'h-[38dvh]' : 'h-[200px]';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
@@ -93,12 +229,28 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
         onClick={onClose}
       />
 
-      {/* Panel — fixed to 80% of viewport height on mobile so the sheet never
-          exceeds the screen and never needs a page-level scroll; desktop keeps
-          its own natural cap and internal scroll for longer content. */}
-      <div className="relative w-full h-[80vh] h-[80dvh] md:h-auto md:max-h-[85vh] md:max-w-3xl md:mx-4 bg-white rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-[slideUp_0.25s_ease-out]">
+      {/* Panel */}
+      <div
+        style={isDesktop ? undefined : { height: liveH }}
+        className={`relative w-full md:h-auto md:max-h-[85vh] md:max-w-3xl md:mx-4 bg-white md:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-[slideUp_0.25s_ease-out] ${
+          isFull ? 'rounded-t-none' : 'rounded-t-3xl'
+        } ${dragDelta === null ? 'transition-[height,border-radius] duration-200 ease-out' : ''}`}
+      >
+        {/* Drag handle (mobile) */}
+        <div
+          className="md:hidden shrink-0 flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none select-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          role="button"
+          aria-label="Drag up to expand, down to collapse"
+        >
+          <span className="block w-11 h-1.5 rounded-full bg-[#c7c5d1]" />
+        </div>
+
         {/* Header */}
-        <div className="flex items-start justify-between px-4 py-3 md:px-6 md:py-5 border-b border-[#edeef0] shrink-0">
+        <div className="flex items-start justify-between px-4 pb-3 pt-1 md:px-6 md:py-5 border-b border-[#edeef0] shrink-0">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="inline-flex items-center gap-1.5 bg-[#050a44] text-white text-[11px] font-bold tracking-[0.04em] px-2.5 py-1 rounded-full">
@@ -122,83 +274,27 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-hidden md:overflow-y-auto flex flex-col">
-          {/* Mock map — grows to fill whatever vertical space the stats/stop
-              list don't use, instead of leaving a dead gap above the footer. */}
-          <div className="relative bg-[#f2f4f6] mx-4 mt-3 md:mx-6 md:mt-5 rounded-2xl overflow-hidden border border-[#edeef0] flex-1 min-h-[110px] md:flex-none">
-            <svg viewBox="0 0 700 380" className="w-full h-full md:h-[280px]" preserveAspectRatio="xMidYMid slice">
-              <defs>
-                <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
-                  <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#e1e2e4" strokeWidth="1" />
-                </pattern>
-                <linearGradient id="routeGrad" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#050a44" />
-                  <stop offset="100%" stopColor="#3d4bb8" />
-                </linearGradient>
-              </defs>
-              <rect width="700" height="380" fill="url(#grid)" />
-
-              {/* Full route (faded) */}
-              <path d={pathD} fill="none" stroke="#c7c5d1" strokeWidth="5" strokeLinecap="round" />
-
-              {/* Travelled portion */}
-              <path
-                d={buildSvgPath(40)
-                  .split(' L')
-                  .slice(0, Math.max(1, Math.round((route.busProgress / 100) * 40)))
-                  .join(' L')}
-                fill="none"
-                stroke="url(#routeGrad)"
-                strokeWidth="5"
-                strokeLinecap="round"
-              />
-
-              {/* Stops */}
-              {route.stops.map((stop) => {
-                const p = pathPoint(stop.progress);
-                const passed = stop.status === 'passed' || stop.status === 'current';
-                return (
-                  <g key={stop.id}>
-                    <circle
-                      cx={p.x}
-                      cy={p.y}
-                      r={stop.status === 'current' ? 9 : 6}
-                      fill={passed ? '#050a44' : '#ffffff'}
-                      stroke="#050a44"
-                      strokeWidth={2}
-                    />
-                    <text
-                      x={p.x}
-                      y={p.y - 16}
-                      textAnchor="middle"
-                      fontSize="11"
-                      fontWeight={700}
-                      fill="#46464f"
-                    >
-                      {stop.name}
-                    </text>
-                  </g>
-                );
-              })}
-
-              {/* Bus marker on current position */}
-              <g transform={`translate(${busPos.x}, ${busPos.y})`}>
-                <circle r="16" fill="#feb700" opacity="0.25" />
-                <circle r="11" fill="#feb700" stroke="#050a44" strokeWidth="2" />
-                <foreignObject x="-7" y="-7" width="14" height="14">
-                  <Bus className="w-3.5 h-3.5 text-[#050a44]" />
-                </foreignObject>
-              </g>
-            </svg>
-
-            <div className="absolute bottom-2 left-2 md:bottom-3 md:left-3 bg-white/90 backdrop-blur px-2 py-1 md:px-3 md:py-1.5 rounded-full text-[9px] md:text-[11px] font-semibold text-[#46464f] flex items-center gap-1.5 border border-[#edeef0]">
-              <Circle className="w-2 h-2 fill-[#feb700] text-[#feb700]" />
-              Mock preview — live GPS coming soon
+        {/* Map — fixed band, so touching it pans the map while the area below scrolls */}
+        <div
+          className={`relative shrink-0 mx-4 mt-3 md:mx-6 md:mt-5 md:h-[280px] rounded-2xl overflow-hidden border border-[#edeef0] ${mapHeightClass} transition-[height] duration-200`}
+        >
+          {hasMap ? (
+            <div ref={mapEl} className="absolute inset-0 bg-[#f2f4f6] z-0" />
+          ) : (
+            <div className="absolute inset-0 bg-[#f2f4f6] flex flex-col items-center justify-center gap-1 text-center px-6">
+              <MapPin className="w-5 h-5 text-[#46464f]" />
+              <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">
+                Map unavailable for this route
+              </p>
+              <p className="text-[11px] text-[#46464f]/80">Stop locations haven&apos;t been added yet.</p>
             </div>
-          </div>
+          )}
+        </div>
 
+        {/* Scrollable content */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
           {/* Trip summary */}
-          <div className="shrink-0 grid grid-cols-3 gap-2 md:gap-3 px-4 mt-3 md:px-6 md:mt-5">
+          <div className="grid grid-cols-3 gap-2 md:gap-3 px-4 mt-3 md:px-6 md:mt-5">
             <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
               <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
               <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.duration}</p>
@@ -216,13 +312,12 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
             </div>
           </div>
 
-          {/* Stop list — condensed spacing on mobile so it fits the 80vh sheet
-              without scrolling; desktop keeps the roomier version. */}
-          <div className="shrink-0 px-4 py-3 md:px-6 md:py-5 overflow-hidden md:overflow-visible">
-            <p className="text-[10px] md:text-[11px] font-bold text-[#46464f] tracking-[0.06em] mb-2 md:mb-3">
+          {/* Stop list */}
+          <div className="px-4 py-4 md:px-6 md:py-5">
+            <p className="text-[10px] md:text-[11px] font-bold text-[#46464f] tracking-[0.06em] mb-3">
               STOP SCHEDULE
             </p>
-            <div className="space-y-0">
+            <div>
               {route.stops.map((stop, i) => (
                 <div key={stop.id} className="flex items-start gap-3">
                   <div className="flex flex-col items-center">
@@ -237,18 +332,16 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
                     />
                     {i < route.stops.length - 1 && (
                       <div
-                        className={`w-[2px] h-4 md:h-9 ${
+                        className={`w-[2px] h-7 md:h-9 ${
                           stop.status === 'passed' ? 'bg-[#050a44]' : 'bg-[#edeef0]'
                         }`}
                       />
                     )}
                   </div>
-                  <div className="pb-2 md:pb-6 -mt-0.5 flex-1 flex items-center justify-between">
+                  <div className="pb-3 md:pb-6 -mt-0.5 flex-1 flex items-center justify-between">
                     <p
                       className={`text-[13px] md:text-[14px] ${
-                        stop.status === 'current'
-                          ? 'font-bold text-[#050a44]'
-                          : 'font-medium text-[#191c1e]'
+                        stop.status === 'current' ? 'font-bold text-[#050a44]' : 'font-medium text-[#191c1e]'
                       }`}
                     >
                       {stop.name}
@@ -267,7 +360,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 md:px-6 md:py-4 border-t border-[#edeef0] flex items-center justify-between bg-white shrink-0">
+        <div className="px-4 py-3 md:px-6 md:py-4 border-t border-[#edeef0] flex items-center justify-between bg-white shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div>
             <p className="text-[10px] md:text-[11px] text-[#46464f] font-medium">Departs {route.departureTime}</p>
             <p className="text-[10px] md:text-[11px] text-[#46464f] font-medium">Arrives {route.arrivalTime}</p>
@@ -290,6 +383,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           from { transform: translateY(24px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
+        .leaflet-container { font-family: inherit; }
       `}</style>
     </div>
   );
