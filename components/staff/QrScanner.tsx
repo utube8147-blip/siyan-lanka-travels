@@ -7,7 +7,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Flashlight, X } from 'lucide-react';
 
-export type ScanResult = { ok: boolean; msg: string; detail?: string; action?: { label: string; run: () => Promise<ScanResult> } };
+type ScanAction = { label: string; run: () => Promise<ScanResult> };
+/** `action` is the main follow-up (e.g. "Cash received"); `later` an optional second choice (e.g. "Board now, collect later"). */
+export type ScanResult = { ok: boolean; msg: string; detail?: string; action?: ScanAction; later?: ScanAction };
 
 type Detector = { detect: (src: CanvasImageSource) => Promise<{ rawValue: string }[]> };
 
@@ -152,6 +154,11 @@ export function QrScanner({ title = 'Scan tickets', onCode, onClose, footer }: {
             {result.action && (
               <button onClick={async () => show(await result.action!.run())} className="mt-3 w-full h-12 rounded-xl bg-white text-[#14120a] font-bold text-[15px]">
                 {result.action.label}
+              </button>
+            )}
+            {result.later && (
+              <button onClick={async () => show(await result.later!.run())} className="mt-2 w-full h-11 rounded-xl bg-black/25 text-white font-bold text-[14px] border border-white/30">
+                {result.later.label}
               </button>
             )}
           </div>

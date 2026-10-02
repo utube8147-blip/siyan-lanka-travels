@@ -76,7 +76,8 @@ export interface Schedule {
 }
 
 export type BookingStatus = 'confirmed' | 'held' | 'boarded' | 'cancelled' | 'no-show';
-export type PaymentMethod = 'card' | 'wallet' | 'bank' | 'counter' | 'cash' | 'free';
+/** 'bus' = reserved online, cash to the conductor on the bus. */
+export type PaymentMethod = 'card' | 'wallet' | 'bank' | 'counter' | 'bus' | 'cash' | 'free';
 export type Gender = 'Male' | 'Female' | '';
 export type BookingChannel = 'online' | 'counter' | 'phone';
 

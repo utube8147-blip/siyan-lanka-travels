@@ -6,9 +6,9 @@ import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import SeatSelectionDrawer, { formatTime, type Gender } from '@/components/SeatSelectionDrawer';
 import { OPERATOR } from '@/config/operator';
-import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { BikeAddon, bikesProblem } from '@/components/BikeAddon';
-import { useSavedPassengers } from '@/lib/extras';
+import { useSavedPassengers, usePublicSettings } from '@/lib/extras';
+import { useBookingCode } from '@/components/BookingCodeGate';
 import type { BikeItem } from '@/lib/types';
 import { useStore, StoreLoading } from '@/lib/store';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO } from '@/lib/trips';
@@ -115,10 +115,28 @@ function BookingPageInner() {
   const [phone, setPhone] = useState(isLoggedIn && user ? user.phone ?? '' : '');
   const [isVerified, setIsVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  // With real accounts, the signed-in account is the verification.
+  const pub = usePublicSettings();
+  const bookingCode = useBookingCode();
+  const [verifying, setVerifying] = useState(false);
+  // Real accounts with "code on every booking" on: the number is verified
+  // here, with a real code, before the passenger can go on to payment.
+  const needsCode = authMode === 'supabase' && pub.bookingOtp;
+  const userId = user?.id;
   useEffect(() => {
-    if (authMode === 'supabase' && user) setIsVerified(true);
-  }, [authMode, user]);
+    if (authMode !== 'supabase' || !userId) return;
+    // Rule off: being signed in is enough. Rule on: always ask on this page,
+    // every booking, even if they signed in with a code a moment ago.
+    setIsVerified(!pub.bookingOtp);
+  }, [authMode, userId, pub.bookingOtp]);
+  const verifyNumber = async () => {
+    setVerifying(true);
+    const ok = await bookingCode.ask();
+    setVerifying(false);
+    if (ok) {
+      setIsVerified(true);
+      addToast('Verified. You can go on to payment.', 'success');
+    }
+  };
   const [otpValue, setOtpValue] = useState('');
   const [otpCooldown, setOtpCooldown] = useState(0);
 
@@ -126,11 +144,13 @@ function BookingPageInner() {
     if (!isLoggedIn || !user) return;
     const nextEmail = user.email ?? '';
     const nextPhone = user.phone ?? '';
-    setEmail((prev) => (prev ? prev : nextEmail));
+    // No email on the account (signed up by phone): reuse the one from their last booking.
+    const lastEmail = data.bookings.filter((b) => b.userId === user.id && b.contact.email).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.contact.email ?? '';
+    setEmail((prev) => (prev ? prev : nextEmail || lastEmail));
     setPhone((prev) => (prev ? prev : nextPhone));
     setPassengerName((prev) => (bookingFor === 'self' && !prev ? user.user_metadata?.full_name ?? '' : prev));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, user]);
+  }, [isLoggedIn, user, data.bookings.length]);
 
   const [seatMapOpen, setSeatMapOpen] = useState(false);
   const [timeLeft, setTimeLeft] = useState(HOLD_SECONDS);
@@ -207,7 +227,9 @@ function BookingPageInner() {
     passengerName.trim().length > 1 &&
     passengerGender !== '' &&
     (bookingFor === 'self' || passengerPhone.trim().length >= 6);
-  const contactValid = (phone ?? '').trim().length >= 6 && (email ?? '').trim().includes('@') && isVerified;
+  // Email is optional (accounts created with a phone number may not have one), but must look right if given.
+  const emailOk = (email ?? '').trim() === '' || /^\S+@\S+\.\S+$/.test((email ?? '').trim());
+  const contactValid = (phone ?? '').trim().length >= 6 && emailOk && isVerified;
   const detailsValid = passengerValid && contactValid;
 
   const seatPrice = trip ? trip.fare : 0;
@@ -237,19 +259,26 @@ function BookingPageInner() {
   };
 
   const basePrice = selectedSeats.length * seatPrice;
-  const discount = promoApplied ? Math.round((basePrice * OPERATOR.promo.percentOff) / 100) : 0;
+  const discount = promoApplied ? Math.round((basePrice * pub.promoPercent) / 100) : 0;
   const bikeTotal = bikes.reduce((n, b) => n + b.fee, 0);
   const bikeError = bikesProblem(bikes);
   const totalPrice = selectedSeats.length > 0 ? basePrice - discount + bikeTotal + platformFee : 0;
 
+  const [promoInput, setPromoInput] = useState('');
+  const [promoError, setPromoError] = useState('');
   const applyPromo = () => {
     if (promoApplied) {
       setPromoApplied(false);
+      setPromoInput('');
       addToast('Promo code removed', 'info');
-    } else {
-      setPromoApplied(true);
-      addToast(`${OPERATOR.promo.code} applied: ${OPERATOR.promo.percentOff}% off the fare.`, 'success');
+      return;
     }
+    const typed = promoInput.trim().toUpperCase();
+    if (!typed) return setPromoError('Enter a promo code.');
+    if (!pub.promoCode || pub.promoPercent <= 0 || typed !== pub.promoCode.toUpperCase()) return setPromoError("That code isn't valid.");
+    setPromoError('');
+    setPromoApplied(true);
+    addToast(`${pub.promoCode} applied: ${pub.promoPercent}% off the fare.`, 'success');
   };
 
   const canProceedToPayment = detailsValid && selectedSeats.length > 0 && !bikeError;
@@ -275,7 +304,7 @@ function BookingPageInner() {
       drop,
       contactPhone: phone ?? '',
       contactEmail: email ?? '',
-      ...(promoApplied ? { promo: OPERATOR.promo.code } : {}),
+      ...(promoApplied && pub.promoCode ? { promo: pub.promoCode } : {}),
     });
     // Bike photos are too big for a URL, so hand them to the payment page via
     // this tab's sessionStorage.
@@ -298,6 +327,7 @@ function BookingPageInner() {
   return (
     <React.Fragment>
       <main className="max-w-[1440px] mx-auto px-4 md:px-[64px] py-[32px]">
+        {bookingCode.modal}
         <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
           <div className="flex items-center">
             <span className="hover:text-[#000000] cursor-pointer transition-colors" onClick={() => router.push(backToSearchHref)}>
@@ -491,8 +521,11 @@ function BookingPageInner() {
                       value={phone}
                       onChange={(e) => {
                         setPhone(e.target.value.replace(/[^0-9+]/g, ''));
-                        setIsVerified(false);
-                        setOtpSent(false);
+                        // Demo only: a changed number needs the (pretend) code again.
+                        if (authMode !== 'supabase') {
+                          setIsVerified(false);
+                          setOtpSent(false);
+                        }
                       }}
                       placeholder="+94 77 123 4567"
                       className="flex-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
@@ -503,6 +536,14 @@ function BookingPageInner() {
                         <span className="material-symbols-outlined text-[18px]">verified</span>
                         Verified
                       </div>
+                    ) : needsCode ? (
+                      <button
+                        onClick={verifyNumber}
+                        disabled={verifying}
+                        className="px-4 rounded-lg font-bold text-[12px] whitespace-nowrap bg-[#050a44] text-white hover:opacity-90 disabled:opacity-60"
+                      >
+                        {verifying ? 'Sending…' : 'Verify'}
+                      </button>
                     ) : (
                       <button
                         onClick={sendOtp}
@@ -517,6 +558,12 @@ function BookingPageInner() {
                       </button>
                     )}
                   </div>
+
+                  {needsCode && !isVerified && (
+                    <p className="mt-1.5 text-[12px] text-[#46464f] px-1">
+                      Press Verify and we&apos;ll send a 6-digit code to the number on your account. You need it to go on to payment.
+                    </p>
+                  )}
 
                   {otpSent && !isVerified && (
                     <div className="flex items-end gap-[8px] mt-[12px]">
@@ -544,21 +591,18 @@ function BookingPageInner() {
                 <div>
                   <label className="text-[11px] font-bold text-[#46464f] px-1 flex items-center gap-1.5">
                     Email address
-                    {isLoggedIn && (
-                      <span className="text-[10px] font-bold text-[#006e1c] normal-case">from your account</span>
-                    )}
+                    <span className="text-[10px] font-medium text-[#6b6d78] normal-case">optional</span>
                   </label>
                   <input
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    readOnly={isLoggedIn}
                     placeholder="you@example.com"
                     className={`w-full mt-1 px-3 py-2.5 border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal ${
-                      isLoggedIn ? 'bg-[#f2f4f6] text-[#46464f] cursor-not-allowed' : 'bg-[#f2f4f6]'
+                      'bg-[#f2f4f6]'
                     }`}
                     type="email"
                   />
-                  <p className="mt-1 text-[11px] text-[#6b6d78] px-1">Your e-ticket will be sent here.</p>
+                  {!emailOk && <p role="alert" className="mt-1 text-[11px] px-1 text-[#ba1a1a] font-semibold">Check the email address.</p>}
                 </div>
               </div>
             </div>
@@ -614,7 +658,7 @@ function BookingPageInner() {
                     </div>
                     {promoApplied && (
                       <div className="flex justify-between text-[#006e1c]">
-                        <span className="font-medium">Discount ({OPERATOR.promo.percentOff}%)</span>
+                        <span className="font-medium">Discount ({pub.promoCode}, {pub.promoPercent}%)</span>
                         <span className="font-bold">-{formatLKR(discount)}</span>
                       </div>
                     )}
@@ -635,7 +679,7 @@ function BookingPageInner() {
                   <div className="bg-[#f2f4f6] rounded-xl p-[20px] mb-[24px]">
                     <div className="flex justify-between items-center">
                       <span className="text-[16px] font-semibold">Total</span>
-                      <span className="text-[20px] font-semibold text-[#000000]"><AnimatedNumber value={totalPrice} format={formatLKR} duration={0.5} /></span>
+                      <span className="text-[20px] font-semibold text-[#000000]">{formatLKR(totalPrice)}</span>
                     </div>
                   </div>
 
@@ -683,12 +727,25 @@ function BookingPageInner() {
                 <div className="w-10 h-10 bg-[#0f144c] rounded-full flex items-center justify-center">
                   <span className="material-symbols-outlined text-[#7a7fbb]">sell</span>
                 </div>
-                <div>
-                  <p className="font-bold text-[14px]">{OPERATOR.promo.code}</p>
-                  <p className="text-[12px] font-medium text-[#46464f]">Get 10% off on your first trip</p>
+                <div className="min-w-0">
+                  <label htmlFor="promo-code" className="font-bold text-[14px] block">{promoApplied ? `${pub.promoCode} applied` : 'Have a promo code?'}</label>
+                  {promoApplied ? (
+                    <p className="text-[12px] font-medium text-[#006e1c]">{pub.promoPercent}% off the fare: you save {formatLKR(discount)}</p>
+                  ) : (
+                    <input
+                      id="promo-code"
+                      value={promoInput}
+                      onChange={(e) => { setPromoInput(e.target.value.toUpperCase().replace(/\s/g, '')); setPromoError(''); }}
+                      onKeyDown={(e) => e.key === 'Enter' && applyPromo()}
+                      placeholder="Enter code"
+                      autoCapitalize="characters"
+                      className="mt-1 w-full max-w-[220px] px-3 py-2 bg-white rounded-lg text-sm font-bold tracking-wide outline-none focus:ring-1 focus:ring-[#050a44] placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9a9ba5]"
+                    />
+                  )}
+                  {promoError && <p role="alert" className="mt-1 text-[12px] font-semibold text-[#ba1a1a]">{promoError}</p>}
                 </div>
               </div>
-              <button onClick={applyPromo} className="text-[#000000] font-bold text-[14px] hover:underline transition-all">
+              <button onClick={applyPromo} className="text-[#000000] font-bold text-[14px] hover:underline transition-all shrink-0 ml-3">
                 {promoApplied ? 'Remove' : 'Apply'}
               </button>
             </div>

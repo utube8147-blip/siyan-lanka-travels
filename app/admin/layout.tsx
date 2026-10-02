@@ -46,7 +46,13 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout, isLoading, mode } = useAuth();
-  const { ready } = useStore();
+  const { ready, data } = useStore();
+  // Work waiting for the office: unpaid online holds for the counter or bank (incl. slips to check).
+  const waiting = data.bookings.filter((b) => b.status === 'held' && b.channel === 'online' && (b.paymentMethod === 'bank' || b.paymentMethod === 'counter')).length;
+  const badge = (href: string) =>
+    href === '/admin/bookings' && waiting > 0 ? (
+      <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-[#feb700] text-[#14120a] text-[11px] font-bold inline-flex items-center justify-center" aria-label={`${waiting} waiting for payment`}>{waiting}</span>
+    ) : null;
   const isStaff = isOfficeRole(user?.role);
   const router = useRouter();
   useEffect(() => {
@@ -112,6 +118,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 >
                   <Icon className="w-[18px] h-[18px]" />
                   {label}
+                  {badge(href)}
                 </Link>
               ))}
             </div>
@@ -153,6 +160,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold ${active(href) ? 'bg-white text-[#050a44]' : 'text-white/80 bg-white/10'}`}
             >
               {label}
+              {badge(href)}
             </Link>
           ))}
         </nav>

@@ -140,6 +140,50 @@ function SettingsForm() {
             </button>
           </label>
         </Card>
+
+        <Card className="p-5 space-y-4">
+          <h2 className="text-[16px] font-semibold text-[#050a44]">Ways to pay online</h2>
+          <p className="text-[13px] text-[#46464f]">
+            Bank transfer and pay at the counter are always offered. Passengers are told when their payment is recorded.
+          </p>
+          <label className="flex items-center justify-between gap-4 rounded-xl bg-[#f2f4f6] p-4">
+            <span>
+              <span className="block text-[15px] font-semibold text-[#050a44]">{s.payOnBus ? 'Pay on the bus: on' : 'Pay on the bus: off'}</span>
+              <span className="block text-[12px] text-[#6b6d78]">The seat is reserved without payment; the conductor collects cash on the bus. Turn off if too many reserved seats go unused.</span>
+            </span>
+            <button type="button" role="switch" aria-checked={s.payOnBus} aria-label="Pay on the bus" onClick={() => setS({ ...s, payOnBus: !s.payOnBus })}
+              className={`relative w-12 h-7 rounded-full shrink-0 transition-colors ${s.payOnBus ? 'bg-[#006e1c]' : 'bg-[#c7c5d1]'}`}>
+              <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${s.payOnBus ? 'left-6' : 'left-1'}`} />
+            </button>
+          </label>
+          <label className="flex items-center justify-between gap-4 rounded-xl bg-[#f2f4f6] p-4">
+            <span>
+              <span className="block text-[15px] font-semibold text-[#050a44]">{s.cardPayments ? 'Card & wallet: open' : 'Card & wallet: locked (shown as not available yet)'}</span>
+              <span className="block text-[12px] text-[#6b6d78]">Leave locked until the payment gateway is set up. Unlocked with Payments on Demo, card bookings are confirmed without any money.</span>
+            </span>
+            <button type="button" role="switch" aria-checked={s.cardPayments} aria-label="Card and wallet payments" onClick={() => setS({ ...s, cardPayments: !s.cardPayments })}
+              className={`relative w-12 h-7 rounded-full shrink-0 transition-colors ${s.cardPayments ? 'bg-[#006e1c]' : 'bg-[#c7c5d1]'}`}>
+              <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${s.cardPayments ? 'left-6' : 'left-1'}`} />
+            </button>
+          </label>
+        </Card>
+
+        <Card className="p-5 space-y-4">
+          <h2 className="text-[16px] font-semibold text-[#050a44]">Code on every booking</h2>
+          <p className="text-[13px] text-[#46464f]">
+            Passengers stay signed in, and before paying for an online booking they verify with a fresh 6-digit code sent to their phone (or email, for accounts without a phone). A code works for one booking, for 20 minutes. Counter and phone bookings by staff are never asked. Each code is one text message.
+          </p>
+          <label className="flex items-center justify-between gap-4 rounded-xl bg-[#f2f4f6] p-4">
+            <span>
+              <span className="block text-[15px] font-semibold text-[#050a44]">{s.bookingOtp ? 'On: a code is needed to book' : 'Off: signed-in passengers book without a code'}</span>
+              <span className="block text-[12px] text-[#6b6d78]">Turn off if text messages are down, so people can still book. Save changes to apply.</span>
+            </span>
+            <button type="button" role="switch" aria-checked={s.bookingOtp} aria-label="Code on every booking" onClick={() => setS({ ...s, bookingOtp: !s.bookingOtp })}
+              className={`relative w-12 h-7 rounded-full shrink-0 transition-colors ${s.bookingOtp ? 'bg-[#006e1c]' : 'bg-[#c7c5d1]'}`}>
+              <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${s.bookingOtp ? 'left-6' : 'left-1'}`} />
+            </button>
+          </label>
+        </Card>
       </div>
       {erp.mode === 'demo' && <p className="text-[12px] text-[#6b6d78] mt-4">Demo mode: settings are saved in this browser only. With Supabase connected they price every booking.</p>}
       <Toast />

@@ -11,7 +11,7 @@ import { Banknote, Check, ChevronDown, FileDown, LogOut, Megaphone, Phone, Radio
 import { isStaffRole, useAuth } from '@/contexts/AuthContext';
 import { PageSkeleton, useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatLKR, formatTime12, listRuns, routeLabel, todayISO, departureDate } from '@/lib/trips';
-import { manifestFor, scanTicket } from '@/lib/manifest';
+import { isDue, manifestFor, scanTicket } from '@/lib/manifest';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
 import { postTripEvent, type TripEvent } from '@/lib/extras';
 import { QrScanner } from '@/components/staff/QrScanner';
@@ -69,14 +69,19 @@ export default function ConductorPage() {
     .filter((g) => g.bookings.length);
   const pct = m && m.totals.seats ? Math.round((m.totals.boarded / m.totals.seats) * 100) : 0;
 
-  const doAction = async (b: Booking, what: 'board' | 'noshow' | 'undo' | 'cash') => {
+  // 'cash' = paid at the door and boarded; 'collect' = already on board, paying now;
+  // 'board' on an unpaid pay-on-bus seat = board first, collect during the trip.
+  const doAction = async (b: Booking, what: 'board' | 'noshow' | 'undo' | 'cash' | 'collect') => {
     setOpen(null);
     const r =
       what === 'cash'
         ? await confirmPayment(b.id, 'cash').then(async (p) => (p.ok ? updateBooking(b.id, { status: 'boarded' }) : p))
-        : await updateBooking(b.id, { status: what === 'board' ? 'boarded' : what === 'noshow' ? 'no-show' : 'confirmed' });
-    toast(r.ok ? `${b.passenger.name}: ${what === 'board' ? 'on board' : what === 'noshow' ? 'no-show' : what === 'cash' ? 'paid & on board' : 'undone'}` : r.reason ?? 'Could not update', r.ok ? 'ok' : 'error');
-    if (r.ok && (what === 'board' || what === 'cash')) navigator.vibrate?.(60);
+        : what === 'collect'
+        ? await confirmPayment(b.id, 'cash')
+        : // Undo for someone who hasn't paid goes back to "held", so the money is still asked for.
+          await updateBooking(b.id, { status: what === 'board' ? 'boarded' : what === 'noshow' ? 'no-show' : b.paymentStatus === 'unpaid' ? 'held' : 'confirmed' });
+    toast(r.ok ? `${b.passenger.name}: ${what === 'board' ? 'on board' : what === 'noshow' ? 'no-show' : what === 'cash' ? 'paid & on board' : what === 'collect' ? `paid ${formatLKR(b.total)}` : 'undone'}` : r.reason ?? 'Could not update', r.ok ? 'ok' : 'error');
+    if (r.ok && (what === 'board' || what === 'cash' || what === 'collect')) navigator.vibrate?.(60);
   };
 
   return (
@@ -200,7 +205,7 @@ export default function ConductorPage() {
                                   {b.status === 'boarded' ? `Seat ${b.seats.join(', ')} · ` : ''}to {b.to}{b.bikes?.length ? ` · 🚲 ${b.bikes.length}` : ''}
                                 </span>
                               </span>
-                              {b.status === 'held' && <span className="shrink-0 text-[12px] font-bold text-[#ffcf5c]">DUE {b.total.toLocaleString('en-LK')}</span>}
+                              {isDue(b) && <span className="shrink-0 text-[12px] font-bold text-[#ffcf5c]">DUE {b.total.toLocaleString('en-LK')}</span>}
                               {b.status === 'no-show' && <span className="shrink-0 text-[11px] font-bold text-white/60">NO-SHOW</span>}
                             </button>
                             <AnimatePresence initial={false}>
@@ -208,7 +213,18 @@ export default function ConductorPage() {
                                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                                   <div className="px-3 pb-3 grid grid-cols-2 gap-2">
                                     {b.status === 'held' ? (
-                                      <button onClick={() => doAction(b, 'cash')} className="col-span-2 h-12 rounded-xl bg-[#feb700] text-[#14120a] font-bold flex items-center justify-center gap-2"><Banknote className="w-5 h-5" /> Cash {formatLKR(b.total)} received · board</button>
+                                      <>
+                                        <button onClick={() => doAction(b, 'cash')} className="col-span-2 h-12 rounded-xl bg-[#feb700] text-[#14120a] font-bold flex items-center justify-center gap-2"><Banknote className="w-5 h-5" /> Cash {formatLKR(b.total)} received · board</button>
+                                        {b.paymentMethod === 'bus' && (
+                                          <button onClick={() => doAction(b, 'board')} className="col-span-2 h-11 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-2"><Check className="w-4 h-4" /> On board · collect later</button>
+                                        )}
+                                        <button onClick={() => doAction(b, 'noshow')} className="h-12 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-2"><UserX className="w-4 h-4" /> No-show</button>
+                                      </>
+                                    ) : b.status === 'boarded' && isDue(b) ? (
+                                      <>
+                                        <button onClick={() => doAction(b, 'collect')} className="col-span-2 h-12 rounded-xl bg-[#feb700] text-[#14120a] font-bold flex items-center justify-center gap-2"><Banknote className="w-5 h-5" /> Cash {formatLKR(b.total)} received</button>
+                                        <button onClick={() => doAction(b, 'undo')} className="h-12 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-2"><Undo2 className="w-4 h-4" /> Undo boarding</button>
+                                      </>
                                     ) : b.status === 'confirmed' ? (
                                       <button onClick={() => doAction(b, 'board')} className="h-12 rounded-xl bg-[#5bd97a] text-[#0d0e11] font-bold flex items-center justify-center gap-2"><Check className="w-5 h-5" /> On board</button>
                                     ) : (
@@ -220,7 +236,7 @@ export default function ConductorPage() {
                                     {(b.passenger.phone || b.contact.phone) && (
                                       <a href={`tel:${(b.passenger.phone || b.contact.phone).replace(/\s/g, '')}`} className="h-12 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-2"><Phone className="w-4 h-4" /> Call</a>
                                     )}
-                                    <p className="col-span-2 text-[12px] text-white/50">{b.ref} · {b.from} → {b.to} · {b.channel === 'online' ? (b.status === 'held' ? `held (${b.paymentMethod})` : 'paid online') : `sold at ${b.channel}`}</p>
+                                    <p className="col-span-2 text-[12px] text-white/50">{b.ref} · {b.from} → {b.to} · {b.channel === 'online' ? (isDue(b) ? (b.paymentMethod === 'bus' ? 'pays on the bus' : `held (${b.paymentMethod})`) : b.paymentMethod === 'cash' ? 'paid cash' : 'paid online') : `sold at ${b.channel}`}</p>
                                   </div>
                                 </motion.div>
                               )}

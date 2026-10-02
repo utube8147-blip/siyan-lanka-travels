@@ -1,6 +1,6 @@
 // /app/(public)/(passenger)/payment/page.tsx
 'use client';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { OPERATOR } from '@/config/operator';
 import { useQrDataUrl } from '@/lib/qr';
@@ -14,8 +14,11 @@ import { useStore, StoreLoading } from '@/lib/store';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, todayISO } from '@/lib/trips';
 import type { BikeItem, Gender } from '@/lib/types';
 import { useT } from '@/lib/i18n';
+import { useBookingCode, CODE_CANCELLED } from '@/components/BookingCodeGate';
+import { PaymentSlipCard } from '@/components/trip/PaymentSlipCard';
+import { SLIP_ACCEPT, submitSlip } from '@/lib/money';
 
-type PaymentMethod = 'card' | 'wallet' | 'bank' | 'counter';
+type PaymentMethod = 'card' | 'wallet' | 'bank' | 'counter' | 'bus';
 type PayState = 'idle' | 'processing' | 'success';
 
 interface Passenger {
@@ -52,6 +55,7 @@ function PaymentPageInner() {
   const to = searchParams.get('to') || '';
   const date = searchParams.get('date') || todayISO();
   const { data, ready, createBooking } = useStore();
+  const bookingCode = useBookingCode();
   const { user, mode: authMode, isLoading: authLoading } = useAuth();
   // With real accounts, bookings belong to a signed-in passenger.
   useEffect(() => {
@@ -82,10 +86,13 @@ function PaymentPageInner() {
   const liveTrip = useMemo(() => (ready ? getTrip(data, scheduleId, date, from, to) : null), [ready, data, scheduleId, date, from, to]);
   const trip = paidTrip ?? liveTrip;
 
+  const pub = usePublicSettings();
   const seatPrice = trip ? trip.fare : 0;
   const platformFee = OPERATOR.bookingFee;
   const basePrice = seats.length * seatPrice;
-  const discount = promo === OPERATOR.promo.code ? Math.round((basePrice * OPERATOR.promo.percentOff) / 100) : 0;
+  // Shown for information; the database works out the real discount from the same setting.
+  const promoOk = !!promo && !!pub.promoCode && promo.toUpperCase() === pub.promoCode.toUpperCase();
+  const discount = promoOk ? Math.round((basePrice * pub.promoPercent) / 100) : 0;
   // Bikes chosen on the seat page (photos travel via sessionStorage).
   const [bikes, setBikes] = useState<BikeItem[]>([]);
   useEffect(() => {
@@ -99,7 +106,8 @@ function PaymentPageInner() {
   const bikeTotal = bikes.reduce((n, b) => n + b.fee, 0);
   const totalPrice = basePrice - discount + bikeTotal + platformFee;
 
-  const [method, setMethod] = useState<PaymentMethod>('card');
+  // Card / wallet stay locked until Settings → "Card & wallet payments" is on, so start on bank transfer.
+  const [method, setMethod] = useState<PaymentMethod>('bank');
   const [cardNumber, setCardNumber] = useState('');
   const [cardName, setCardName] = useState('');
   const [expiry, setExpiry] = useState('');
@@ -117,13 +125,22 @@ function PaymentPageInner() {
     /^\d{2}\/\d{2}$/.test(expiry) &&
     cvv.length === 3;
   const walletValid = wallet !== '';
-  const pub = usePublicSettings();
   const payhereLive = pub.paymentsMode === 'payhere';
-  const holdMethod = method === 'bank' || method === 'counter';
+  const holdMethod = method === 'bank' || method === 'counter' || method === 'bus';
+  const cardOpen = pub.cardPayments;
+  // If the chosen way to pay gets switched off (settings load a moment after the page), fall back to bank transfer.
+  useEffect(() => {
+    if ((!cardOpen && (method === 'card' || method === 'wallet')) || (!pub.payOnBus && method === 'bus')) setMethod('bank');
+  }, [cardOpen, pub.payOnBus, method]);
   const loyalty = useLoyalty(user?.id);
   const [useReward, setUseReward] = useState(false);
   const saved = useSavedPassengers(user?.id);
   const [heldUntil, setHeldUntil] = useState<string | null>(null);
+  // Bank transfer: a slip chosen here is uploaded as soon as the seat is held.
+  const slipInput = useRef<HTMLInputElement>(null);
+  const [slipFile, setSlipFile] = useState<File | null>(null);
+  const [slipRef, setSlipRef] = useState('');
+  const [slipNote, setSlipNote] = useState('');
   const canPay = trip && seats.length > 0 && (holdMethod || payhereLive || (method === 'card' ? cardValid : walletValid));
 
   const handlePay = () => {
@@ -142,7 +159,8 @@ function PaymentPageInner() {
     setTimeout(async () => {
       if (!trip) return;
       const lead = passengers[0];
-      const result = await createBooking({
+      // Asks for the one-time code first when the database requires it.
+      const result = await bookingCode.run(() => createBooking({
         scheduleId: trip.scheduleId,
         date,
         from: trip.from,
@@ -165,11 +183,17 @@ function PaymentPageInner() {
         promo: promo || undefined,
         payment: method,
         useReward: useReward && (loyalty?.available ?? 0) > 0,
-      });
+      }));
       if (!result.ok) {
         setPayState('idle');
-        setError(`${result.reason} Go back and pick another seat — you have not been charged.`);
+        // Only a seat problem is fixed by picking another seat; anything else just says what went wrong.
+        setError(result.reason === CODE_CANCELLED ? CODE_CANCELLED : /seat/i.test(result.reason ?? '') && !/hold|reserve/i.test(result.reason ?? '') ? `${result.reason} Go back and pick another seat. You have not been charged.` : `${result.reason} You have not been charged.`);
         return;
+      }
+      // Already transferred: send the slip with the booking, so the office can check it straight away.
+      if (method === 'bank' && slipFile && result.booking.status === 'held') {
+        const up = await submitSlip(result.booking, slipFile, slipRef.trim());
+        setSlipNote(up.ok ? '' : `Your seat is held, but the slip didn't upload (${up.reason ?? 'try again'}). Upload it below.`);
       }
       setPaidTrip(trip);
       saved.remember({ name: lead?.name || '', gender: (lead?.gender as Gender) || '', phone: lead?.phone || contactPhone });
@@ -273,9 +297,13 @@ function PaymentPageInner() {
             <div className="mb-[14px]">
                 <SuccessCheck size={68} />
             </div>
-            <h1 className="text-[24px] font-bold mb-[4px]">{heldUntil ? t('Seat held') : t('Booking Confirmed!')}</h1>
+            <h1 className="text-[24px] font-bold mb-[4px]">{heldUntil ? (method === 'bus' ? 'Seat reserved' : t('Seat held')) : t('Booking Confirmed!')}</h1>
             <p className="text-[14px] text-[#46464f] max-w-xl">
-                {heldUntil ? (
+                {heldUntil && method === 'bus' ? (
+                  <>
+                    Your seat is reserved. Pay <span className="font-bold">{formatLKR(totalPrice)}</span> in cash to the conductor when you board, and show the QR code below. We&apos;ve texted you the details.
+                  </>
+                ) : heldUntil ? (
                   <>
                     Pay <span className="font-bold">{formatLKR(totalPrice)}</span> by{' '}
                     <span className="font-bold">{new Date(heldUntil).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>{' '}
@@ -301,6 +329,13 @@ function PaymentPageInner() {
                 <span className="material-symbols-outlined text-[18px]">swap_horiz</span> {t('Book your return trip')}
               </a>
             </div>
+            {/* Bank transfer: upload the slip straight away (also possible later from My trips). */}
+            {method === 'bank' && heldUntil && (
+              <div className="mt-5 text-left">
+                {slipNote && <p role="alert" className="mb-2 text-[13px] font-semibold text-[#ba1a1a]">{slipNote}</p>}
+                <PaymentSlipCard />
+              </div>
+            )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-[24px] items-stretch">
@@ -491,6 +526,7 @@ function PaymentPageInner() {
 
   return (
     <main className="max-w-[1200px] mx-auto px-4 md:px-[64px] py-[32px]">
+      {bookingCode.modal}
       <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
         <div className="flex items-center">
           <span className="cursor-default">Search Results</span>
@@ -512,23 +548,7 @@ function PaymentPageInner() {
           <div className="bg-white rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
             <h2 className="text-[16px] font-semibold mb-[16px]">{t('Payment Method')}</h2>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 bg-[#f2f4f6] rounded-xl mb-[20px] border border-[#e1e2e4]/60">
-              <button
-                onClick={() => setMethod('card')}
-                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
-                  method === 'card' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
-                }`}
-              >
-                {t('Card')}
-              </button>
-              <button
-                onClick={() => setMethod('wallet')}
-                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
-                  method === 'wallet' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
-                }`}
-              >
-                {t('Mobile Wallet')}
-              </button>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-1 bg-[#f2f4f6] rounded-xl mb-[20px] border border-[#e1e2e4]/60">
               <button
                 onClick={() => setMethod('bank')}
                 className={`py-2 text-sm font-bold rounded-lg transition-all ${method === 'bank' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'}`}
@@ -541,6 +561,30 @@ function PaymentPageInner() {
               >
                 {t('Pay at counter')}
               </button>
+              {pub.payOnBus && (
+                <button
+                  onClick={() => setMethod('bus')}
+                  className={`py-2 text-sm font-bold rounded-lg transition-all ${method === 'bus' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'}`}
+                >
+                  Pay on the bus
+                </button>
+              )}
+              {(['card', 'wallet'] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => cardOpen && setMethod(m)}
+                  disabled={!cardOpen}
+                  aria-disabled={!cardOpen}
+                  title={cardOpen ? undefined : 'Not available yet'}
+                  className={`py-2 text-sm font-bold rounded-lg transition-all ${
+                    !cardOpen ? 'text-[#9a9ba5] cursor-not-allowed' : method === m ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
+                  }`}
+                >
+                  {!cardOpen && <span className="material-symbols-outlined text-[14px] align-[-2px] mr-1">lock</span>}
+                  {m === 'card' ? t('Card') : t('Mobile Wallet')}
+                  {!cardOpen && <span className="block text-[10px] font-semibold">Not available yet</span>}
+                </button>
+              ))}
             </div>
 
             {(loyalty?.available ?? 0) > 0 && (
@@ -556,19 +600,57 @@ function PaymentPageInner() {
             {holdMethod ? (
               <div className="rounded-xl bg-[#f8f9fb] border border-[#e1e2e4] p-4 space-y-2 text-[14px] text-[#46464f]">
                 <p className="font-bold text-[#050a44]">
-                  {method === 'bank' ? 'We hold your seat while you transfer' : 'We hold your seat, you pay at our counter'}
+                  {method === 'bank' ? 'We hold your seat while you transfer' : method === 'bus' ? 'Reserve now, pay the conductor on the bus' : 'We hold your seat, you pay at our counter'}
                 </p>
+                {method === 'bus' ? (
+                  <p>
+                    Your seat is reserved for this trip. Pay <b className="text-[#050a44]">{formatLKR(totalPrice)}</b> in cash to the conductor when you board; please bring the exact amount. Show the QR code in My trips. If your plans change, cancel in My trips so someone else can have the seat.
+                  </p>
+                ) : (
+                <>
                 <p>
-                  Your seat is held for {method === 'bank' ? `${Math.round(pub.holdMinutesBank / 60)} hours` : `${Math.round(pub.holdMinutesCounter / 60)} hours`} (or until online booking closes, if sooner).
+                  Your seat is held for {method === 'bank' ? `${Math.round(pub.holdMinutesBank / 60)} hours` : `${Math.round(pub.holdMinutesCounter / 60)} hours`}{' '}(or until online booking closes, if sooner).
                   If it isn&apos;t paid by then, it&apos;s released for others.
                 </p>
                 {method === 'bank' ? (
+                  <>
                   <p className="rounded-lg bg-white border border-[#e1e2e4] px-3 py-2 font-semibold text-[#050a44]">
                     {pub.bankDetails}
                     <span className="block text-[12px] font-normal text-[#46464f]">Use your booking reference as the payment reference. We&apos;ll confirm when it arrives.</span>
                   </p>
+                  <div className="rounded-lg bg-white border border-[#e1e2e4] px-3 py-3 space-y-2">
+                    <p className="font-bold text-[#050a44]">Upload your payment slip</p>
+                    <p className="text-[13px]">
+                      Already transferred? Attach the slip now (photo, screenshot or PDF) and it goes to our office with your booking. Not yet? Hold your seat first; you can upload it on the next screen or later in My trips.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => slipInput.current?.click()} className="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold">
+                        <span className="material-symbols-outlined text-[18px]">upload</span> {slipFile ? 'Change file' : 'Choose slip (photo or PDF)'}
+                      </button>
+                      {slipFile && (
+                        <span className="text-[13px] font-semibold text-[#006e1c] flex items-center gap-1 min-w-0">
+                          <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                          <span className="truncate max-w-[180px]">{slipFile.name}</span>
+                          <button type="button" onClick={() => setSlipFile(null)} className="underline text-[#46464f] font-medium ml-1">Remove</button>
+                        </span>
+                      )}
+                    </div>
+                    {slipFile && (
+                      <input
+                        value={slipRef}
+                        onChange={(e) => setSlipRef(e.target.value)}
+                        placeholder="Bank reference no. (optional)"
+                        aria-label="Bank reference number"
+                        className="w-full max-w-[320px] h-10 px-3 rounded-xl bg-[#f2f4f6] text-[14px] font-medium outline-none focus:ring-1 focus:ring-[#050a44]"
+                      />
+                    )}
+                    <input ref={slipInput} type="file" accept={SLIP_ACCEPT} className="hidden" onChange={(e) => { setSlipFile(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+                  </div>
+                  </>
                 ) : (
                   <p>Pay in cash at {OPERATOR.contact.address}. Show your booking reference.</p>
+                )}
+                </>
                 )}
               </div>
             ) : payhereLive ? (
@@ -703,7 +785,7 @@ function PaymentPageInner() {
               </div>
               {discount > 0 && (
                 <div className="flex justify-between text-[#006e1c]">
-                  <span className="font-medium">Discount ({OPERATOR.promo.code})</span>
+                  <span className="font-medium">Discount ({pub.promoCode})</span>
                   <span className="font-bold">-{formatLKR(discount)}</span>
                 </div>
               )}
@@ -751,7 +833,7 @@ function PaymentPageInner() {
                   Processing…
                 </>
               ) : (
-                <>{holdMethod ? `Hold my seat · pay ${formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0))} later` : `Pay ${formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0))}`}</>
+                <>{method === 'bus' ? `Reserve my seat · pay ${formatLKR(totalPrice)} on the bus` : method === 'bank' && slipFile ? 'Hold my seat · send my slip' : holdMethod ? `Hold my seat · pay ${formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0))} later` : `Pay ${formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0))}`}</>
               )}
             </button>
 

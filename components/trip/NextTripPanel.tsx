@@ -92,7 +92,7 @@ export function NextTripPanel() {
     >
       <div className="px-5 py-4 flex flex-wrap items-start justify-between gap-3 border-b border-[#edeef0]">
         <div>
-          <p className="text-[12px] font-bold uppercase tracking-wide text-[#7c5800]">{held ? t('Seat held · not paid yet') : minsToDep < 24 * 60 ? t('Your trip is coming up') : t('Your next trip')}</p>
+          <p className="text-[12px] font-bold uppercase tracking-wide text-[#7c5800]">{held ? (booking.paymentMethod === 'bus' ? 'Seat reserved · pay on the bus' : t('Seat held · not paid yet')) : minsToDep < 24 * 60 ? t('Your trip is coming up') : t('Your next trip')}</p>
           <h2 className="text-[20px] font-semibold text-[#050a44] mt-0.5">
             {booking.from} → {booking.to}
           </h2>
@@ -120,10 +120,11 @@ export function NextTripPanel() {
           <Clock3 className="w-4 h-4 text-[#7c5800]" />
           <span className="flex-1 min-w-[200px]">
             Pay <b className="text-[#050a44]">{formatLKR(booking.total)}</b>
-            {booking.holdExpiresAt && <> by <b className="text-[#050a44]">{new Date(booking.holdExpiresAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b></>}{' '}
-            {booking.paymentMethod === 'bank' ? <>by bank transfer to {pub.bankDetails} (reference {booking.ref}).</> : booking.paymentMethod === 'counter' ? <>at our counter, {OPERATOR.contact.address}.</> : <>or the seat is released.</>}
+            {booking.paymentMethod === 'bus' && <> in cash to the conductor when you board. Your seat is reserved; show the QR code.</>}
+            {booking.paymentMethod !== 'bus' && booking.holdExpiresAt && <> by <b className="text-[#050a44]">{new Date(booking.holdExpiresAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b></>}{' '}
+            {booking.paymentMethod === 'bus' ? null : booking.paymentMethod === 'bank' ? <>by bank transfer to {pub.bankDetails} (reference {booking.ref}).</> : booking.paymentMethod === 'counter' ? <>at our counter, {OPERATOR.contact.address}.</> : <>or the seat is released.</>}
           </span>
-          {pub.paymentsMode === 'payhere' && (
+          {pub.paymentsMode === 'payhere' && pub.cardPayments && (
             <button onClick={async () => setPayErr(await startPayhere(booking.id))} className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#feb700] text-[#14120a] font-bold">
               <CreditCard className="w-4 h-4" /> Pay online now
             </button>

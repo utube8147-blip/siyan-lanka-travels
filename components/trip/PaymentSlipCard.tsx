@@ -7,7 +7,7 @@ import { Check, Clock3, Landmark, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
 import { usePublicSettings } from '@/lib/extras';
-import { slipOnFile, submitSlip, useSlips } from '@/lib/money';
+import { SLIP_ACCEPT, slipOnFile, submitSlip, useSlips } from '@/lib/money';
 import { formatDateLabel, formatLKR } from '@/lib/trips';
 import type { Booking } from '@/lib/types';
 
@@ -28,7 +28,7 @@ export function PaymentSlipCard() {
         <h3 className="text-[15px] font-bold text-[#050a44]">Pay by bank transfer</h3>
       </div>
       <p className="px-5 pt-4 text-[13px] text-[#46464f]">
-        Transfer to <b className="text-[#050a44]">{pub.bankDetails}</b>, put the booking reference in the remarks, then upload a photo of the slip or a screenshot of the transfer.
+        Transfer to <b className="text-[#050a44]">{pub.bankDetails}</b>, put the booking reference in the remarks, then upload the slip: a photo, a screenshot or the bank&apos;s PDF receipt.
       </p>
       <ul className="divide-y divide-[#edeef0]">
         {waiting.map((b) => (
@@ -76,7 +76,7 @@ function SlipRow({ booking, slip, onDone }: { booking: Booking; slip: ReturnType
           <span>
             Slip received {when(slip.uploadedAt)}. We&apos;ll confirm your seat once we&apos;ve checked it.{' '}
             <button className="underline font-bold" onClick={() => input.current?.click()} disabled={busy}>
-              Replace photo
+              Replace slip
             </button>
           </span>
         </div>
@@ -103,7 +103,7 @@ function SlipRow({ booking, slip, onDone }: { booking: Booking; slip: ReturnType
           </div>
         </>
       )}
-      <input ref={input} type="file" accept="image/*" className="hidden" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+      <input ref={input} type="file" accept={SLIP_ACCEPT} className="hidden" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
       {error && <p className="text-[13px] font-semibold text-[#ba1a1a]">{error}</p>}
     </li>
   );

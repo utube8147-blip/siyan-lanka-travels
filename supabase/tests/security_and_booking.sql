@@ -3,6 +3,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
 -- users: A, B passengers; S staff
 insert into auth.users (id, email, raw_user_meta_data) values
  ('aaaaaaaa-0000-0000-0000-000000000001','a@x.lk','{"full_name":"Alex A","phone":"0771111111"}'),

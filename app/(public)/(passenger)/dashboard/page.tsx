@@ -668,7 +668,8 @@ export default function Dashboard() {
                   <span className="material-symbols-outlined text-[22px] text-[#7c5800]">{c.icon}</span>
                   <p className="text-[12px] font-bold text-[#6b6d78] uppercase tracking-wide mt-2">{c.label}</p>
                   <p className="text-[26px] font-semibold text-[#050a44] mt-1">
-                    <AnimatedNumber value={c.value} format={c.money ? formatLKR : undefined} />
+                    {/* Money is shown as it is: counting up from 0 reads like a changing amount. */}
+                    {c.money ? formatLKR(c.value) : <AnimatedNumber value={c.value} />}
                   </p>
                 </div>
               ))}

@@ -77,7 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: prof } = await supabase().from('profiles').select('full_name, phone, role').eq('id', u.id).maybeSingle();
     setUserState({
       id: u.id,
-      email: u.email ?? '',
+      // Phone sign-ups: the address given at sign-up counts even before it's confirmed.
+      email: u.email || u.new_email || '',
       phone: prof?.phone ?? u.phone ?? '',
       role: prof?.role === 'admin' ? 'admin' : prof?.role === 'staff' ? 'operator' : prof?.role === 'conductor' ? 'conductor' : 'passenger',
       user_metadata: {

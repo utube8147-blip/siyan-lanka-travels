@@ -31,11 +31,16 @@ export function manifestFor(data: StoreData, scheduleId: string, date: string) {
       seats: seats(() => true),
       boarded: seats((b) => b.status === 'boarded'),
       waiting: seats((b) => b.status === 'confirmed' || b.status === 'held'),
-      unpaid: list.filter((b) => b.status === 'held').reduce((n, b) => n + b.total, 0),
+      // Still to collect: held seats, and passengers already on board who pay in transit.
+      unpaid: list.filter(isDue).reduce((n, b) => n + b.total, 0),
+      unpaidCount: list.filter(isDue).length,
       bikes: list.reduce((n, b) => n + (b.bikes?.length ?? 0), 0),
     },
   };
 }
+
+/** Money still to collect from this passenger (not paid, and not cancelled / no-show). */
+export const isDue = (b: Booking) => b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded');
 
 /** Pull a booking ref out of a scanned QR (JSON with ref, a URL, or plain text). */
 export function refFromScan(text: string) {
@@ -63,6 +68,19 @@ export async function scanTicket(text: string, bookings: Booking[], act: Actions
   if (!b) return { ok: false, msg: 'Not on this bus', detail: `${ref}: wrong date or departure? Check the ticket.` };
   const who = `${b.passenger.name} · seat ${b.seats.join(', ')}`;
   const where = `${b.from} → ${b.to}${b.bikes?.length ? ` · ${b.bikes.length} bike` : ''}`;
+  if (b.status === 'boarded' && isDue(b))
+    return {
+      ok: false,
+      msg: `On board, not paid: collect LKR ${b.total.toLocaleString('en-LK')}`,
+      detail: `${who} · ${where}`,
+      action: {
+        label: `Cash received from ${b.passenger.name.split(' ')[0]}`,
+        run: async () => {
+          const p = await act.takeCash(b);
+          return p.ok ? { ok: true, msg: `✓ Paid: ${who}`, detail: where } : { ok: false, msg: p.reason ?? 'Could not record payment' };
+        },
+      },
+    };
   if (b.status === 'boarded') return { ok: true, msg: `Already on board: ${who}`, detail: where };
   if (b.status === 'cancelled') return { ok: false, msg: 'Cancelled ticket', detail: `${who}. Don't board.` };
   if (b.status === 'held')
@@ -79,6 +97,17 @@ export async function scanTicket(text: string, bookings: Booking[], act: Actions
           return r.ok ? { ok: true, msg: `✓ Paid & boarded: ${who}`, detail: where } : { ok: false, msg: r.reason ?? 'Could not board' };
         },
       },
+      // Pay-on-the-bus passengers may board first and pay during the trip.
+      later:
+        b.paymentMethod === 'bus'
+          ? {
+              label: 'Board now, collect later',
+              run: async () => {
+                const r = await act.board(b);
+                return r.ok ? { ok: true, msg: `✓ On board, LKR ${b.total.toLocaleString('en-LK')} still to collect: ${who}`, detail: where } : { ok: false, msg: r.reason ?? 'Could not board' };
+              },
+            }
+          : undefined,
     };
   const r = await act.board(b);
   return r.ok ? { ok: true, msg: `✓ ${who}`, detail: where } : { ok: false, msg: r.reason ?? 'Could not board' };

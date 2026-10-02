@@ -201,11 +201,27 @@ export function useSlips() {
 }
 export const slipOnFile = (s: ReturnType<ReturnType<typeof useSlips>>): s is SlipInfo => !!s && 'uploadedAt' in s;
 
-/** Passenger: upload a photo of the bank slip for a held booking. */
+/** What the slip picker accepts: a photo / screenshot, or the bank's PDF receipt. */
+export const SLIP_ACCEPT = 'image/*,application/pdf';
+const MAX_PDF_BYTES = 5 * 1024 * 1024;
+const isPdfFile = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+const readAsDataUrl = (f: File) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error("Couldn't read that file."));
+    r.readAsDataURL(f);
+  });
+
+/** Passenger: upload the bank slip (photo, screenshot or PDF) for a held booking. */
 export async function submitSlip(booking: Booking, file: File, reference: string): Promise<Result> {
+  const pdf = isPdfFile(file);
+  if (!pdf && !file.type.startsWith('image/')) return { ok: false, reason: 'Upload a photo, a screenshot or a PDF of the slip.' };
+  if (pdf && file.size > MAX_PDF_BYTES) return { ok: false, reason: 'That PDF is larger than 5 MB. Upload a smaller one or a screenshot.' };
   let dataUrl: string;
   try {
-    dataUrl = await compressPhoto(file, 1400);
+    // Photos are shrunk before upload; a PDF goes up as it is.
+    dataUrl = pdf ? await readAsDataUrl(file) : await compressPhoto(file, 1400);
   } catch (e) {
     return { ok: false, reason: (e as Error).message };
   }
@@ -217,10 +233,10 @@ export async function submitSlip(booking: Booking, file: File, reference: string
   const { data: sess } = await sb.auth.getSession();
   const uid = sess.session?.user.id;
   if (!uid) return { ok: false, reason: 'Please sign in again.' };
-  const path = `${uid}/${booking.ref}-${uuid().slice(0, 8)}.jpg`;
-  const blob = await (await fetch(dataUrl)).blob();
-  const up = await sb.storage.from('payment-slips').upload(path, blob, { contentType: 'image/jpeg' });
-  if (up.error) return { ok: false, reason: friendlyError(up.error, "Couldn't upload the photo. Try again.") };
+  const path = `${uid}/${booking.ref}-${uuid().slice(0, 8)}.${pdf ? 'pdf' : 'jpg'}`;
+  const blob = pdf ? file : await (await fetch(dataUrl)).blob();
+  const up = await sb.storage.from('payment-slips').upload(path, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg' });
+  if (up.error) return { ok: false, reason: friendlyError(up.error, "Couldn't upload the slip. Try again.") };
   return rpc('submit_payment_slip', { p_booking: booking.id, p_path: path, p_reference: reference });
 }
 
@@ -232,6 +248,9 @@ export async function rejectSlip(bookingId: string, reason: string): Promise<Res
   }
   return rpc('reject_payment_slip', { p_booking: bookingId, p_reason: reason });
 }
+
+/** True when a slip link points at a PDF (shown as a link, not a picture). */
+export const slipIsPdf = (url: string) => url.startsWith('data:application/pdf') || /\.pdf(\?|$)/i.test(url);
 
 /** A link to look at the slip (signed, 10 minutes; a data URL in demo). */
 export async function slipUrl(booking: Booking): Promise<string | null> {

@@ -10,7 +10,7 @@ import { formatDateLabel, formatLKR, formatTime12, todayISO } from '@/lib/trips'
 import { Badge, Button, Card, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 import { BikeThumb } from '@/components/admin/BikeList';
 import { OPERATOR } from '@/config/operator';
-import { rejectSlip, slipOnFile, slipUrl, useSlips } from '@/lib/money';
+import { rejectSlip, slipIsPdf, slipOnFile, slipUrl, useSlips } from '@/lib/money';
 
 type When = 'upcoming' | 'past' | 'all';
 const PAGE = 40;
@@ -220,7 +220,7 @@ export default function BookingsPage() {
           onClose={closeModal}
           footer={
             <>
-              {open.status === 'held' && (
+              {open.paymentStatus === 'unpaid' && (open.status === 'held' || open.status === 'boarded') && (
                 <Button variant="gold" onClick={async () => {
                   const r = await confirmPayment(open.id, open.paymentMethod === 'bank' ? 'bank' : 'cash', open.slip?.reference || undefined);
                   toast(r.ok ? `${open.ref} marked paid` : r.reason ?? 'Could not confirm', r.ok ? 'ok' : 'error');
@@ -297,7 +297,9 @@ export default function BookingsPage() {
                       Uploaded {new Date(slip.uploadedAt).toLocaleString('en-GB')}
                       {slip.reference && <> · passenger&apos;s reference <b className="text-[#050a44]">{slip.reference}</b></>}. Check {formatLKR(open.total)} has reached the account, then mark it paid.
                     </p>
-                    {slipImg ? (
+                    {slipImg && slipIsPdf(slipImg) ? (
+                      <a href={slipImg} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#050a44] text-white text-[13px] font-bold">Open the PDF slip</a>
+                    ) : slipImg ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <a href={slipImg} target="_blank" rel="noopener"><img src={slipImg} alt={`Payment slip for ${open.ref}`} className="w-full max-h-[420px] object-contain rounded-lg border border-[#edeef0] bg-white" /></a>
                     ) : (

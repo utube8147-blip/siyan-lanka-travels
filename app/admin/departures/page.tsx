@@ -26,6 +26,7 @@ import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast } f
 import { BikeLoadingList } from '@/components/admin/BikeList';
 import { TripTools } from '@/components/admin/TripTools';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
+import { slipOnFile, slipUrl, useSlips } from '@/lib/money';
 import { FileDown } from 'lucide-react';
 
 export default function DeparturesPage() {
@@ -96,6 +97,8 @@ function Manifest({ run }: { run: Run }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [selling, setSelling] = useState(false);
   const [viewing, setViewing] = useState<Booking | null>(null);
+  const slipFor = useSlips();
+  const payLabel: Record<string, string> = { bank: 'bank transfer', counter: 'pay at counter', bus: 'pay on the bus' };
 
   const bookings = data.bookings.filter((b) => b.scheduleId === run.schedule.id && b.date === run.date);
   const live = bookings.filter((b) => b.status === 'confirmed' || b.status === 'boarded' || b.status === 'held');
@@ -218,9 +221,13 @@ function Manifest({ run }: { run: Run }) {
                     <td className="px-4 py-3 whitespace-nowrap">
                       <p className="font-bold tabular-nums">{formatLKR(b.total)}</p>
                       <Badge value={b.channel} />
+                      {b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') && (
+                        <p className="text-[11px] font-bold text-[#ba1a1a] mt-1">Not paid · {payLabel[b.paymentMethod ?? ''] ?? b.paymentMethod}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <Badge value={b.status} />
+                      {b.status === 'held' && slipOnFile(slipFor(b)) && <div className="mt-1"><Badge value="new" label="Slip to check" /></div>}
                     </td>
                     <td className="px-4 py-3 print:hidden">
                       {b.status === 'confirmed' && (
@@ -233,19 +240,30 @@ function Manifest({ run }: { run: Run }) {
                           </Button>
                         </div>
                       )}
-                      {b.status === 'held' && (
+                      {b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') && (
                         <div className="flex gap-1.5 justify-end">
+                          {b.status === 'held' && slipOnFile(slipFor(b)) && (
+                            <Button size="sm" variant="secondary" onClick={async () => {
+                              const u = await slipUrl(b);
+                              if (u) window.open(u, '_blank', 'noopener');
+                              else toast("Couldn't open the slip", 'error');
+                            }}>
+                              View slip
+                            </Button>
+                          )}
+                          {/* Bank transfers are recorded as bank payments (after checking the slip); everything else as cash. */}
                           <Button size="sm" variant="gold" onClick={async () => {
-                            const r = await confirmPayment(b.id, 'cash');
-                            toast(r.ok ? `${b.passenger.name}: paid in cash` : r.reason ?? 'Could not take payment', r.ok ? 'ok' : 'error');
+                            const bank = b.paymentMethod === 'bank';
+                            const r = await confirmPayment(b.id, bank ? 'bank' : 'cash', bank ? b.slip?.reference || undefined : undefined);
+                            toast(r.ok ? `${b.passenger.name}: ${bank ? 'bank transfer recorded' : 'paid in cash'}` : r.reason ?? 'Could not take payment', r.ok ? 'ok' : 'error');
                           }}>
-                            Take cash
+                            {b.paymentMethod === 'bank' ? 'Mark paid' : 'Take cash'}
                           </Button>
                         </div>
                       )}
                       {(b.status === 'boarded' || b.status === 'no-show') && (
                         <div className="flex justify-end">
-                          <Button size="sm" variant="ghost" onClick={() => setStatus(b, 'confirmed')}>
+                          <Button size="sm" variant="ghost" onClick={() => setStatus(b, b.paymentStatus === 'unpaid' ? 'held' : 'confirmed')}>
                             Undo
                           </Button>
                         </div>

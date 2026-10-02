@@ -2,6 +2,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
 create or replace function pg_temp.as_user(u text) returns void language sql as $$ select set_config('request.jwt.claim.sub', coalesce(u,''), false) $$;
 create or replace function pg_temp.try(label text, q text) returns text language plpgsql as $$
 begin execute q; return 'OK      ' || label; exception when others then return 'BLOCKED ' || label || '  → ' || left(sqlerrm, 90); end $$;

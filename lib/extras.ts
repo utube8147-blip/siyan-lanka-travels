@@ -47,6 +47,15 @@ function useLocalKey<T>(key: string, fallback: T): [T, (v: T) => void] {
 // ------------------------------------------------------- public settings ---
 export interface PublicSettings {
   bookingFee: number;
+  /** Current promo code (null = none) and its percent off the fare. */
+  promoCode: string | null;
+  promoPercent: number;
+  /** A one-time code is asked for on every online booking. */
+  bookingOtp: boolean;
+  /** Card / mobile wallet can be chosen at checkout (off until the gateway is live). */
+  cardPayments: boolean;
+  /** "Pay on the bus" (cash to the conductor) can be chosen at checkout. */
+  payOnBus: boolean;
   paymentsMode: 'demo' | 'payhere';
   bankDetails: string;
   holdMinutesCounter: number;
@@ -55,6 +64,11 @@ export interface PublicSettings {
 }
 const DEFAULT_PUBLIC: PublicSettings = {
   bookingFee: OPERATOR.bookingFee,
+  promoCode: OPERATOR.promo.code,
+  promoPercent: OPERATOR.promo.percentOff,
+  bookingOtp: false,
+  cardPayments: false,
+  payOnBus: true,
   paymentsMode: 'demo',
   bankDetails: 'Bank of Ceylon, Pettah branch · A/C 0077411020 · Siyan Lanka Travels',
   holdMinutesCounter: 120,
@@ -67,12 +81,17 @@ export function usePublicSettings() {
     if (!DB) return;
     supabase()
       .from('app_settings')
-      .select('booking_fee, payments_mode, bank_details, hold_minutes_counter, hold_minutes_bank, reward_every')
+      .select('booking_fee, promo_code, promo_percent, booking_otp, card_payments, pay_on_bus, payments_mode, bank_details, hold_minutes_counter, hold_minutes_bank, reward_every')
       .maybeSingle()
       .then(({ data }) => {
         if (data)
           setS({
             bookingFee: data.booking_fee,
+            promoCode: data.promo_code || null,
+            promoPercent: data.promo_percent ?? 0,
+            bookingOtp: data.booking_otp !== false,
+            cardPayments: data.card_payments === true,
+            payOnBus: data.pay_on_bus !== false,
             paymentsMode: data.payments_mode,
             bankDetails: data.bank_details || DEFAULT_PUBLIC.bankDetails,
             holdMinutesCounter: data.hold_minutes_counter,

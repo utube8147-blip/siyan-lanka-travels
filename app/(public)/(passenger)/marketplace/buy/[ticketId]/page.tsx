@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useResaleListings, buyResale, reserveResale } from '@/lib/resale';
 import { startPayhereResale } from '@/lib/payhere-client';
 import { usePublicSettings } from '@/lib/extras';
+import { useBookingCode } from '@/components/BookingCodeGate';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { PageSkeleton } from '@/lib/store';
 
@@ -52,6 +53,7 @@ export default function MarketplaceBuyPage() {
 
   const savings = ticket ? ticket.originalPrice - ticket.listedPrice : 0;
   const pub = usePublicSettings();
+  const bookingCode = useBookingCode();
   const SERVICE_FEE = pub.bookingFee;
   // Live gateway: the buyer pays on PayHere and the seat changes hands when the payment is confirmed.
   const payhereLive = isSupabaseConfigured && pub.paymentsMode === 'payhere';
@@ -114,7 +116,7 @@ export default function MarketplaceBuyPage() {
         setPurchaseState('success');
         return;
       }
-      const r = await buyResale(ticket.id, { name: buyerName.trim(), gender: buyerGender, phone: buyerPhone.trim() }, { email: buyerEmail.trim(), phone: buyerPhone.trim() });
+      const r = await bookingCode.run(() => buyResale(ticket.id, { name: buyerName.trim(), gender: buyerGender, phone: buyerPhone.trim() }, { email: buyerEmail.trim(), phone: buyerPhone.trim() }));
       if (!r.ok) {
         setPurchaseState('idle');
         setError(r.reason);
@@ -366,6 +368,7 @@ export default function MarketplaceBuyPage() {
   // -------------------------------------------------------------------------
   return (
     <main className="max-w-[1200px] mx-auto px-4 md:px-[64px] py-[32px]">
+      {bookingCode.modal}
       <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
         <div className="flex items-center">
           <Link href="/marketplace" className="hover:text-[#000000] transition-colors">

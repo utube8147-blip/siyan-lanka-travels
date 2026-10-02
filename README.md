@@ -145,6 +145,52 @@ trip updates, waitlist offers): sent by `/api/messages/dispatch`; see Messages.
 - ⚠️ While Settings → Payments is on *Demo*, card bookings are confirmed
   without taking money. Don't open to the public like that.
 
+## Ways to pay
+What a passenger can choose at checkout (migration 7):
+
+| Way | What happens | Who records the payment |
+| --- | --- | --- |
+| **Bank transfer** | Seat held (bank hold time). Passenger uploads the slip at checkout or in My trips; office staff get a notification. | Office: Bookings → open it → view slip → **Mark paid** (or send the slip back). |
+| **Pay at the counter** | Seat held (counter hold time); office staff get a notification. | Office: Bookings or the departure → **Take cash / Mark paid**. |
+| **Pay on the bus** | Seat reserved until the trip is over; cash to the conductor. | Conductor app: scan → **Cash received · board**, or **Board now, collect later** and take the cash during the trip. |
+| **Card / mobile wallet** | Shown locked, "Not available yet". | Opens with the payment gateway. |
+
+- Whenever a payment is recorded the passenger gets a text and a
+  notification: "Payment received, booking confirmed".
+- The conductor's list shows **DUE** and the amount for anyone who hasn't
+  paid, including passengers already on board. The printed passenger list
+  marks them **COLLECT** and ends with a "Cash to collect" table with a tick
+  box per passenger and the total.
+- The Bookings item in the staff menu shows how many online holds are waiting
+  for a counter or bank payment.
+- Switches: Staff area → Settings → **Ways to pay online** (Pay on the bus,
+  on by default; Card & wallet, locked by default). Both are enforced in the
+  database. Keep Card & wallet locked while Payments is on Demo: unlocked,
+  card bookings are confirmed with no money taken.
+- Pay on the bus reserves a seat with no payment. Unused reservations are the
+  risk; turn it off if no-shows become a problem. A reservation nobody paid
+  for is released 12 hours after departure.
+
+## A code on every booking
+Passengers stay signed in; every online booking is confirmed with a fresh
+6-digit code (migration 6). The passenger presses **Verify** on the seat page
+and can't go on to payment without it; the code goes to the phone number on
+the account (accounts with no phone get it by email). A code is good for one
+booking and for 20 minutes (`app_settings.booking_otp_minutes`); if it runs
+out during checkout, the payment page asks again. The database
+enforces it, so it can't be skipped by calling the API. Staff and conductors
+selling at the counter are never asked.
+- **Switch:** Staff area → Settings → **Code on every booking** (on by
+  default). Turn it off if text messages are down, so people can still book.
+- **Cost and limits:** each booking is one text. Supabase limits how many
+  texts it sends per hour (Authentication → Rate Limits); raise that before a
+  busy day.
+- **Email accounts:** the email must show the code. In Supabase →
+  Authentication → Emails → *Magic Link* template, include `{{ .Token }}`
+  (for example "Your code is {{ .Token }}").
+- **How long people stay signed in** is set in Supabase → Authentication →
+  Sessions. By default a session doesn't expire while the app is used.
+
 ## Refunds & payouts
 Whenever money becomes owed to a passenger, the database adds a row to
 `payouts`: a paid booking cancelled with a refund, a paid booking made cheaper

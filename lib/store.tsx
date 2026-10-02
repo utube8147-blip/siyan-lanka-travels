@@ -373,7 +373,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const { promo: _promo, payment, useReward: _reward, ...rest } = input;
       void _promo;
       void _reward;
-      const held = input.channel === 'online' && (payment === 'bank' || payment === 'counter');
+      const held = input.channel === 'online' && (payment === 'bank' || payment === 'counter' || payment === 'bus');
       const booking: Booking = {
         ...rest,
         id: genId('bk'),
@@ -381,7 +381,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         status: held ? 'held' : input.status ?? 'confirmed',
         paymentMethod: payment ?? (input.channel === 'online' ? 'card' : 'cash'),
         paymentStatus: held ? 'unpaid' : 'paid',
-        holdExpiresAt: held ? new Date(Date.now() + (payment === 'bank' ? 24 * 60 : 120) * 60_000).toISOString() : null,
+        // Pay on the bus: kept until after the trip (demo: a week).
+        holdExpiresAt: held ? new Date(Date.now() + (payment === 'bus' ? 7 * 24 * 60 : payment === 'bank' ? 24 * 60 : 120) * 60_000).toISOString() : null,
         createdAt: new Date().toISOString(),
       };
       const next = { ...d, bookings: [...d.bookings, booking] };
@@ -431,7 +432,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return { ok: true };
       }
       const d = dataRef.current;
-      const next = { ...d, bookings: d.bookings.map((b) => (b.id === id && b.status === 'held' ? { ...b, status: 'confirmed' as const, paymentStatus: 'paid' as const, paymentMethod: method, holdExpiresAt: null } : b)) };
+      const next = { ...d, bookings: d.bookings.map((b) => (b.id === id && b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') ? { ...b, status: b.status === 'held' ? ('confirmed' as const) : b.status, paymentStatus: 'paid' as const, paymentMethod: method, holdExpiresAt: null } : b)) };
       dataRef.current = next;
       setData(next);
       return { ok: true };
