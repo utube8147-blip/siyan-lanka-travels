@@ -34,6 +34,7 @@ export default function RoutesPage() {
     return {
       id: genId('route'),
       active: true,
+      flatFare: r.flatFare !== false,
       stops: [...r.stops].reverse().map((s) => ({ name: s.name, offsetMin: last.offsetMin - s.offsetMin, fareFromStart: last.fareFromStart - s.fareFromStart })),
     };
   };
@@ -145,7 +146,7 @@ export default function RoutesPage() {
               <div>
                 <h3 className="text-[16px] font-bold text-[#050a44]">{routeLabel(r)}</h3>
                 <p className="text-[12px] text-[#46464f]">
-                  {r.stops.length} stops · {formatDuration(r.stops[r.stops.length - 1]?.offsetMin ?? 0)} · {formatLKR(r.stops[r.stops.length - 1]?.fareFromStart ?? 0)} end to end
+                  {r.stops.length} stops · {formatDuration(r.stops[r.stops.length - 1]?.offsetMin ?? 0)} · {r.flatFare !== false ? `${formatLKR(r.stops[r.stops.length - 1]?.fareFromStart ?? 0)} per ticket, any stops` : `${formatLKR(r.stops[r.stops.length - 1]?.fareFromStart ?? 0)} end to end, less for shorter trips`}
                 </p>
               </div>
               {!r.active && <Badge value="paused" />}
@@ -156,7 +157,7 @@ export default function RoutesPage() {
                   <span className={`w-2.5 h-2.5 rounded-full ${i === 0 || i === r.stops.length - 1 ? 'bg-[#050a44]' : 'bg-[#feb700]'}`} aria-hidden />
                   <span className="font-semibold text-[#050a44]">{s.name}</span>
                   <span className="text-[#46464f] tabular-nums">+{formatDuration(s.offsetMin)}</span>
-                  <span className="font-bold text-[#050a44] tabular-nums w-[88px] text-right">{formatLKR(s.fareFromStart)}</span>
+                  <span className="font-bold text-[#050a44] tabular-nums w-[88px] text-right">{r.flatFare !== false ? '' : formatLKR(s.fareFromStart)}</span>
                 </li>
               ))}
             </ol>
@@ -223,6 +224,9 @@ function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => vo
   const [stops, setStops] = useState<RouteStop[]>(route.stops);
   const [active, setActive] = useState(route.active);
   const update = (i: number, patch: Partial<RouteStop>) => setStops((p) => p.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  // One price for the whole route (default), or a fare per stop.
+  const [flat, setFlat] = useState(route.flatFare !== false);
+  const [price, setPrice] = useState(route.stops[route.stops.length - 1]?.fareFromStart ?? 0);
   const move = (i: number, d: -1 | 1) =>
     setStops((p) => {
       const n = [...p];
@@ -234,10 +238,11 @@ function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => vo
   if (stops.length < 2) problems.push('A route needs at least two stops.');
   if (stops.some((s) => !s.name.trim())) problems.push('Every stop needs a name.');
   if (new Set(stops.map((s) => s.name.trim().toLowerCase())).size !== stops.length) problems.push('Stop names must be different.');
-  if (stops[0] && (stops[0].offsetMin !== 0 || stops[0].fareFromStart !== 0)) problems.push('The first stop is the start: time and fare 0.');
+  if (stops[0] && (stops[0].offsetMin !== 0 || (!flat && stops[0].fareFromStart !== 0))) problems.push('The first stop is the start: time and fare 0.');
+  if (flat && price <= 0) problems.push('Enter the ticket price.');
   for (let i = 1; i < stops.length; i++) {
     if (stops[i].offsetMin <= stops[i - 1].offsetMin) problems.push(`${stops[i].name || `Stop ${i + 1}`} must come later than the stop before.`);
-    if (stops[i].fareFromStart < stops[i - 1].fareFromStart) problems.push(`${stops[i].name || `Stop ${i + 1}`} fare can't be lower than the stop before.`);
+    if (!flat && stops[i].fareFromStart < stops[i - 1].fareFromStart) problems.push(`${stops[i].name || `Stop ${i + 1}`} fare can't be lower than the stop before.`);
   }
 
   return (
@@ -250,14 +255,39 @@ function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => vo
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={problems.length > 0} onClick={() => onSave({ ...route, active, stops: stops.map((s) => ({ ...s, name: s.name.trim() })) })}>
+          <Button disabled={problems.length > 0} onClick={() => onSave({ ...route, active, flatFare: flat, stops: (flat ? flatStops(stops, price) : stops).map((s) => ({ ...s, name: s.name.trim() })) })}>
             Save route
           </Button>
         </>
       }
     >
+      <div className="rounded-xl bg-[#f2f4f6] p-4 space-y-3">
+        <p className="text-[13px] font-bold text-[#050a44]">Ticket price</p>
+        <div className="flex gap-2">
+          {([true, false] as const).map((f) => (
+            <button
+              key={String(f)}
+              type="button"
+              aria-pressed={flat === f}
+              onClick={() => setFlat(f)}
+              className={`flex-1 min-h-10 px-2 py-1.5 rounded-lg text-[13px] font-bold border ${flat === f ? 'bg-[#050a44] text-white border-[#050a44]' : 'bg-white border-[#c7c5d1] text-[#46464f]'}`}
+            >
+              {f ? 'One price for the whole route' : 'Price by distance (per stop)'}
+            </button>
+          ))}
+        </div>
+        {flat ? (
+          <label className="block max-w-[260px]">
+            <span className="block text-[11px] font-bold text-[#686873] mb-1">Price per seat (LKR)</span>
+            <input type="number" min={0} step={50} className={inputClass} value={price} onChange={(e) => setPrice(Math.max(0, Number(e.target.value)))} aria-label="Ticket price" />
+            <span className="block text-[12px] text-[#6b6d78] mt-1">Every passenger pays this, wherever they get on or off.</span>
+          </label>
+        ) : (
+          <p className="text-[12px] text-[#46464f]">Enter each stop&apos;s fare from the first stop below. A passenger riding Kurunegala → Batticaloa pays the difference.</p>
+        )}
+      </div>
       <p className="text-[13px] text-[#46464f]">
-        For each stop, enter how long after leaving the first stop the bus gets there, and the fare from the first stop. A passenger riding Kurunegala → Batticaloa pays the difference.
+        For each stop, enter how long after leaving the first stop the bus gets there{flat ? '.' : ', and the fare from the first stop.'}
       </p>
       <div className="overflow-x-auto">
         <table className="w-full text-[13px]">
@@ -265,7 +295,7 @@ function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => vo
             <tr className="text-left text-[11px] font-bold text-[#46464f]">
               <th className="py-2 pr-2">Stop</th>
               <th className="py-2 pr-2">Arrives after (h:mm)</th>
-              <th className="py-2 pr-2">Fare from start (LKR)</th>
+              <th className={`py-2 pr-2 ${flat ? 'hidden' : ''}`}>Fare from start (LKR)</th>
               <th className="py-2">
                 <span className="sr-only">Order</span>
               </th>
@@ -306,7 +336,7 @@ function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => vo
                     onChange={(e) => update(i, { offsetMin: toMinutes(e.target.value || '00:00') })}
                   />
                 </td>
-                <td className="py-1 pr-2">
+                <td className={`py-1 pr-2 ${flat ? 'hidden' : ''}`}>
                   <input
                     aria-label={`Stop ${i + 1} fare`}
                     type="number"
@@ -360,6 +390,20 @@ function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => vo
       )}
     </Modal>
   );
+}
+
+/**
+ * Saving a one-price route: the last stop carries the price. The other stops'
+ * figures aren't used, but are kept valid (never above the price, never going
+ * down) so switching back to per-stop fares later starts from something sane.
+ */
+function flatStops(stops: RouteStop[], price: number): RouteStop[] {
+  let prev = 0;
+  return stops.map((s, i) => {
+    const fare = i === 0 ? 0 : i === stops.length - 1 ? price : Math.min(price, Math.max(prev, s.fareFromStart));
+    prev = fare;
+    return { ...s, fareFromStart: fare };
+  });
 }
 
 function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClose: () => void; onSave: (s: Schedule) => void }) {

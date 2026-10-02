@@ -223,14 +223,14 @@ function buildTrip(
     arrival: fromMinutes(depMin + to.offsetMin),
     durationMin: to.offsetMin - from.offsetMin,
     via: route.stops.slice(fromIdx + 1, toIdx).map((s) => s.name),
-    fare: Math.max(0, to.fareFromStart - from.fareFromStart),
+    fare: segmentFare(route, fromIdx, toIdx),
     capacity,
     seatsBooked: taken.size,
     // Reserved seats aren't on sale to passengers, so they don't count as "left".
     seatsLeft: Math.max(0, capacity - taken.size - (bus.reservedSeats ?? []).filter((s) => !taken.has(s)).length),
     bikeSpaces: bus.bikeSpaces ?? 0,
     bikeSpacesLeft: Math.max(0, (bus.bikeSpaces ?? 0) - usedSpaces),
-    routeShare: Math.min(1, Math.max(0, (to.fareFromStart - from.fareFromStart) / fullFare)),
+    routeShare: Math.min(1, Math.max(0, segmentFare(route, fromIdx, toIdx) / fullFare)),
     closed,
   };
 }
@@ -291,6 +291,17 @@ export function refundQuote(booking: Booking, trip: Pick<Trip, 'boardingDate' | 
   // The booking fee is not refundable.
   const refundable = booking.total - booking.fee;
   return { percent, amount: Math.round((refundable * percent) / 100) };
+}
+
+/**
+ * Ticket price per seat between two stops of a route. With "one price for the
+ * whole route" (the default) it is the full-route fare wherever the passenger
+ * gets on or off; otherwise the difference between the two stops' fares.
+ */
+export function segmentFare(route: Pick<Route, 'stops' | 'flatFare'>, fromIdx: number, toIdx: number) {
+  const last = route.stops[route.stops.length - 1];
+  if (route.flatFare !== false) return Math.max(0, last?.fareFromStart ?? 0);
+  return Math.max(0, route.stops[toIdx].fareFromStart - route.stops[fromIdx].fareFromStart);
 }
 
 /** True when the schedule uses "every N days from a date" and not weekdays. */

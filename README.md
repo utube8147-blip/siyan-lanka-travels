@@ -145,6 +145,17 @@ trip updates, waitlist offers): sent by `/api/messages/dispatch`; see Messages.
 - ⚠️ While Settings → Payments is on *Demo*, card bookings are confirmed
   without taking money. Don't open to the public like that.
 
+## Ticket price: one price per route
+Each route has its own price mode (Staff area → Routes & timetable → Edit
+stops & fares; migration 12):
+- **One price for the whole route** (the default): every seat costs the
+  route's price, wherever the passenger gets on or off. Enter one figure.
+- **Price by distance (per stop):** each stop has a fare from the first stop
+  and the passenger pays the difference between their two stops.
+Search results, the seat and payment pages, counter sales and the database
+all use the route's mode. Bike fees follow the same rule: on a one-price
+route a bike pays its full-route price.
+
 ## Timetable: weekdays or every other day
 A departure (Staff area → Routes & timetable → Add / Edit departure) runs
 either **on set weekdays** or **every other day** (every 2, 3 or 4 days from

@@ -29,8 +29,8 @@ export const busToRow = (b: Bus) => ({
   bike_spaces: b.bikeSpaces ?? 0,
 });
 
-export const routeFromRow = (r: any): Route => ({ id: r.id, stops: r.stops, active: r.active });
-export const routeToRow = (r: Route) => ({ id: r.id, stops: r.stops, active: r.active });
+export const routeFromRow = (r: any): Route => ({ id: r.id, stops: r.stops, flatFare: r.flat_fare !== false, active: r.active });
+export const routeToRow = (r: Route) => ({ id: r.id, stops: r.stops, flat_fare: r.flatFare !== false, active: r.active });
 
 export const scheduleFromRow = (r: any): Schedule => ({
   id: r.id,

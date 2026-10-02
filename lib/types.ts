@@ -62,6 +62,13 @@ export interface Route {
   id: string;
   /** Stops in travel order. First = origin, last = final destination. */
   stops: RouteStop[];
+  /**
+   * One price for the whole route: every ticket costs the full-route fare
+   * (the last stop's fareFromStart) whichever stops the passenger uses.
+   * false = pay for the stretch you ride (difference between the two stops).
+   * Missing counts as true.
+   */
+  flatFare?: boolean;
   active: boolean;
 }
 

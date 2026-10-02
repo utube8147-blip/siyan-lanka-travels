@@ -77,7 +77,7 @@ export function allRoutePages(tt: Timetable = SEED_TIMETABLE): RoutePage[] {
           slug,
           from: from.name,
           to: to.name,
-          fare: to.fareFromStart - from.fareFromStart,
+          fare: route.flatFare !== false ? route.stops[route.stops.length - 1].fareFromStart : to.fareFromStart - from.fareFromStart,
           durationMin: to.offsetMin - from.offsetMin,
           via: stops.slice(i + 1, j).map((s) => s.name),
           busType: bus ? `${bus.type} luxury coach` : 'Coach',

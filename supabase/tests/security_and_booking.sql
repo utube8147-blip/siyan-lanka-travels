@@ -4,6 +4,7 @@
 \pset tuples_only on
 \pset format unaligned
 update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
+update routes set flat_fare = false; -- these tests check per-stop fares; one-price routes are tested in seat_overrides.sql
 -- users: A, B passengers; S staff
 insert into auth.users (id, email, raw_user_meta_data) values
  ('aaaaaaaa-0000-0000-0000-000000000001','a@x.lk','{"full_name":"Alex A","phone":"0771111111"}'),

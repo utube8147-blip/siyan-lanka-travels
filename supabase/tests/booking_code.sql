@@ -13,6 +13,7 @@ create temp table t6 as select (current_date + 49 + ((5 - extract(dow from curre
 grant select on t6 to anon, authenticated;
 create or replace function pg_temp.book(seat text) returns text language sql as $$
   select format($q$select create_booking('{"schedule_id":"sch-cmb-2100","date":"%s","from":"Colombo","to":"Batticaloa","seats":["%s"],"passenger":{"name":"A","gender":"Male"}}')$q$, (select fri from t6), seat) $$;
+update routes set flat_fare = false;
 update app_settings set payments_mode = 'demo', booking_otp = true, booking_otp_minutes = 20, card_payments = true;
 
 select '--- a code for every online booking';

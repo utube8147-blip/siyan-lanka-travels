@@ -100,3 +100,19 @@ select pg_temp.try('a second three-wheeler when only 1 space is left', pg_temp.b
 reset role;
 select 'charged: ' || string_agg(k.kind || ' LKR ' || k.fee, ', ' order by k.fee desc) || '; spaces used: ' || public.bike_spaces_used('sch-cmb-2100', (select fri from t9)) from booking_bikes k join bookings b on b.id = k.booking_id where b.travel_date = (select fri from t9) and b.status::text <> 'cancelled';
 update app_settings set bikes = (select bikes from bikes_before);
+
+select '--- one price per route';
+create or replace function pg_temp.fare(seat text, f text, t text) returns text language sql as $$
+  select format($q$select create_booking('{"schedule_id":"sch-cmb-2100","date":"%s","from":"%s","to":"%s","seats":["%s"],"passenger":{"name":"Walk-in","gender":"Male"},"channel":"counter","payment":"cash"}')$q$, (select fri from t9), f, t, seat) $$;
+update routes set flat_fare = true where id = 'route-48-east';
+set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select pg_temp.try('whole route', pg_temp.fare('8C', 'Colombo', 'Akkaraipattu'));
+select pg_temp.try('gets off in the middle', pg_temp.fare('8D', 'Colombo', 'Dambulla'));
+select pg_temp.try('gets on in the middle', pg_temp.fare('9C', 'Polonnaruwa', 'Batticaloa'));
+reset role;
+select 'one price: ' || string_agg(from_stop || ' → ' || to_stop || ' LKR ' || fare, ' | ' order by seats) from bookings where travel_date = (select fri from t9) and seats && '{8C,8D,9C}';
+update routes set flat_fare = false where id = 'route-48-east';
+set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select pg_temp.try('per-stop mode, gets off in the middle', pg_temp.fare('9D', 'Colombo', 'Dambulla'));
+reset role;
+select 'per-stop price: ' || from_stop || ' → ' || to_stop || ' LKR ' || fare from bookings where travel_date = (select fri from t9) and seats = '{9D}';
