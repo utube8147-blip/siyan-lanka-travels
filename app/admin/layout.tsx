@@ -6,10 +6,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, CalendarClock, Ticket, Bus, Route as RouteIcon, ExternalLink, LogOut, Wallet, Receipt, Wrench, Users, UserCog, Settings as SettingsIcon, Package, Banknote, ScanLine, HandCoins } from 'lucide-react';
+import { LayoutDashboard, CalendarClock, Ticket, Bus, Route as RouteIcon, ExternalLink, LogOut, Wallet, Receipt, Wrench, Users, UserCog, Settings as SettingsIcon, Package, Banknote, ScanLine, HandCoins, Menu, X } from 'lucide-react';
 import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore, StoreLoading } from '@/lib/store';
 import { Wordmark } from '@/components/Wordmark';
 import { Button } from '@/components/admin/ui';
@@ -54,6 +54,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-[#feb700] text-[#14120a] text-[11px] font-bold inline-flex items-center justify-center" aria-label={`${waiting} waiting for payment`}>{waiting}</span>
     ) : null;
   const isStaff = isOfficeRole(user?.role);
+  // Slide-out menu on phones and tablets.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => setMenuOpen(false), [pathname]); // a link was followed
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden'; // the page behind doesn't scroll while the menu is open
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
   const router = useRouter();
   useEffect(() => {
     if (user?.role === 'conductor') router.replace('/conductor');
@@ -91,77 +105,103 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
+  // The staff menu: one definition, shown as the fixed sidebar on large screens
+  // and inside the slide-out drawer (hamburger) on phones and tablets.
+  const sidebarBody = ({ closeButton = false }: { closeButton?: boolean } = {}) => (
+    <>
+      <div className="flex items-start justify-between gap-2 mb-8">
+        <Link href="/admin" className="block min-w-0" onClick={() => setMenuOpen(false)}>
+          <Wordmark />
+          <span className="block text-[11px] font-semibold text-white/50 mt-2 truncate">{isAdmin ? 'Super admin' : 'Staff'} · {user.user_metadata.full_name}</span>
+        </Link>
+        {closeButton && (
+          <button onClick={() => setMenuOpen(false)} aria-label="Close menu" className="shrink-0 w-10 h-10 -mr-2 -mt-1 rounded-xl flex items-center justify-center text-white/80 hover:bg-white/10">
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+
+      {/* Scrolls with wheel / trackpad / touch, but the scrollbar is hidden
+          (.no-scrollbar is defined in globals.css). */}
+      <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar space-y-5" aria-label="Staff">
+        {sections.map((sec) => (
+          <div key={sec.title} className="space-y-1">
+            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/40">{sec.title}</p>
+            {sec.items.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMenuOpen(false)}
+                aria-current={active(href) ? 'page' : undefined}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-semibold transition-colors ${
+                  active(href) ? 'bg-white text-[#050a44]' : 'text-white/80 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Icon className="w-[18px] h-[18px] shrink-0" />
+                {label}
+                {badge(href)}
+              </Link>
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      <div className="space-y-1 border-t border-white/10 pt-4">
+        <Link href="/" target="_blank" className="flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
+          <ExternalLink className="w-4 h-4" /> View customer site
+        </Link>
+        <Link href="/conductor" className="flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
+          <ScanLine className="w-4 h-4" /> Conductor app (phone)
+        </Link>
+        <button onClick={logout} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
+          <LogOut className="w-4 h-4" /> Sign out
+        </button>
+        <div className="flex items-center gap-2 px-1 pt-1 text-[13px] font-semibold text-white/80">
+          <ThemeToggle onDark /> Theme
+        </div>
+      </div>
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-[#f2f4f7] lg:grid lg:grid-cols-[248px_1fr]">
+    // overflow-x-clip: nothing in the staff area can make the page scroll sideways.
+    <div className="min-h-screen bg-[#f2f4f7] lg:grid lg:grid-cols-[248px_1fr] overflow-x-clip">
       <title>Staff area | Siyan Lanka Travels</title>
       <meta name="robots" content="noindex, nofollow" />
-      <aside className="keep-navy hidden lg:flex flex-col bg-[#111216] text-white sticky top-0 h-screen p-5">
-        <Link href="/admin" className="mb-8 block">
-          <Wordmark />
-          <span className="block text-[11px] font-semibold text-white/50 mt-2">{isAdmin ? 'Super admin' : 'Staff'} · {user.user_metadata.full_name}</span>
-        </Link>
 
-        {/* Scrolls with wheel / trackpad / touch, but the scrollbar is hidden
-            (.no-scrollbar is defined in globals.css). */}
-        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar space-y-5" aria-label="Staff">
-          {sections.map((sec) => (
-            <div key={sec.title} className="space-y-1">
-              <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/40">{sec.title}</p>
-              {sec.items.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={active(href) ? 'page' : undefined}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-semibold transition-colors ${
-                    active(href) ? 'bg-white text-[#050a44]' : 'text-white/80 hover:bg-white/10 hover:text-white'
-                  }`}
-                >
-                  <Icon className="w-[18px] h-[18px]" />
-                  {label}
-                  {badge(href)}
-                </Link>
-              ))}
-            </div>
-          ))}
-        </nav>
+      {/* Large screens: fixed sidebar */}
+      <aside className="keep-navy hidden lg:flex flex-col bg-[#111216] text-white sticky top-0 h-screen p-5">{sidebarBody()}</aside>
 
-        <div className="space-y-1 border-t border-white/10 pt-4">
-          <Link href="/conductor" className="flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
-            <ScanLine className="w-4 h-4" /> Conductor app (phone)
-          </Link>
-          <div className="flex items-center gap-2">
-            <button onClick={logout} className="flex-1 min-w-0 flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
-              <LogOut className="w-4 h-4 shrink-0" /> Sign out
-            </button>
-            <ThemeToggle onDark />
-          </div>
-        </div>
-      </aside>
-
-      {/* Mobile / tablet top bar */}
+      {/* Phones and tablets: top bar with the hamburger */}
       <div className="keep-navy lg:hidden sticky top-0 z-40 bg-[#111216] text-white">
-        <div className="flex items-center justify-between px-4 h-14">
-          <Wordmark size="sm" />
-          <div className="flex items-center gap-1">
-            <ThemeToggle onDark />
-            <button onClick={logout} className="text-[12px] font-semibold text-white/80 px-2">
-              Sign out
+        <div className="flex items-center justify-between gap-2 px-2 h-14">
+          <div className="flex items-center gap-1 min-w-0">
+            <button onClick={() => setMenuOpen(true)} aria-label="Open menu" aria-expanded={menuOpen} className="relative w-11 h-11 rounded-xl flex items-center justify-center hover:bg-white/10">
+              <Menu className="w-6 h-6" />
+              {waiting > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-[#feb700]" aria-hidden />}
             </button>
-          </div>
-        </div>
-        <nav className="flex gap-1 overflow-x-auto no-scrollbar px-3 pb-2" aria-label="Operator">
-          {NAV.map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-bold ${active(href) ? 'bg-white text-[#050a44]' : 'text-white/80 bg-white/10'}`}
-            >
-              {label}
-              {badge(href)}
+            <Link href="/admin" aria-label="Staff area home">
+              <Wordmark size="sm" />
             </Link>
-          ))}
-        </nav>
+          </div>
+          <ThemeToggle onDark />
+        </div>
       </div>
+
+      {/* The drawer. "fixed inset-0" (not 100vw) so it never widens the page. */}
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <button aria-label="Close menu" onClick={() => setMenuOpen(false)} className="absolute inset-0 w-full h-full bg-black/60 cursor-default" />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Staff menu"
+            className={`keep-navy absolute left-0 top-0 bottom-0 w-[280px] max-w-[85%] bg-[#111216] text-white flex flex-col p-5 shadow-2xl`}
+          >
+            {sidebarBody({ closeButton: true })}
+          </aside>
+        </div>
+      )}
 
       <main className="min-w-0 px-4 md:px-8 py-6 md:py-8 max-w-[1280px] w-full">{ready ? children : <StoreLoading />}</main>
     </div>

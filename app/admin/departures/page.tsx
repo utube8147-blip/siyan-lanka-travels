@@ -151,10 +151,12 @@ function Manifest({ run }: { run: Run }) {
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-[11px] font-medium text-[#46464f]">
           <Legend className="border border-[#c7c5d1] bg-white" label="Free" />
-          <Legend className="bg-[#feb700]" label="Selected" />
-          <Legend className="bg-[#050a44]" label="Sold" />
+          <Legend className="bg-[#050a44]" label="Selected" />
+          <Legend className="bg-[#dc2626]" label="Booked, paid" />
+          <Legend className="bg-[#f97316]" label="Not fully paid" />
           <Legend className="bg-[#006e1c]" label="Boarded" />
-          <Legend className="border border-pink-300 bg-pink-50" label="Ladies" />
+          <Legend className="border border-rose-400 bg-rose-50" label="Ladies" />
+          <Legend className="border border-dashed border-[#6d28d9] bg-[#ede9fe]" label="Reserved" />
         </div>
 
         <Button variant="gold" className="w-full mt-5" disabled={selected.length === 0 || departed} onClick={() => setSelling(true)}>
@@ -184,57 +186,49 @@ function Manifest({ run }: { run: Run }) {
             {OPERATOR.name} · {routeLabel(run.route)} · {formatDateLabel(run.date)} {formatTime12(run.schedule.departure)} · {run.bus.regNo}
           </p>
         </div>
+        {/* Each passenger is a block that wraps onto as many lines as it needs, so the list never scrolls sideways. */}
         {manifest.length === 0 ? (
           <p className="p-6 text-[14px] text-[#46464f]">No bookings yet for this departure.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
-                  <th className="px-4 py-2.5">Seats</th>
-                  <th className="px-4 py-2.5">Passenger</th>
-                  <th className="px-4 py-2.5">Gets on → off</th>
-                  <th className="px-4 py-2.5">Paid</th>
-                  <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5 print:hidden">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#edeef0]">
-                {manifest.map((b) => (
-                  <tr key={b.id} className={b.status === 'cancelled' ? 'opacity-50' : ''}>
-                    <td className="px-4 py-3 font-bold text-[#050a44] whitespace-nowrap">
-                      {b.seats.join(', ')}
-                      {b.bikes?.length ? (
-                        <span className="material-symbols-outlined text-[16px] text-[#7c5800] align-middle ml-1" title={`${b.bikes.length} bike(s) in the compartment`}>
-                          two_wheeler
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 min-w-[170px]">
-                      <p className="font-bold text-[#050a44] whitespace-nowrap">{b.passenger.name}</p>
-                      <p className="text-[12px] text-[#46464f] whitespace-nowrap">{b.passenger.phone}</p>
-                      <p className="text-[11px] text-[#6b6d78] whitespace-nowrap">{b.ref}</p>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+          <ul className="divide-y divide-[#edeef0] text-[13px]">
+            {manifest.map((b) => (
+              <li key={b.id} className={`px-4 py-3 grid grid-cols-[56px_minmax(0,1fr)] gap-x-3 ${b.status === 'cancelled' ? 'opacity-50' : ''}`}>
+                <div className="font-bold text-[#050a44] text-[14px] leading-tight break-words">
+                  {b.seats.join(', ')}
+                  {b.bikes?.length ? (
+                    <span className="material-symbols-outlined text-[16px] text-[#7c5800] align-middle ml-0.5" title={`${b.bikes.length} bike(s) in the compartment`}>
+                      two_wheeler
+                    </span>
+                  ) : null}
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  {/* Line 1: who, and where the booking stands */}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="font-bold text-[#050a44] break-words">{b.passenger.name}</p>
+                    <Badge value={b.status} />
+                    {b.status === 'held' && slipOnFile(slipFor(b)) && <Badge value="new" label="Slip to check" />}
+                  </div>
+                  {/* Line 2: contact, reference, trip */}
+                  <p className="text-[12px] text-[#46464f] flex flex-wrap gap-x-2 gap-y-0.5">
+                    {b.passenger.phone && <span>{b.passenger.phone}</span>}
+                    <span className="text-[#6b6d78]">{b.ref}</span>
+                    <span className="font-semibold text-[#050a44]">
                       {b.from} → {b.to}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    </span>
+                  </p>
+                  {/* Line 3: money on the left, actions on the right (they drop below on a narrow screen) */}
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       {/* Green = paid in full, red = not paid yet, grey = cancelled. */}
                       <p className={`font-bold tabular-nums ${b.status === 'cancelled' ? 'text-[#6b6d78]' : b.paymentStatus === 'unpaid' ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>{formatLKR(b.total)}</p>
                       <Badge value={b.channel} />
                       {b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') && (
-                        <p className="text-[11px] font-bold text-[#ba1a1a] mt-1">Not paid · {payLabel[b.paymentMethod ?? ''] ?? b.paymentMethod}</p>
+                        <span className="text-[11px] font-bold text-[#ba1a1a]">Not paid · {payLabel[b.paymentMethod ?? ''] ?? b.paymentMethod}</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge value={b.status} />
-                      {b.status === 'held' && slipOnFile(slipFor(b)) && <div className="mt-1"><Badge value="new" label="Slip to check" /></div>}
-                    </td>
-                    <td className="px-4 py-3 print:hidden">
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 print:hidden">
                       {b.status === 'confirmed' && (
-                        <div className="flex gap-1.5 justify-end">
+                        <div className="flex flex-wrap gap-1.5">
                           <Button size="sm" onClick={() => setStatus(b, 'boarded')}>
                             Boarded
                           </Button>
@@ -244,7 +238,7 @@ function Manifest({ run }: { run: Run }) {
                         </div>
                       )}
                       {b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') && (
-                        <div className="flex gap-1.5 justify-end">
+                        <div className="flex flex-wrap gap-1.5">
                           {b.status === 'held' && slipOnFile(slipFor(b)) && (
                             <Button size="sm" variant="secondary" onClick={async () => {
                               const u = await slipUrl(b);
@@ -265,18 +259,18 @@ function Manifest({ run }: { run: Run }) {
                         </div>
                       )}
                       {(b.status === 'boarded' || b.status === 'no-show') && (
-                        <div className="flex justify-end">
+                        <div className="flex">
                           <Button size="sm" variant="ghost" onClick={() => setStatus(b, b.paymentStatus === 'unpaid' ? 'held' : 'confirmed')}>
                             Undo
                           </Button>
                         </div>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
 
