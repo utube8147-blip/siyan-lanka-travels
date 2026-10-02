@@ -126,17 +126,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         <div className="space-y-1 border-t border-white/10 pt-4">
-          <Link href="/" target="_blank" className="flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
-            <ExternalLink className="w-4 h-4" /> View customer site
-          </Link>
           <Link href="/conductor" className="flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
             <ScanLine className="w-4 h-4" /> Conductor app (phone)
           </Link>
-          <button onClick={logout} className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
-            <LogOut className="w-4 h-4" /> Sign out
-          </button>
-          <div className="flex items-center gap-2 px-1 pt-1 text-[13px] font-semibold text-white/80">
-            <ThemeToggle onDark /> Theme
+          <div className="flex items-center gap-2">
+            <button onClick={logout} className="flex-1 min-w-0 flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
+              <LogOut className="w-4 h-4 shrink-0" /> Sign out
+            </button>
+            <ThemeToggle onDark />
           </div>
         </div>
       </aside>
