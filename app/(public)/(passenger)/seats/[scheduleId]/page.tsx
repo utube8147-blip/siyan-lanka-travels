@@ -10,7 +10,7 @@ import SeatSelectionDrawer, { formatTime, type Gender } from '@/components/SeatS
 import { OPERATOR } from '@/config/operator';
 import { BikeAddon, bikesProblem } from '@/components/BikeAddon';
 import { useSavedPassengers, usePublicSettings } from '@/lib/extras';
-import { useBookingCode } from '@/components/BookingCodeGate';
+import { isLkMobile, useBookingCode } from '@/components/BookingCodeGate';
 import type { BikeItem } from '@/lib/types';
 import { useStore, StoreLoading } from '@/lib/store';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO } from '@/lib/trips';
@@ -121,8 +121,10 @@ function BookingPageInner() {
   useBikeConfig(); // bike fees follow Settings → Bikes
   const bookingCode = useBookingCode();
   const [verifying, setVerifying] = useState(false);
-  // Real accounts with "code on every booking" on: the number is verified
-  // here, with a real code, before the passenger can go on to payment.
+  // Real accounts with "code on every booking" on: the passenger gives a
+  // mobile number and confirms it here with a texted code before going on to
+  // payment. This is the same for every account, whether they signed in with
+  // an email address or a phone number.
   const needsCode = authMode === 'supabase' && pub.bookingOtp;
   const userId = user?.id;
   useEffect(() => {
@@ -132,8 +134,9 @@ function BookingPageInner() {
     setIsVerified(!pub.bookingOtp);
   }, [authMode, userId, pub.bookingOtp]);
   const verifyNumber = async () => {
+    if (!isLkMobile(phone)) return addToast('Enter a mobile number first, like 077 123 4567.', 'error');
     setVerifying(true);
-    const ok = await bookingCode.ask();
+    const ok = await bookingCode.ask(phone);
     setVerifying(false);
     if (ok) {
       setIsVerified(true);
@@ -146,7 +149,8 @@ function BookingPageInner() {
   useEffect(() => {
     if (!isLoggedIn || !user) return;
     const nextEmail = user.email ?? '';
-    const nextPhone = user.phone ?? '';
+    // Only a real phone number: an email-only account has no mobile yet, and the passenger types one.
+    const nextPhone = /^\+?[0-9][0-9 ]{8,14}$/.test(user.phone ?? '') ? user.phone! : '';
     // No email on the account (signed up by phone): reuse the one from their last booking.
     const lastEmail = data.bookings.filter((b) => b.userId === user.id && b.contact.email).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]?.contact.email ?? '';
     setEmail((prev) => (prev ? prev : nextEmail || lastEmail));
@@ -513,10 +517,7 @@ function BookingPageInner() {
               <div className="space-y-[16px]">
                 <div>
                   <label className="text-[11px] font-bold text-[#46464f] px-1 flex items-center gap-1.5">
-                    Your phone number
-                    {isLoggedIn && (
-                      <span className="text-[10px] font-bold text-[#006e1c] normal-case">from your account</span>
-                    )}
+                    Mobile number for this booking
                   </label>
 
                   <div className="flex gap-[8px] mt-1">
@@ -524,13 +525,13 @@ function BookingPageInner() {
                       value={phone}
                       onChange={(e) => {
                         setPhone(e.target.value.replace(/[^0-9+]/g, ''));
-                        // Demo only: a changed number needs the (pretend) code again.
-                        if (authMode !== 'supabase') {
+                        // A changed number has to be verified again (the code is tied to the number).
+                        if (authMode !== 'supabase' || needsCode) {
                           setIsVerified(false);
                           setOtpSent(false);
                         }
                       }}
-                      placeholder="+94 77 123 4567"
+                      placeholder="077 123 4567"
                       className="flex-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
                       type="tel"
                     />
@@ -564,7 +565,7 @@ function BookingPageInner() {
 
                   {needsCode && !isVerified && (
                     <p className="mt-1.5 text-[12px] text-[#46464f] px-1">
-                      Press Verify and we&apos;ll send a 6-digit code to the number on your account. You need it to go on to payment.
+                      Enter the mobile number for this booking and press Verify. We&apos;ll text it a 6-digit code; you need it to go on to payment.
                     </p>
                   )}
 

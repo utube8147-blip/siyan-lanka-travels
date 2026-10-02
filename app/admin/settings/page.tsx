@@ -206,7 +206,7 @@ function SettingsForm() {
         <Card className="p-5 space-y-4">
           <h2 className="text-[16px] font-semibold text-[#050a44]">Code on every booking</h2>
           <p className="text-[13px] text-[#46464f]">
-            Passengers stay signed in, and before paying for an online booking they verify with a fresh 6-digit code sent to their phone (or email, for accounts without a phone). A code works for one booking, for 20 minutes. Counter and phone bookings by staff are never asked. Each code is one text message.
+            Passengers stay signed in, and before paying for an online booking they give a mobile number and confirm it with a 6-digit code we text to it, whether they signed in with an email address or a phone number. A code works for one booking, for 20 minutes. Counter and phone bookings by staff are never asked. Each code is one text message.
           </p>
           <label className="flex items-center justify-between gap-4 rounded-xl bg-[#f2f4f6] p-4">
             <span>

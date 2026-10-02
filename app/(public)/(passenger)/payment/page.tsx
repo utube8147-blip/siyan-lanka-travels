@@ -186,7 +186,7 @@ function PaymentPageInner() {
         promo: promo || undefined,
         payment: method,
         useReward: useReward && (loyalty?.available ?? 0) > 0,
-      }));
+      }), contactPhone);
       if (!result.ok) {
         setPayState('idle');
         // Only a seat problem is fixed by picking another seat; anything else just says what went wrong.

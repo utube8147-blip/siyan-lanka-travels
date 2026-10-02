@@ -116,7 +116,7 @@ export default function MarketplaceBuyPage() {
         setPurchaseState('success');
         return;
       }
-      const r = await bookingCode.run(() => buyResale(ticket.id, { name: buyerName.trim(), gender: buyerGender, phone: buyerPhone.trim() }, { email: buyerEmail.trim(), phone: buyerPhone.trim() }));
+      const r = await bookingCode.run(() => buyResale(ticket.id, { name: buyerName.trim(), gender: buyerGender, phone: buyerPhone.trim() }, { email: buyerEmail.trim(), phone: buyerPhone.trim() }), buyerPhone.trim());
       if (!r.ok) {
         setPurchaseState('idle');
         setError(r.reason);

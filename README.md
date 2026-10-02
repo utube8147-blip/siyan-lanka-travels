@@ -254,25 +254,28 @@ What a passenger can choose at checkout (migration 7):
   risk; turn it off if no-shows become a problem. A reservation nobody paid
   for is released 12 hours after departure.
 
-## A code on every booking
-Passengers stay signed in; every online booking is confirmed with a fresh
-6-digit code (migration 6). The passenger presses **Verify** on the seat page
-and can't go on to payment without it; the code goes to the phone number on
-the account (accounts with no phone get it by email). A code is good for one
-booking and for 20 minutes (`app_settings.booking_otp_minutes`); if it runs
-out during checkout, the payment page asks again. The database
-enforces it, so it can't be skipped by calling the API. Staff and conductors
-selling at the counter are never asked.
+## A code on a mobile for every booking
+Every online booking is confirmed with a 6-digit code texted to a mobile
+number (migration 14), however the passenger signed in: an account that signed
+in with an email address is asked for a mobile number too.
+- On the seat page the passenger enters the mobile number for the booking and
+  presses **Verify**; the code is texted to that number and must be entered
+  before they can go on to payment. Changing the number means verifying again.
+- The code is ours, not the Supabase sign-in code: `/api/booking-code` sends
+  it through Notify.lk and the database checks it. So a sign-in a moment ago
+  doesn't count, each code confirms one booking, and the booking's contact
+  number must be the verified one. The database refuses an online booking
+  without it. A code lasts 10 minutes to enter and then 20 minutes to book
+  (`app_settings.booking_otp_minutes`); the payment page asks again if it has
+  run out.
+- Limits: one code a minute and six an hour, per account and per number.
+- Staff and conductors selling at the counter are never asked.
 - **Switch:** Staff area → Settings → **Code on every booking** (on by
   default). Turn it off if text messages are down, so people can still book.
-- **Cost and limits:** each booking is one text. Supabase limits how many
-  texts it sends per hour (Authentication → Rate Limits); raise that before a
-  busy day.
-- **Email accounts:** the email must show the code. In Supabase →
-  Authentication → Emails → *Magic Link* template, include `{{ .Token }}`
-  (for example "Your code is {{ .Token }}").
-- **How long people stay signed in** is set in Supabase → Authentication →
-  Sessions. By default a session doesn't expire while the app is used.
+- **Needs:** `SUPABASE_SECRET_KEY` and the Notify.lk keys on the server.
+- **Testing without texts:** set `BOOKING_OTP_TEST_CODE=123456` in `.env`. No
+  text is sent and that code works for every number. Never set it on the live
+  site.
 
 ## Refunds & payouts
 Whenever money becomes owed to a passenger, the database adds a row to
