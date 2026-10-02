@@ -8,7 +8,7 @@ import { Download, Search } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { Booking } from '@/lib/types';
 import { formatDateLabel, formatLKR, formatTime12, todayISO } from '@/lib/trips';
-import { Badge, Button, Card, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { Badge, Button, Card, Modal, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { BikeThumb } from '@/components/admin/BikeList';
 import { OPERATOR } from '@/config/operator';
 import { rejectSlip, slipIsPdf, slipOnFile, slipUrl, useSlips } from '@/lib/money';
@@ -160,7 +160,7 @@ export default function BookingsPage() {
           <p className="p-8 text-center text-[14px] text-[#46464f]">No bookings match. Clear the search or pick &ldquo;All dates&rdquo;.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
                   <th className="px-4 py-2.5">Reference</th>

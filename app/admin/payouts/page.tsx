@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { Check, Copy, Download } from 'lucide-react';
 import { cancelPayout, hasPayee, markPayoutPaid, usePayouts, type Payout, type PayoutMethod } from '@/lib/money';
 import { formatLKR } from '@/lib/trips';
-import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
 
 type Tab = 'pending' | 'paid' | 'cancelled';
 const day = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
@@ -108,7 +108,7 @@ export default function PayoutsPage() {
           <p className="p-8 text-center text-[14px] text-[#46464f]">{tab === 'pending' ? 'Nothing to pay right now.' : 'Nothing here yet.'}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
                   <th className="px-4 py-2.5">Passenger</th>

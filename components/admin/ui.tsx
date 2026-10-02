@@ -149,3 +149,35 @@ export function formatDays(days: number[]) {
   if (days.length === 7) return 'Daily';
   return [...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => WEEKDAYS[d]).join(', ');
 }
+
+/**
+ * Ref for tables that turn into wrapping, multi-line rows on phones:
+ *   <table className="... stack-table" ref={stackTable}>
+ * It copies each column heading onto its cells (data-label), which
+ * globals.css prints as a small label above the value on narrow screens.
+ * Rows added later (filters, new bookings) are labelled as they appear.
+ */
+const stackObservers = new WeakMap<HTMLTableElement, MutationObserver>();
+let lastStackTable: HTMLTableElement | null = null;
+export function stackTable(table: HTMLTableElement | null) {
+  if (!table) {
+    if (lastStackTable) stackObservers.get(lastStackTable)?.disconnect();
+    lastStackTable = null;
+    return;
+  }
+  lastStackTable = table;
+  const label = () => {
+    const heads = Array.from(table.querySelectorAll('thead th')).map((th) => (th.querySelector('.sr-only') ? '' : (th.textContent ?? '').trim()));
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      Array.from(tr.children).forEach((td, i) => {
+        const want = heads[i] ?? '';
+        if (td.getAttribute('data-label') !== want) td.setAttribute('data-label', want);
+      });
+    });
+  };
+  label();
+  stackObservers.get(table)?.disconnect();
+  const obs = new MutationObserver(label);
+  obs.observe(table, { childList: true, subtree: true });
+  stackObservers.set(table, obs);
+}

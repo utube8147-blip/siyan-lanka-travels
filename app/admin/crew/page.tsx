@@ -8,7 +8,7 @@ import { useStore } from '@/lib/store';
 import { useErp, type CrewMember, type CrewRole } from '@/lib/erp';
 import { formatLKR, genId, todayISO } from '@/lib/trips';
 import { AdminOnly, ExpiryBadge } from '@/components/admin/AdminOnly';
-import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
 
 const ROLES: CrewRole[] = ['driver', 'conductor', 'cleaner', 'mechanic', 'office'];
@@ -75,7 +75,7 @@ function Crew() {
           <p className="p-8 text-center text-[14px] text-[#46464f]">No crew yet. Add your drivers and conductors.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
                   <th className="px-4 py-2.5">Name</th>

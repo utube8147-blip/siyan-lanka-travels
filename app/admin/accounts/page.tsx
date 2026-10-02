@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useErp, type AccountRole } from '@/lib/erp';
 import { formatDateLabel } from '@/lib/trips';
 import { AdminOnly } from '@/components/admin/AdminOnly';
-import { Card, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { Card, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
 
 const ROLE_LABEL: Record<AccountRole, string> = { passenger: 'Passenger', conductor: 'Conductor', staff: 'Staff', admin: 'Super admin' };
 
@@ -56,7 +56,7 @@ function Accounts() {
           <p className="p-6 text-[14px] text-[#ba1a1a]">{erp.error}</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
                   <th className="px-4 py-2.5">Person</th>

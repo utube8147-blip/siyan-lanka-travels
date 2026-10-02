@@ -22,7 +22,7 @@ import {
   todayISO,
   type Run,
 } from '@/lib/trips';
-import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, stackTable, useToast } from '@/components/admin/ui';
 import { BikeLoadingList } from '@/components/admin/BikeList';
 import { TripTools } from '@/components/admin/TripTools';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
@@ -186,47 +186,58 @@ function Manifest({ run }: { run: Run }) {
             {OPERATOR.name} · {routeLabel(run.route)} · {formatDateLabel(run.date)} {formatTime12(run.schedule.departure)} · {run.bus.regNo}
           </p>
         </div>
-        {/* Each passenger is a block that wraps onto as many lines as it needs, so the list never scrolls sideways. */}
         {manifest.length === 0 ? (
           <p className="p-6 text-[14px] text-[#46464f]">No bookings yet for this departure.</p>
         ) : (
-          <ul className="divide-y divide-[#edeef0] text-[13px]">
-            {manifest.map((b) => (
-              <li key={b.id} className={`px-4 py-3 grid grid-cols-[56px_minmax(0,1fr)] gap-x-3 ${b.status === 'cancelled' ? 'opacity-50' : ''}`}>
-                <div className="font-bold text-[#050a44] text-[14px] leading-tight break-words">
-                  {b.seats.join(', ')}
-                  {b.bikes?.length ? (
-                    <span className="material-symbols-outlined text-[16px] text-[#7c5800] align-middle ml-0.5" title={`${b.bikes.length} bike(s) in the compartment`}>
-                      two_wheeler
-                    </span>
-                  ) : null}
-                </div>
-                <div className="min-w-0 space-y-1.5">
-                  {/* Line 1: who, and where the booking stands */}
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <p className="font-bold text-[#050a44] break-words">{b.passenger.name}</p>
-                    <Badge value={b.status} />
-                    {b.status === 'held' && slipOnFile(slipFor(b)) && <Badge value="new" label="Slip to check" />}
-                  </div>
-                  {/* Line 2: contact, reference, trip */}
-                  <p className="text-[12px] text-[#46464f] flex flex-wrap gap-x-2 gap-y-0.5">
-                    {b.passenger.phone && <span>{b.passenger.phone}</span>}
-                    <span className="text-[#6b6d78]">{b.ref}</span>
-                    <span className="font-semibold text-[#050a44]">
+          <div className="overflow-x-auto">
+            {/* A normal table on wide screens. On phones each row becomes a block that wraps onto a few
+                lines (class "stack-table" in globals.css), so nothing scrolls sideways. */}
+            <table className="w-full text-[13px] stack-table" ref={stackTable}>
+              <thead>
+                <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
+                  <th className="px-4 py-2.5">Seats</th>
+                  <th className="px-4 py-2.5">Passenger</th>
+                  <th className="px-4 py-2.5">Gets on → off</th>
+                  <th className="px-4 py-2.5">Paid</th>
+                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5 print:hidden">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#edeef0]">
+                {manifest.map((b) => (
+                  <tr key={b.id} className={b.status === 'cancelled' ? 'opacity-50' : ''}>
+                    <td className="px-4 py-3 font-bold text-[#050a44] whitespace-nowrap">
+                      {b.seats.join(', ')}
+                      {b.bikes?.length ? (
+                        <span className="material-symbols-outlined text-[16px] text-[#7c5800] align-middle ml-1" title={`${b.bikes.length} bike(s) in the compartment`}>
+                          two_wheeler
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 min-w-[170px]">
+                      <p className="font-bold text-[#050a44]">{b.passenger.name}</p>
+                      <p className="text-[12px] text-[#46464f] whitespace-nowrap">{b.passenger.phone}</p>
+                      <p className="text-[11px] text-[#6b6d78] whitespace-nowrap">{b.ref}</p>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       {b.from} → {b.to}
-                    </span>
-                  </p>
-                  {/* Line 3: money on the left, actions on the right (they drop below on a narrow screen) */}
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
                       {/* Green = paid in full, red = not paid yet, grey = cancelled. */}
                       <p className={`font-bold tabular-nums ${b.status === 'cancelled' ? 'text-[#6b6d78]' : b.paymentStatus === 'unpaid' ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>{formatLKR(b.total)}</p>
                       <Badge value={b.channel} />
                       {b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') && (
-                        <span className="text-[11px] font-bold text-[#ba1a1a]">Not paid · {payLabel[b.paymentMethod ?? ''] ?? b.paymentMethod}</span>
+                        <p className="text-[11px] font-bold text-[#ba1a1a] mt-1">Not paid · {payLabel[b.paymentMethod ?? ''] ?? b.paymentMethod}</p>
                       )}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 print:hidden">
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge value={b.status} />
+                      {b.status === 'held' && slipOnFile(slipFor(b)) && <div className="mt-1"><Badge value="new" label="Slip to check" /></div>}
+                    </td>
+                    <td className="px-4 py-3 print:hidden">
+                      <div className="flex flex-wrap gap-1.5 md:justify-end">
                       {b.status === 'confirmed' && (
                         <div className="flex flex-wrap gap-1.5">
                           <Button size="sm" onClick={() => setStatus(b, 'boarded')}>
@@ -265,12 +276,13 @@ function Manifest({ run }: { run: Run }) {
                           </Button>
                         </div>
                       )}
-                    </div>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
 

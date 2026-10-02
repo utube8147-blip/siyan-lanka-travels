@@ -9,7 +9,7 @@ import { useStore } from '@/lib/store';
 import { CATEGORY_LABEL, monthKey, useErp, type Income, type IncomeCategory } from '@/lib/erp';
 import { addDays, formatDateLabel, formatLKR, formatTime12, genId, listRuns, netRevenue, routeLabel, todayISO } from '@/lib/trips';
 import { AdminOnly, BarList } from '@/components/admin/AdminOnly';
-import { Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { Button, Card, Field, Modal, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
 
 const INCOME_LABEL: Record<IncomeCategory, string> = { charter: 'Charter / hire', parcel: 'Parcels', advertising: 'Advertising', other: 'Other' };
@@ -130,7 +130,7 @@ function Finance() {
           <p className="p-5 text-[14px] text-[#46464f]">No completed departures in this month yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
                   <th className="px-4 py-2.5">Departure</th>

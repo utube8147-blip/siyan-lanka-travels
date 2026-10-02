@@ -20,7 +20,7 @@ async function uploadStopPhoto(file: File) {
 }
 import type { Route, RouteStop, Schedule, Weekday } from '@/lib/types';
 import { describeRuns, formatDuration, formatLKR, formatTime12, fromMinutes, genId, isAlternating, routeLabel, scheduleConflicts, todayISO, toMinutes } from '@/lib/trips';
-import { Badge, Button, Card, Field, Modal, PageHeader, WEEKDAYS, formatDays, inputClass, useToast } from '@/components/admin/ui';
+import { Badge, Button, Card, Field, Modal, PageHeader, WEEKDAYS, formatDays, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
 
 export default function RoutesPage() {
@@ -74,7 +74,7 @@ export default function RoutesPage() {
           <p className="p-5 text-[14px] text-[#46464f]">No departures yet. Add one so passengers can book.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
                   <th className="px-4 py-2.5">Leaves</th>

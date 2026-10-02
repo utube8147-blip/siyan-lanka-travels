@@ -10,7 +10,7 @@ import { useStore } from '@/lib/store';
 import { CATEGORY_LABEL, EXPENSE_CATEGORIES, RUNNING_COSTS, useErp, type Expense, type ExpenseCategory } from '@/lib/erp';
 import { compressPhoto, formatDateLabel, formatLKR, genId, todayISO } from '@/lib/trips';
 import { Camera } from 'lucide-react';
-import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
 
 const blank = (category: ExpenseCategory, busId: string): Expense => ({
@@ -85,7 +85,7 @@ export default function ExpensesPage() {
           <p className="p-8 text-center text-[14px] text-[#46464f]">Nothing logged for this month yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
+            <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
                   <th className="px-4 py-2.5">Date</th>
