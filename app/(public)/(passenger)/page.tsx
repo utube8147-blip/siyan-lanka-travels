@@ -91,8 +91,9 @@ export default function LandingPage() {
     setTo(from);
   };
 
+  // Compact on phones (smaller padding / text), original sizing from md up.
   const inputClass =
-    'w-full pl-[48px] pr-[16px] py-2.5 md:py-3.5 rounded-2xl bg-white/10 border border-white/20 focus:bg-white focus:ring-2 focus:ring-[#feb700] focus:border-transparent transition-all outline-none text-white focus:text-[#191c1e] shadow-sm appearance-none';
+    'w-full pl-9 md:pl-[48px] pr-2 md:pr-[16px] py-2.5 md:py-3.5 text-sm md:text-base rounded-2xl bg-white/10 border border-white/20 focus:bg-white focus:ring-2 focus:ring-[#feb700] focus:border-transparent transition-all outline-none text-white focus:text-[#191c1e] shadow-sm appearance-none';
 
   return (
     <div className="bg-[#f8f9fb] text-[#191c1e] selection:bg-[#dfe0ff] selection:text-[#0f144c]">
@@ -144,30 +145,33 @@ export default function LandingPage() {
                     <option key={s} value={s} />
                   ))}
                 </datalist>
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-[10px] md:gap-[14px] mb-[10px] md:mb-[14px] items-end">
-                  <div className="space-y-[6px]">
-                    <label htmlFor="hero-from" className="text-[12px] font-semibold text-white/80 ml-1">
+                {/* Boarding + swap + drop-off: side by side at every width, like laptop */}
+                <div className="grid grid-cols-[1fr_auto_1fr] gap-[6px] md:gap-[14px] mb-[10px] md:mb-[14px] items-end">
+                  <div className="space-y-[6px] min-w-0">
+                    <label htmlFor="hero-from" className="text-[11px] md:text-[12px] font-semibold text-white/80 ml-1">
                       {t('Boarding point')}
                     </label>
                     <div className="relative">
-                      <MapPin className="w-5 h-5 absolute left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
+                      <MapPin className="w-4 h-4 md:w-5 md:h-5 absolute left-3 md:left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
                       <input id="hero-from" list="stop-names" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} placeholder={t('Where from?')} />
                     </div>
                   </div>
+
                   <button
                     type="button"
                     onClick={swap}
                     aria-label="Swap boarding and drop-off"
-                    className="justify-self-center mb-1 p-2.5 rounded-full bg-white/15 border border-white/25 text-white hover:bg-white hover:text-[#050a44] transition-colors"
+                    className="justify-self-center mb-1 p-2 md:p-2.5 rounded-full bg-white/15 border border-white/25 text-white hover:bg-white hover:text-[#050a44] transition-colors"
                   >
-                    <ArrowLeftRight className="w-4 h-4 rotate-90 md:rotate-0" />
+                    <ArrowLeftRight className="w-4 h-4" />
                   </button>
-                  <div className="space-y-[6px]">
-                    <label htmlFor="hero-to" className="text-[12px] font-semibold text-white/80 ml-1">
+
+                  <div className="space-y-[6px] min-w-0">
+                    <label htmlFor="hero-to" className="text-[11px] md:text-[12px] font-semibold text-white/80 ml-1">
                       {t('Drop-off point')}
                     </label>
                     <div className="relative">
-                      <Navigation className="w-5 h-5 absolute left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
+                      <Navigation className="w-4 h-4 md:w-5 md:h-5 absolute left-3 md:left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
                       <input id="hero-to" list="stop-names" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} placeholder={t('Where to?')} />
                     </div>
                   </div>
