@@ -158,10 +158,13 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
         .bindTooltip(`${route.busNumber} is here${route.busSeen ? ` (${route.busSeen})` : ''}`, { direction: 'top', offset: [0, -14] })
         .addTo(map);
 
-      if (stopCoords.length === 1) map.setView(stopCoords[0], 15);
-      else map.fitBounds(L.latLngBounds(stopCoords), { padding: [32, 32] });
+      const fit = () => {
+        if (stopCoords.length === 1) map.setView(stopCoords[0], 15);
+        else map.fitBounds(L.latLngBounds(stopCoords), { padding: [32, 32] });
+      };
+      fit();
 
-      // Keep tiles correct while the sheet resizes (drag / snap / rotate)
+      // Keep tiles correct while the sheet resizes (drag / snap / rotate / layout switch)
       const ro = new ResizeObserver(() => map.invalidateSize());
       ro.observe(mapEl.current);
 
@@ -217,7 +220,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
       {/* Panel */}
       <div
         style={isDesktop ? undefined : { height: liveH }}
-        className={`relative w-full md:h-auto md:max-h-[85vh] md:max-w-3xl md:mx-4 bg-white md:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-[slideUp_0.25s_ease-out] ${
+        className={`relative w-full md:h-[640px] md:max-h-[88vh] md:max-w-5xl md:mx-4 bg-white md:rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-[slideUp_0.25s_ease-out] ${
           isFull ? 'rounded-t-none' : 'rounded-t-3xl'
         } ${dragDelta === null ? 'transition-[height,border-radius] duration-200 ease-out' : ''}`}
       >
@@ -259,87 +262,90 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           </button>
         </div>
 
-        {/* Map — fixed band, so touching it pans the map while the area below scrolls */}
-        <div
-          className={`relative shrink-0 mx-4 mt-3 md:mx-6 md:mt-5 md:h-[280px] rounded-2xl overflow-hidden border border-[#edeef0] ${mapHeightClass} transition-[height] duration-200`}
-        >
-          {hasMap ? (
-            <div ref={mapEl} className="absolute inset-0 bg-[#f2f4f6] z-0" />
-          ) : (
-            <div className="absolute inset-0 bg-[#f2f4f6] flex flex-col items-center justify-center gap-1 text-center px-6">
-              <MapPin className="w-5 h-5 text-[#46464f]" />
-              <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">
-                Map unavailable for this route
-              </p>
-              <p className="text-[11px] text-[#46464f]/80">Stop locations haven&apos;t been added yet.</p>
-            </div>
-          )}
-        </div>
-
-        {/* Scrollable content */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
-          {/* Trip summary */}
-          <div className="grid grid-cols-3 gap-2 md:gap-3 px-4 mt-3 md:px-6 md:mt-5">
-            <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
-              <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
-              <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.duration}</p>
-              <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Duration</p>
-            </div>
-            <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
-              <Navigation className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
-              <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.distance}</p>
-              <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Distance</p>
-            </div>
-            <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
-              <MapPin className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
-              <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.stops.length} stops</p>
-              <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Along route</p>
-            </div>
+        {/* Body: stacked on mobile (map, then details); side by side on desktop (details left, map right) */}
+        <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+          {/* Map — mobile: fixed band on top; desktop: fills the right column */}
+          <div
+            className={`relative shrink-0 mx-4 mt-3 md:order-2 md:flex-1 md:min-w-0 md:h-auto md:mx-0 md:mt-0 md:m-6 md:ml-0 rounded-2xl overflow-hidden border border-[#edeef0] ${mapHeightClass} transition-[height] duration-200`}
+          >
+            {hasMap ? (
+              <div ref={mapEl} className="absolute inset-0 bg-[#f2f4f6] z-0" />
+            ) : (
+              <div className="absolute inset-0 bg-[#f2f4f6] flex flex-col items-center justify-center gap-1 text-center px-6">
+                <MapPin className="w-5 h-5 text-[#46464f]" />
+                <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">
+                  Map unavailable for this route
+                </p>
+                <p className="text-[11px] text-[#46464f]/80">Stop locations haven&apos;t been added yet.</p>
+              </div>
+            )}
           </div>
 
-          {/* Stop list */}
-          <div className="px-4 py-4 md:px-6 md:py-5">
-            <p className="text-[10px] md:text-[11px] font-bold text-[#46464f] tracking-[0.06em] mb-3">
-              STOP SCHEDULE
-            </p>
-            <div>
-              {route.stops.map((stop, i) => (
-                <div key={stop.id} className="flex items-start gap-3">
-                  <div className="flex flex-col items-center">
-                    <div
-                      className={`w-2.5 h-2.5 rounded-full border-2 shrink-0 ${
-                        stop.status === 'current'
-                          ? 'bg-[#feb700] border-[#feb700]'
-                          : stop.status === 'passed'
-                          ? 'bg-[#050a44] border-[#050a44]'
-                          : 'bg-white border-[#c7c5d1]'
-                      }`}
-                    />
-                    {i < route.stops.length - 1 && (
+          {/* Scrollable content — desktop: left column with its own scroll */}
+          <div className="flex-1 min-h-0 md:flex-none md:order-1 md:w-[42%] md:shrink-0 md:border-r md:border-[#edeef0] overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
+            {/* Trip summary */}
+            <div className="grid grid-cols-3 gap-2 md:gap-3 px-4 mt-3 md:px-6 md:mt-5">
+              <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
+                <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
+                <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.duration}</p>
+                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Duration</p>
+              </div>
+              <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
+                <Navigation className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
+                <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.distance}</p>
+                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Distance</p>
+              </div>
+              <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
+                <MapPin className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
+                <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.stops.length} stops</p>
+                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Along route</p>
+              </div>
+            </div>
+
+            {/* Stop list */}
+            <div className="px-4 py-4 md:px-6 md:py-5">
+              <p className="text-[10px] md:text-[11px] font-bold text-[#46464f] tracking-[0.06em] mb-3">
+                STOP SCHEDULE
+              </p>
+              <div>
+                {route.stops.map((stop, i) => (
+                  <div key={stop.id} className="flex items-start gap-3">
+                    <div className="flex flex-col items-center">
                       <div
-                        className={`w-[2px] h-7 md:h-9 ${
-                          stop.status === 'passed' ? 'bg-[#050a44]' : 'bg-[#edeef0]'
+                        className={`w-2.5 h-2.5 rounded-full border-2 shrink-0 ${
+                          stop.status === 'current'
+                            ? 'bg-[#feb700] border-[#feb700]'
+                            : stop.status === 'passed'
+                            ? 'bg-[#050a44] border-[#050a44]'
+                            : 'bg-white border-[#c7c5d1]'
                         }`}
                       />
-                    )}
-                  </div>
-                  <div className="pb-3 md:pb-6 -mt-0.5 flex-1 flex items-center justify-between">
-                    <p
-                      className={`text-[13px] md:text-[14px] ${
-                        stop.status === 'current' ? 'font-bold text-[#050a44]' : 'font-medium text-[#191c1e]'
-                      }`}
-                    >
-                      {stop.name}
-                      {stop.status === 'current' && (
-                        <span className="ml-2 text-[9px] md:text-[10px] font-bold text-[#feb700] bg-[#050a44] px-2 py-0.5 rounded-full align-middle">
-                          BUS HERE
-                        </span>
+                      {i < route.stops.length - 1 && (
+                        <div
+                          className={`w-[2px] h-7 md:h-9 ${
+                            stop.status === 'passed' ? 'bg-[#050a44]' : 'bg-[#edeef0]'
+                          }`}
+                        />
                       )}
-                    </p>
-                    <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">{stop.time}</p>
+                    </div>
+                    <div className="pb-3 md:pb-6 -mt-0.5 flex-1 flex items-center justify-between">
+                      <p
+                        className={`text-[13px] md:text-[14px] ${
+                          stop.status === 'current' ? 'font-bold text-[#050a44]' : 'font-medium text-[#191c1e]'
+                        }`}
+                      >
+                        {stop.name}
+                        {stop.status === 'current' && (
+                          <span className="ml-2 text-[9px] md:text-[10px] font-bold text-[#feb700] bg-[#050a44] px-2 py-0.5 rounded-full align-middle">
+                            BUS HERE
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">{stop.time}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </div>
