@@ -62,6 +62,17 @@ function toSchedule(t: Trip): Schedule {
   };
 }
 
+// Large time with a small AM/PM (and "+1" day offset) suffix, so it fits on narrow screens.
+function TimeBig({ value, align = 'left' }: { value: string; align?: 'left' | 'right' }) {
+  const [time, ...rest] = value.split(' ');
+  return (
+    <p className={`flex items-baseline gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+      <span className="text-[22px] sm:text-[26px] font-extrabold leading-none text-[#050a44] tabular-nums">{time}</span>
+      <span className="text-[11px] font-bold text-[#6b6d78] uppercase">{rest.join(' ')}</span>
+    </p>
+  );
+}
+
 // Road distance between the stops' map pins. Straight lines between pins come
 // out ~12% short of the road on this route, so they're scaled up and rounded.
 const ROAD_FACTOR = 1.12;
@@ -379,102 +390,87 @@ function SearchPageInner() {
           </section>
 
           {/* Filters — desktop: one row (pills left, date strip right), each scrolling
-              independently. Below md the two groups stack into separate rows. */}
+              independently. On mobile the filter pills are hidden; only the date strip shows. */}
           <section className="px-4 sm:px-6 md:px-8 py-3 sm:py-4">
             <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-              {/* Filter pills */}
-              <div className="flex items-center gap-2 sm:gap-2.5 overflow-x-auto no-scrollbar md:shrink-0">
-                {/* Departure time sort — plain toggle */}
-                <button
-                  onClick={() => handleSort('departure')}
-                  className={`flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold border transition-colors whitespace-nowrap shrink-0 ${
-                    sortBy === 'departure'
-                      ? 'border-[#050a44] bg-[#050a44] text-white'
-                      : 'border-[#e1e2e4] bg-white text-[#050a44] hover:bg-[#f1f3f9]'
-                  }`}
-                >
-                  <ArrowUpDown
-                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
-                      sortBy === 'departure' && !sortAsc ? 'rotate-180' : ''
-                    } ${sortBy === 'departure' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
-                  />
-                  Departure time
-                </button>
-
-                {/* Price sort — plain toggle */}
-                <button
-                  onClick={() => handleSort('price')}
-                  className={`flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold border transition-colors whitespace-nowrap shrink-0 ${
-                    sortBy === 'price'
-                      ? 'border-[#050a44] bg-[#050a44] text-white'
-                      : 'border-[#e1e2e4] bg-white text-[#050a44] hover:bg-[#f1f3f9]'
-                  }`}
-                >
-                  <ArrowUpDown
-                    className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
-                      sortBy === 'price' && !sortAsc ? 'rotate-180' : ''
-                    } ${sortBy === 'price' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
-                  />
-                  Price
-                </button>
-
-                {/* Bus type — two compact toggle pills. Tapping a selected type
-                    again clears it back to "all". */}
-                <div className="hidden sm:flex items-center gap-1 shrink-0">
+              {/* Filter pills — desktop/tablet only, and only when there is more than one bus */}
+              {schedules.length > 1 && (
+                <div className="hidden md:flex items-center gap-2 sm:gap-2.5 overflow-x-auto no-scrollbar md:shrink-0">
+                  {/* Departure time sort — plain toggle */}
                   <button
-                    onClick={() => setBusTypeFilter((prev) => (prev === 'AC' ? 'all' : 'AC'))}
-                    className={`px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-sm font-bold whitespace-nowrap border transition-colors ${
-                      busTypeFilter === 'AC'
+                    onClick={() => handleSort('departure')}
+                    className={`flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold border transition-colors whitespace-nowrap shrink-0 ${
+                      sortBy === 'departure'
                         ? 'border-[#050a44] bg-[#050a44] text-white'
-                        : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
+                        : 'border-[#e1e2e4] bg-white text-[#050a44] hover:bg-[#f1f3f9]'
                     }`}
                   >
-                    AC
+                    <ArrowUpDown
+                      className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
+                        sortBy === 'departure' && !sortAsc ? 'rotate-180' : ''
+                      } ${sortBy === 'departure' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
+                    />
+                    Departure time
                   </button>
+
+                  {/* Price sort — plain toggle */}
                   <button
-                    onClick={() => setBusTypeFilter((prev) => (prev === 'Non-AC' ? 'all' : 'Non-AC'))}
-                    className={`px-2 sm:px-3.5 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-sm font-bold whitespace-nowrap border transition-colors ${
-                      busTypeFilter === 'Non-AC'
+                    onClick={() => handleSort('price')}
+                    className={`flex items-center gap-1.5 sm:gap-2 pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-bold border transition-colors whitespace-nowrap shrink-0 ${
+                      sortBy === 'price'
                         ? 'border-[#050a44] bg-[#050a44] text-white'
-                        : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
+                        : 'border-[#e1e2e4] bg-white text-[#050a44] hover:bg-[#f1f3f9]'
                     }`}
                   >
-                    <span className="sm:hidden">Non</span>
-                    <span className="hidden sm:inline">Non-AC</span>
+                    <ArrowUpDown
+                      className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
+                        sortBy === 'price' && !sortAsc ? 'rotate-180' : ''
+                      } ${sortBy === 'price' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
+                    />
+                    Price
+                  </button>
+
+                  {/* Bus type — two compact toggle pills. Tapping a selected type
+                      again clears it back to "all". */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => setBusTypeFilter((prev) => (prev === 'AC' ? 'all' : 'AC'))}
+                      className={`px-3.5 py-2 rounded-full text-sm font-bold whitespace-nowrap border transition-colors ${
+                        busTypeFilter === 'AC'
+                          ? 'border-[#050a44] bg-[#050a44] text-white'
+                          : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
+                      }`}
+                    >
+                      AC
+                    </button>
+                    <button
+                      onClick={() => setBusTypeFilter((prev) => (prev === 'Non-AC' ? 'all' : 'Non-AC'))}
+                      className={`px-3.5 py-2 rounded-full text-sm font-bold whitespace-nowrap border transition-colors ${
+                        busTypeFilter === 'Non-AC'
+                          ? 'border-[#050a44] bg-[#050a44] text-white'
+                          : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
+                      }`}
+                    >
+                      Non-AC
+                    </button>
+                  </div>
+
+                  {/* Reset / remove filters — compact, icon-first */}
+                  <button
+                    onClick={resetFilters}
+                    disabled={activeFilterCount === 0}
+                    aria-label="Reset filters"
+                    className={`flex items-center gap-1.5 pl-3 pr-3 py-2.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
+                      activeFilterCount > 0
+                        ? 'text-[#E74C3C] border border-[#E74C3C]/30 bg-[#E74C3C]/5 hover:bg-[#E74C3C]/10'
+                        : 'text-[#c7c5d1] border border-[#e1e2e4] cursor-not-allowed'
+                    }`}
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>Reset{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
                   </button>
                 </div>
-
-                {/* Compact AC toggle for narrow mobile widths, where the full
-                    AC/Non-AC control above is hidden. */}
-                <button
-                  onClick={() => setBusTypeFilter((prev) => (prev === 'AC' ? 'all' : 'AC'))}
-                  aria-pressed={busTypeFilter === 'AC'}
-                  className={`sm:hidden shrink-0 px-3 py-2 rounded-full text-xs font-bold border transition-colors ${
-                    busTypeFilter === 'AC'
-                      ? 'border-[#050a44] bg-[#050a44] text-white'
-                      : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
-                  }`}
-                >
-                  AC
-                </button>
-
-                {/* Reset / remove filters — compact, icon-first */}
-                <button
-                  onClick={resetFilters}
-                  disabled={activeFilterCount === 0}
-                  aria-label="Reset filters"
-                  className={`flex items-center gap-1.5 pl-2.5 sm:pl-3 pr-2.5 sm:pr-3 py-2 sm:py-2.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
-                    activeFilterCount > 0
-                      ? 'text-[#E74C3C] border border-[#E74C3C]/30 bg-[#E74C3C]/5 hover:bg-[#E74C3C]/10'
-                      : 'text-[#c7c5d1] border border-[#e1e2e4] cursor-not-allowed'
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">
-                    Reset{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
-                  </span>
-                </button>
-              </div>
+              )}
 
               {/* Date strip — inline to the right of the pills on desktop; own row on mobile.
                   On mobile exactly 5 dates show at a time, with snap scrolling. */}
@@ -590,29 +586,50 @@ function SearchPageInner() {
                       type="button"
                       onClick={() => setRouteSchedule(s)}
                       title="View route on map"
-                      className="w-full flex justify-between items-center bg-[#f2f4f6] rounded-xl p-[16px] mb-[16px] group cursor-pointer"
+                      className="w-full text-left rounded-2xl bg-[#f2f4f6] border border-[#e6e8ec] p-4 sm:p-5 mb-4 group cursor-pointer hover:border-[#050a44]/30 transition-colors"
                     >
-                      <div className="text-left">
-                        <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">{s.trip.from}</p>
-                        <p className="text-[20px] font-extrabold text-[#050a44]">{fromCode}</p>
-                        <p className="text-[12px] font-medium text-[#46464f] mt-0.5">{s.departure}</p>
-                      </div>
-                      <div className="flex-1 px-[16px] flex flex-col items-center">
-                        <span className="text-[11px] font-bold text-[#46464f] mb-1 group-hover:text-[#050a44] transition-colors">
-                          {s.durationLabel}
-                        </span>
-                        <div className="relative w-full border-t border-dashed border-[#c7c5d1] group-hover:border-[#050a44] transition-colors">
-                          <BusIcon className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-4 h-4 bg-[#f2f4f6] px-0.5 text-[#050a44]" />
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4">
+                        {/* Departure */}
+                        <div className="min-w-0">
+                          <TimeBig value={s.departure} />
+                          <p className="mt-2 text-[12px] font-bold text-[#050a44] truncate">{s.trip.from}</p>
+                          <span className="inline-block mt-1 text-[10px] font-bold tracking-widest text-[#46464f] bg-white rounded px-1.5 py-0.5">
+                            {fromCode}
+                          </span>
                         </div>
-                        <span className="text-[11px] font-bold text-[#46464f] mt-2">{s.stopLabel}</span>
-                        <span className="text-[10px] font-bold text-[#050a44] mt-1 tracking-wide uppercase group-hover:underline">
-                          View route
-                        </span>
+
+                        {/* Duration + timeline + stops */}
+                        <div className="flex flex-col items-center w-[84px] sm:w-32">
+                          <span className="text-[11px] font-bold text-[#050a44] bg-white rounded-full px-2.5 py-0.5 shadow-sm">
+                            {s.durationLabel}
+                          </span>
+                          <div className="flex items-center w-full my-2.5">
+                            <span className="w-2.5 h-2.5 rounded-full border-2 border-[#050a44] bg-white shrink-0" />
+                            <div className="relative flex-1 border-t-2 border-dashed border-[#c7c5d1] group-hover:border-[#050a44]/40 transition-colors">
+                              <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 bg-[#f2f4f6] px-0.5">
+                                <BusIcon className="w-4 h-4 text-[#050a44]" />
+                              </span>
+                            </div>
+                            <span className="w-2.5 h-2.5 rounded-full bg-[#050a44] shrink-0" />
+                          </div>
+                          <span className="text-[11px] font-semibold text-[#46464f]">{s.stopLabel}</span>
+                        </div>
+
+                        {/* Arrival */}
+                        <div className="min-w-0 text-right">
+                          <TimeBig value={s.arrival} align="right" />
+                          <p className="mt-2 text-[12px] font-bold text-[#050a44] truncate">{s.trip.to}</p>
+                          <span className="inline-block mt-1 text-[10px] font-bold tracking-widest text-[#46464f] bg-white rounded px-1.5 py-0.5">
+                            {toCode}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">{s.trip.to}</p>
-                        <p className="text-[20px] font-extrabold text-[#050a44]">{toCode}</p>
-                        <p className="text-[12px] font-medium text-[#46464f] mt-0.5">{s.arrival}</p>
+
+                      {/* Footer hint */}
+                      <div className="mt-4 pt-3 border-t border-[#e1e2e4] flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#050a44] group-hover:gap-2.5 transition-all">
+                        <MapPin className="w-3.5 h-3.5" />
+                        View route on map
+                        <ChevronRight className="w-3.5 h-3.5" />
                       </div>
                     </button>
 
