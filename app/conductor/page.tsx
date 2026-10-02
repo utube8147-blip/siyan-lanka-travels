@@ -281,8 +281,9 @@ export default function ConductorPage() {
               })
             )}
 
-            <Link href="/conductor/cash" className="flex items-center justify-center gap-2 h-12 rounded-xl bg-white/5 border border-white/15 text-[14px] font-semibold">
-              <Wallet className="w-4 h-4" /> Close the day
+            {/* Closes the cash for the departure chosen at the top of this screen (not just "today"). */}
+            <Link href={`/conductor/cash?date=${run.date}&schedule=${encodeURIComponent(run.schedule.id)}`} className="flex items-center justify-center gap-2 h-12 rounded-xl bg-white/5 border border-white/15 text-[14px] font-semibold">
+              <Wallet className="w-4 h-4" /> Close this trip
             </Link>
           </>
         )}

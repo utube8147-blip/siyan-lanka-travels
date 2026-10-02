@@ -1,4 +1,15 @@
-@import "tailwindcss";
+/* Tailwind looks for class names ONLY in the source folders listed below.
+   Without this it scans every file in the project folder, and a stray binary
+   file (a .zip, .pdf or image dropped next to the code) can contain bytes that
+   look like a class name, which then breaks the build with
+   "Parsing CSS source code failed". */
+@import "tailwindcss" source(none);
+@source "../app";
+@source "../components";
+@source "../lib";
+@source "../contexts";
+@source "../config";
+@source "../data";
 
 @theme {
   --color-primary: #050a44;

@@ -277,6 +277,29 @@ in with an email address is asked for a mobile number too.
   text is sent and that code works for every number. Never set it on the live
   site.
 
+## Closing the day (cash)
+Staff area → **Close the day** (conductors reach it from the conductor app).
+Each person closes their own cash (migration 15):
+- **Cash you should have** is worked out by the database for the signed-in
+  person: every cash payment they recorded that day (counter and phone sales,
+  cash taken for held or pay-on-the-bus bookings), less cash refunds they paid
+  out. Both lists are shown.
+- They enter what they counted. The page shows should-have, counted and the
+  difference: **Balanced**, **Short by…** or **Over by…**.
+- A day that is short or over can't be closed without a note saying what
+  happened (enforced in the database too), and the super admins get a
+  notification with the figures and the note.
+- The super admin sees everyone's closed days, with the differences marked.
+- **Conductors close a trip, not a date** (migration 16): "Close this trip" on
+  the conductor screen closes the cash for the departure selected at the top
+  of that screen, i.e. the cash they took for bookings on that departure. A
+  night bus spans two dates, so "today" is the wrong unit for it.
+- **Office staff close a day:** today by default; the Day box picks any
+  earlier day. A day that hasn't happened can't be closed.
+- One close per person per day, and one per person per trip. Payments
+  recorded before migration 15 by marking a held booking paid have no "taken
+  by" on them and aren't counted.
+
 ## Refunds & payouts
 Whenever money becomes owed to a passenger, the database adds a row to
 `payouts`: a paid booking cancelled with a refund, a paid booking made cheaper

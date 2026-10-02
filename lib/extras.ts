@@ -382,28 +382,51 @@ export function useServiceRequests() {
 }
 
 // --------------------------------------------------------------- cash count ---
-export interface CashCount { id: string; date: string; expected: number; counted: number; notes: string; createdAt: string }
+export interface CashCount { id: string; date: string; expected: number; counted: number; notes: string; createdAt: string; /** Who closed it (shown to the super admin). */ by?: string; mine?: boolean; /** Set when a conductor closed one departure and not a whole day. */ scheduleId?: string | null }
+
+/** What one staff member should be holding for a day: cash they took, less cash refunds they paid out. Worked out by the database. */
+export interface CashSummary {
+  expected: number;
+  taken: { ref: string; name: string; seats: string[]; from: string; to: string; amount: number; at: string; where: string }[];
+  refunds: { ref: string; name: string; amount: number; at: string }[];
+}
+/** `scheduleId` given: the cash for that departure (travel date `date`). Otherwise: cash taken on `date`. */
+export function useCashSummary(date: string, scheduleId: string | null, refreshKey: unknown) {
+  const [summary, setSummary] = useState<CashSummary | null>(null);
+  useEffect(() => {
+    if (!DB) return;
+    let live = true;
+    supabase()
+      .rpc('cash_summary', { p_date: date, p_schedule: scheduleId })
+      .then(({ data }) => live && setSummary((data as CashSummary) ?? null));
+    return () => {
+      live = false;
+    };
+  }, [date, scheduleId, refreshKey]);
+  return summary;
+}
 const CC_KEY = 'demo-cash-counts';
 export function useCashCounts() {
   const [remote, setRemote] = useState<CashCount[]>([]);
   const [local, setLocal] = useLocalKey<CashCount[]>(CC_KEY, []);
   const load = useCallback(async () => {
     if (!DB) return;
-    const { data } = await supabase().from('cash_counts').select('*').order('count_date', { ascending: false }).limit(60);
+    const { data: me } = await supabase().auth.getSession();
+    const { data } = await supabase().from('cash_counts').select('*, profiles(full_name)').order('count_date', { ascending: false }).order('created_at', { ascending: false }).limit(120);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setRemote(((data as any[]) ?? []).map((c) => ({ id: c.id, date: c.count_date, expected: c.expected, counted: c.counted, notes: c.notes, createdAt: c.created_at })));
+    setRemote(((data as any[]) ?? []).map((c) => ({ id: c.id, date: c.count_date, expected: c.expected, counted: c.counted, notes: c.notes, createdAt: c.created_at, by: c.profiles?.full_name || 'Staff', mine: c.created_by === me.session?.user.id, scheduleId: c.schedule_id ?? null })));
   }, []);
   useEffect(() => {
     load();
   }, [load]);
   const save = async (c: Omit<CashCount, 'id' | 'createdAt'>): Promise<Result> => {
     if (!DB) {
-      if (local.some((x) => x.date === c.date)) return { ok: false, reason: 'You already closed this day.' };
+      if (local.some((x) => x.date === c.date && (x.scheduleId ?? null) === (c.scheduleId ?? null))) return { ok: false, reason: 'You already closed this.' };
       setLocal([{ ...c, id: genId('cc'), createdAt: new Date().toISOString() }, ...local]);
       return { ok: true };
     }
-    const { error } = await supabase().from('cash_counts').insert({ count_date: c.date, expected: c.expected, counted: c.counted, notes: c.notes });
-    if (error) return { ok: false, reason: /duplicate|unique/.test(error.message) ? 'You already closed this day.' : friendlyError(error) };
+    const { error } = await supabase().from('cash_counts').insert({ count_date: c.date, schedule_id: c.scheduleId ?? null, expected: c.expected, counted: c.counted, notes: c.notes });
+    if (error) return { ok: false, reason: /duplicate|unique/.test(error.message) ? 'You already closed this.' : friendlyError(error) };
     await load();
     return { ok: true };
   };
