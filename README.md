@@ -256,6 +256,17 @@ live position: it shows the bus only while a position shared in the last 20
 minutes exists; otherwise it shows the stops (from their map pins in Routes &
 timetable), the timetable and the road distance.
 
+### Send the bus location to one passenger
+In the conductor app, tap a passenger → **Send bus location**. They get a
+message with a map link to where the bus is now and their live-tracking link
+(and a notification in the app). It goes by WhatsApp when the WhatsApp Cloud
+API is set up and switched on in Settings → Messages and the number is on
+WhatsApp; otherwise, or if WhatsApp can't deliver, the same message goes as a
+text. Location sharing must be on, and one passenger can be sent it once
+every 2 minutes. It is sent by the every-minute cron, so allow up to a minute.
+**Send from my WhatsApp** opens the conductor's own WhatsApp with the message
+ready, which works without the WhatsApp API.
+
 ## Languages
 English, Tamil and Sinhala (switcher in the header and Profile). Strings live
 in `lib/i18n.tsx`; anything untranslated shows in English. **Have a native

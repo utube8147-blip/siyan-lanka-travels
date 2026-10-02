@@ -24,11 +24,20 @@ async function handle(req: Request) {
 
   const results = { sent: 0, failed: 0, skipped: 0 };
   for (const m of batch ?? []) {
-    const r = m.channel === 'whatsapp' ? await sendWhatsApp(m.to_phone, m.body) : await sendSms(m.to_phone, m.body);
+    let r = m.channel === 'whatsapp' ? await sendWhatsApp(m.to_phone, m.body) : await sendSms(m.to_phone, m.body);
+    let channel: string = m.channel;
+    // "WhatsApp if they have it, otherwise a text": when WhatsApp isn't set up
+    // or can't deliver to this number, the same message goes out as SMS.
+    if (m.channel === 'whatsapp' && m.fallback_sms && r.status !== 'sent') {
+      const viaWhatsApp = r.error;
+      r = await sendSms(m.to_phone, m.body);
+      channel = 'sms';
+      if (r.status !== 'sent') r = { ...r, error: `WhatsApp: ${viaWhatsApp ?? 'not sent'}; SMS: ${r.error ?? 'not sent'}` };
+    }
     const retry = r.status === 'failed' && m.attempts < 2;
     await db
       .from('message_queue')
-      .update({ status: retry ? 'pending' : r.status, attempts: m.attempts + 1, error: r.error ?? null, sent_at: r.status === 'sent' ? new Date().toISOString() : null })
+      .update({ channel: retry ? m.channel : channel, status: retry ? 'pending' : r.status, attempts: m.attempts + 1, error: r.error ?? null, sent_at: r.status === 'sent' ? new Date().toISOString() : null })
       .eq('id', m.id);
     results[r.status] += 1;
   }

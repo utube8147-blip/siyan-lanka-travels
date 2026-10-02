@@ -74,4 +74,23 @@ set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-00000000
 select 'staff marks it paid → ' || status || ' / ' || payment_status || ' / ' || payment_method from confirm_payment((select v::uuid from ids where k = 'bnk'), 'bank', 'BOC 9912');
 reset role;
 select 'A notified: ' || title from notifications where user_id = 'aaaaaaaa-0000-0000-0000-000000000001' order by created_at desc limit 1;
+
+select '--- conductor sends the bus location to one passenger';
+delete from message_queue; delete from notifications; delete from bus_locations where schedule_id = 'sch-cmb-2100' and travel_date = (select fri from t7);
+set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
+select pg_temp.try('passenger sends it', $q$select send_bus_location((select v::uuid from ids where k = 'bus1'))$q$);
+reset role;
+set role authenticated; select pg_temp.as_user('eeeeeeee-0000-0000-0000-000000000005');
+select pg_temp.try('conductor sends before sharing location', $q$select send_bus_location((select v::uuid from ids where k = 'bus1'))$q$);
+insert into bus_locations (schedule_id, travel_date, lat, lng, updated_at) values ('sch-cmb-2100', (select fri from t7), 6.933812, 79.852431, now());
+select 'conductor sends (WhatsApp off) → goes by ' || send_bus_location((select v::uuid from ids where k = 'bus1'));
+select pg_temp.try('conductor double-taps', $q$select send_bus_location((select v::uuid from ids where k = 'bus1'))$q$);
+reset role;
+update app_settings set messaging = messaging || '{"whatsapp": true}';
+set role authenticated; select pg_temp.as_user('eeeeeeee-0000-0000-0000-000000000005');
+select 'conductor sends to another passenger (WhatsApp on) → goes by ' || send_bus_location((select v::uuid from ids where k = 'bus2'));
+reset role;
+update app_settings set messaging = messaging || '{"whatsapp": false}';
+select 'queued: ' || channel || ', SMS fallback ' || fallback_sms || ' | ' || substring(body from 'https://maps[^ ]+') || ' | ' || substring(body from 'Live: .*$') from message_queue where kind = 'bus_location' order by created_at;
+select 'passenger also notified in the app: ' || count(*) from notifications where title = 'Your bus is on the way';
 update app_settings set card_payments = true;

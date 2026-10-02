@@ -219,7 +219,8 @@ function Manifest({ run }: { run: Run }) {
                       {b.from} → {b.to}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <p className="font-bold tabular-nums">{formatLKR(b.total)}</p>
+                      {/* Green = paid in full, red = not paid yet, grey = cancelled. */}
+                      <p className={`font-bold tabular-nums ${b.status === 'cancelled' ? 'text-[#6b6d78]' : b.paymentStatus === 'unpaid' ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>{formatLKR(b.total)}</p>
                       <Badge value={b.channel} />
                       {b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') && (
                         <p className="text-[11px] font-bold text-[#ba1a1a] mt-1">Not paid · {payLabel[b.paymentMethod ?? ''] ?? b.paymentMethod}</p>
@@ -375,10 +376,15 @@ function SeatGrid({
   const seat = (id: string) => {
     const o = owner.get(id);
     const isSel = selected.includes(id);
+    // Sold seats: green = on board, navy = paid, amber = not paid yet
+    // (an amber ring on green = on board but still to pay).
+    const due = !!o && o.paymentStatus === 'unpaid';
     const cls = o
       ? o.status === 'boarded'
-        ? 'bg-[#006e1c] text-white'
-        : 'bg-[#050a44] text-white'
+        ? `bg-[#006e1c] text-white ${due ? 'ring-2 ring-[#feb700] ring-offset-1' : ''}`
+        : due
+          ? 'bg-[#feb700] text-[#3b2a00]'
+          : 'bg-[#050a44] text-white'
       : isSel
         ? 'bg-[#feb700] text-[#050a44] border-[#feb700]'
         : run.bus.ladiesSeats.includes(id)
@@ -389,7 +395,7 @@ function SeatGrid({
         key={id}
         type="button"
         onClick={() => onToggle(id)}
-        title={o ? `${id}: ${o.passenger.name} (${o.from} → ${o.to})` : `${id}: free`}
+        title={o ? `${id}: ${o.passenger.name} (${o.from} → ${o.to}) · ${due ? `NOT PAID, ${formatLKR(o.total)} to collect` : `paid ${formatLKR(o.total)}`}${o.status === 'boarded' ? ' · on board' : ''}` : run.bus.ladiesSeats.includes(id) ? `${id}: free, ladies only` : `${id}: free`}
         aria-label={o ? `Seat ${id}, sold to ${o.passenger.name}` : `Seat ${id}, free${isSel ? ', selected' : ''}`}
         aria-pressed={isSel}
         className={`h-9 rounded-lg text-[11px] font-bold transition-colors ${cls} ${taken.has(id) ? 'cursor-pointer' : ''}`}

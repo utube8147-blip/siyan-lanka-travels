@@ -194,7 +194,12 @@ export default function BookingsPage() {
                       <p className="text-[12px] text-[#46464f]">{b.passenger.phone}</p>
                     </td>
                     <td className="px-4 py-3 font-bold whitespace-nowrap">{b.seats.join(', ')}</td>
-                    <td className="px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap">{formatLKR(b.total)}</td>
+                    <td
+                      className={`px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap ${b.status === 'cancelled' ? 'text-[#6b6d78]' : b.paymentStatus === 'unpaid' ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}
+                      title={b.status === 'cancelled' ? 'Cancelled' : b.paymentStatus === 'unpaid' ? 'Not paid yet' : 'Paid in full'}
+                    >
+                      {formatLKR(b.total)}
+                    </td>
                     <td className="px-4 py-3">
                       <Badge value={b.status} />
                       {toCheck(b) && <div className="mt-1"><Badge value="new" label="Slip to check" /></div>}

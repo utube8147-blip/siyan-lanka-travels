@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { Banknote, Check, ChevronDown, FileDown, LogOut, Megaphone, Phone, Radio, ScanLine, Search, UserX, Undo2, Wallet } from 'lucide-react';
+import { Banknote, Check, ChevronDown, FileDown, LogOut, MapPin, Megaphone, MessageCircle, Phone, Radio, ScanLine, Search, UserX, Undo2, Wallet } from 'lucide-react';
 import { isStaffRole, useAuth } from '@/contexts/AuthContext';
 import { PageSkeleton, useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatLKR, formatTime12, listRuns, routeLabel, todayISO, departureDate } from '@/lib/trips';
@@ -19,6 +19,8 @@ import { UpdateModal, useLocationSharing, type SharingStatus } from '@/component
 import { useToast } from '@/components/admin/ui';
 import { Wordmark } from '@/components/Wordmark';
 import type { Booking } from '@/lib/types';
+import { OPERATOR } from '@/config/operator';
+import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 
 export default function ConductorPage() {
   const router = useRouter();
@@ -68,6 +70,25 @@ export default function ConductorPage() {
     .map((g) => ({ ...g, bookings: g.bookings.filter((b) => !filter || `${b.passenger.name} ${b.ref} ${b.seats.join(' ')} ${b.passenger.phone}`.toLowerCase().includes(filter)) }))
     .filter((g) => g.bookings.length);
   const pct = m && m.totals.seats ? Math.round((m.totals.boarded / m.totals.seats) * 100) : 0;
+
+  // Send this one passenger where the bus is right now (WhatsApp if set up, otherwise a text).
+  const sendLocation = async (b: Booking) => {
+    if (!isSupabaseConfigured) return toast('Sending messages needs the database (not available in demo mode).', 'error');
+    const { data: via, error } = await supabase().rpc('send_bus_location', { p_booking: b.id });
+    toast(error ? friendlyError(error) : `Bus location sent to ${b.passenger.name.split(' ')[0]} by ${via === 'whatsapp' ? 'WhatsApp (text if they don\'t have it)' : 'text message'}`, error ? 'error' : 'ok');
+  };
+  // The same, from the conductor's own WhatsApp: opens the chat with the message ready to send.
+  const openWhatsApp = async (b: Booking) => {
+    const phone = (b.contact.phone || b.passenger.phone || '').replace(/\D/g, '').replace(/^0/, '94');
+    if (!phone) return toast('There is no phone number on this booking.', 'error');
+    let where = '';
+    if (isSupabaseConfigured) {
+      const { data: loc } = await supabase().from('bus_locations').select('lat, lng').eq('schedule_id', b.scheduleId).eq('travel_date', b.date).maybeSingle();
+      if (loc) where = ` The bus is here now: https://maps.google.com/?q=${loc.lat.toFixed(5)},${loc.lng.toFixed(5)}`;
+    }
+    const text = `Siyan Lanka Travels: your bus for ${b.from} → ${b.to}, seat ${b.seats.join(', ')}.${where} Live: ${OPERATOR.siteUrl}/track?ref=${b.ref}`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
 
   // 'cash' = paid at the door and boarded; 'collect' = already on board, paying now;
   // 'board' on an unpaid pay-on-bus seat = board first, collect during the trip.
@@ -236,6 +257,16 @@ export default function ConductorPage() {
                                     {(b.passenger.phone || b.contact.phone) && (
                                       <a href={`tel:${(b.passenger.phone || b.contact.phone).replace(/\s/g, '')}`} className="h-12 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-2"><Phone className="w-4 h-4" /> Call</a>
                                     )}
+                                    {(b.passenger.phone || b.contact.phone) && b.status !== 'no-show' && (
+                                      <>
+                                        <button onClick={() => sendLocation(b)} className="col-span-2 h-12 rounded-xl bg-[#1d4ed8] text-white font-bold flex items-center justify-center gap-2">
+                                          <MapPin className="w-5 h-5" /> Send bus location
+                                        </button>
+                                        <button onClick={() => openWhatsApp(b)} className="col-span-2 h-10 rounded-xl bg-white/10 text-[13px] font-semibold flex items-center justify-center gap-2">
+                                          <MessageCircle className="w-4 h-4" /> Send from my WhatsApp
+                                        </button>
+                                      </>
+                                    )}
                                     <p className="col-span-2 text-[12px] text-white/50">{b.ref} · {b.from} → {b.to} · {b.channel === 'online' ? (isDue(b) ? (b.paymentMethod === 'bus' ? 'pays on the bus' : `held (${b.paymentMethod})`) : b.paymentMethod === 'cash' ? 'paid cash' : 'paid online') : `sold at ${b.channel}`}</p>
                                   </div>
                                 </motion.div>
@@ -292,7 +323,8 @@ function SharingLine({ status }: { status: SharingStatus }) {
     const id = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(id);
   }, []);
-  const age = status.lastSentAt ? Math.round((now - status.lastSentAt) / 1000) : null;
+  // Never negative: the phone's clock and the timer can be a second or two apart.
+  const age = status.lastSentAt ? Math.max(0, Math.round((now - status.lastSentAt) / 1000)) : null;
   const bad = !!status.problem || (age != null && age > 120);
   return (
     <p role="status" className={`flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] font-semibold ${bad ? 'bg-[#b3261e]/25 text-[#ffb4ab]' : 'bg-[#0f7a2a]/25 text-[#9be8ad]'}`}>

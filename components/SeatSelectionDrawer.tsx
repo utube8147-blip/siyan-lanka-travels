@@ -80,6 +80,39 @@ export default function SeatSelectionDrawer({
   const isBookedByFemale = (id: string) => taken.get(id) === 'Female';
   const PENDING_SEATS: string[] = [];
 
+  // No colour legend: each seat explains itself. Hovering (or focusing, or
+  // tapping on a phone) shows what the seat's colour means, in a small bubble
+  // on the seat and in a line under the map.
+  const [hint, setHint] = useState<string | null>(null);
+  const seatMeaning = (seatId: string) =>
+    isBookedByFemale(seatId)
+      ? 'booked by a female passenger'
+      : isBookedByMale(seatId)
+        ? 'booked by a male passenger'
+        : PENDING_SEATS.includes(seatId)
+          ? 'held by another passenger'
+          : selectedSeats.includes(seatId)
+            ? 'selected by you (tap to remove)'
+            : FEMALE_ONLY_SEATS.includes(seatId)
+              ? passengerGender === 'Female'
+                ? 'ladies-only seat, available to you'
+                : 'reserved for female passengers'
+              : 'available';
+  const explain = (seatId: string) => ({
+    onMouseEnter: () => setHint(`Seat ${seatId}: ${seatMeaning(seatId)}`),
+    onMouseLeave: () => setHint(null),
+    onFocus: () => setHint(`Seat ${seatId}: ${seatMeaning(seatId)}`),
+    onBlur: () => setHint(null),
+  });
+  const bubble = (seatId: string) => (
+    <span
+      role="tooltip"
+      className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+6px)] z-10 hidden group-hover:block group-focus-visible:block whitespace-nowrap rounded-md bg-[#050a44] px-2 py-1 text-[10px] font-semibold normal-case text-white shadow-lg"
+    >
+      {seatMeaning(seatId).replace(' (tap to remove)', '')}
+    </span>
+  );
+
   const getSeatClass = (seatId: string) => {
     if (isBookedByMale(seatId)) {
       return `${seatBaseClass} bg-[#e1e2e4] border-transparent text-[#686873] opacity-60 cursor-not-allowed`;
@@ -99,8 +132,10 @@ export default function SeatSelectionDrawer({
     return `${seatBaseClass} bg-transparent border-[#c7c5d1] text-[#46464f] cursor-pointer hover:border-[#ff5263] hover:bg-[#ff5263]/10`;
   };
 
-  const renderSeat = (row: number, col: string) => {
+  /** `narrow`: a 6-seat back bench shares the row width, so its seats are slimmer. */
+  const renderSeat = (row: number, col: string, narrow = false) => {
     const seatId = `${row}${col}`;
+    const seatClass = (id: string) => (narrow ? getSeatClass(id).replace('w-11', 'w-[35px]') : getSeatClass(id));
     const isBookedMale = isBookedByMale(seatId);
     const isBookedFemale = isBookedByFemale(seatId);
     const isPending = PENDING_SEATS.includes(seatId);
@@ -109,10 +144,14 @@ export default function SeatSelectionDrawer({
       return (
         <div
           key={seatId}
-          className={getSeatClass(seatId)}
-          title={isPending ? `${seatId} - held by another passenger` : `${seatId} - booked`}
+          tabIndex={0}
+          className={`${seatClass(seatId)} group relative`}
+          aria-label={`Seat ${seatId}, ${seatMeaning(seatId)}`}
+          onClick={() => setHint(`Seat ${seatId}: ${seatMeaning(seatId)}`)}
+          {...explain(seatId)}
         >
           {seatId}
+          {bubble(seatId)}
         </div>
       );
     }
@@ -121,14 +160,16 @@ export default function SeatSelectionDrawer({
       <motion.button
         key={seatId}
         type="button"
-        className={getSeatClass(seatId)}
+        className={`${seatClass(seatId)} group relative`}
+        aria-label={`Seat ${seatId}, ${seatMeaning(seatId)}`}
+        {...explain(seatId)}
         whileTap={{ scale: 0.86 }}
         animate={selectedSeats.includes(seatId) ? 'on' : 'off'}
         variants={{ on: { scale: [1, 1.16, 1], transition: { duration: 0.3 } }, off: { scale: 1 } }}
         onClick={() => onToggleSeat(seatId)}
-        title={FEMALE_ONLY_SEATS.includes(seatId) ? 'Reserved for female passengers' : `${seatId} - available`}
       >
         {seatId}
+        {bubble(seatId)}
       </motion.button>
     );
   };
@@ -207,37 +248,13 @@ export default function SeatSelectionDrawer({
           </div>
         )}
 
-        {/* Legend: color-coded seat categories */}
-        <div className="flex flex-wrap gap-x-4 gap-y-2 px-6 py-5 border-b border-[#c7c5d1]/30 shrink-0">
-          <div className="flex items-center gap-1.5">
-            <div className="w-4 h-4 rounded-sm border border-[#c7c5d1] bg-transparent"></div>
-            <span className="text-[11px] font-medium text-[#46464f]">Available Seats</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-4 h-4 rounded-sm bg-[#ff5263]"></div>
-            <span className="text-[11px] font-medium text-[#46464f]">Selected by You</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-4 h-4 rounded-sm bg-[#e1e2e4]"></div>
-            <span className="text-[11px] font-medium text-[#46464f]">Booked by Gents</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-4 h-4 rounded-sm bg-[#f4a6c6]"></div>
-            <span className="text-[11px] font-medium text-[#46464f]">Booked by Ladies</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-4 h-4 rounded-sm border border-pink-300 bg-pink-50"></div>
-            <span className="text-[11px] font-medium text-[#46464f]">Ladies only</span>
-          </div>
-        </div>
-
         {/* Seat map: vertical scroll only, never horizontal */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-5 py-6">
-          <div className="w-full max-w-[400px] mx-auto py-6 px-6 border-4 border-[#050a44]/10 rounded-[40px] bg-[#f2f4f6]/40">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 sm:px-5 py-6">
+          <div className="w-fit max-w-full mx-auto py-6 px-3 sm:px-6 border-4 border-[#050a44]/10 rounded-[40px] bg-[#f2f4f6]/40">
             {/* Column headers */}
             <div
               className="grid mb-7"
-              style={{ gridTemplateColumns: '20px 44px 44px 28px 44px 44px', gap: '10px', alignItems: 'center' }}
+              style={{ gridTemplateColumns: '20px 44px 44px 44px 44px 44px', gap: '10px', alignItems: 'center' }}
             >
               <div></div>
               <div className="text-center text-[#46464f] text-[10px] font-bold">A</div>
@@ -256,15 +273,21 @@ export default function SeatSelectionDrawer({
                 <span className="text-[8px] font-bold uppercase tracking-wider mt-1 text-[#46464f]/60">Entrance</span>
               </div>
               <div className="flex-1 mx-6 h-px bg-[#c7c5d1]/20 rounded-full"></div>
+              <span className="sr-only">Front of the bus</span>
               <div className="w-11 h-11 shrink-0 rounded-full border-2 border-[#050a44]/30 flex items-center justify-center text-[#050a44] shadow-sm bg-white">
-                <span className="material-symbols-outlined text-[22px] leading-none">steering</span>
+                {/* Drawn here: the icon font has no "steering" symbol, so the word itself was showing. */}
+                <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" role="img" aria-label="Driver">
+                  <circle cx="12" cy="12" r="9" />
+                  <circle cx="12" cy="12" r="2.2" />
+                  <path d="M3.4 10.5h6.6M14 10.5h6.6M12 14.2V21" />
+                </svg>
               </div>
             </div>
 
             {/* Rows 1-9 */}
             <div
               className="grid"
-              style={{ gridTemplateColumns: '20px 44px 44px 28px 44px 44px', columnGap: '10px', rowGap: '18px', alignItems: 'center' }}
+              style={{ gridTemplateColumns: '20px 44px 44px 44px 44px 44px', columnGap: '10px', rowGap: '18px', alignItems: 'center' }}
             >
               {Array.from({ length: layout.rows }, (_, i) => i + 1).map((row) => (
                 <React.Fragment key={row}>
@@ -278,14 +301,24 @@ export default function SeatSelectionDrawer({
               ))}
             </div>
 
-            {/* Back bench, same column rhythm as above */}
+            {/* Back bench. The aisle above is exactly one seat wide, so the bench
+                spans the same width as a normal row and its outer edges line up:
+                5 seats fill A, B, aisle, C, D; 4 sit under A B and C D; 6 share the width. */}
             {layout.backRowSeats > 0 && (
-              <div className="flex items-center mt-6">
+              <div className="flex items-center mt-[18px]">
                 <div className="text-[10px] font-bold text-[#46464f] text-center opacity-40 shrink-0" style={{ width: 20 }}>
                   {layout.rows + 1}
                 </div>
-                <div className="flex flex-wrap gap-[10px] ml-[10px]">
-                  {['A', 'B', 'C', 'D', 'E', 'F'].slice(0, layout.backRowSeats).map((c) => renderSeat(layout.rows + 1, c))}
+                <div
+                  className="grid ml-[10px]"
+                  style={{ width: 260, columnGap: 10, gridTemplateColumns: layout.backRowSeats === 6 ? 'repeat(6, 35px)' : 'repeat(5, 44px)' }}
+                >
+                  {['A', 'B', 'C', 'D', 'E', 'F'].slice(0, layout.backRowSeats).map((c, i) => (
+                    <React.Fragment key={c}>
+                      {layout.backRowSeats === 4 && i === 2 && <div />}
+                      {renderSeat(layout.rows + 1, c, layout.backRowSeats === 6)}
+                    </React.Fragment>
+                  ))}
                 </div>
               </div>
             )}
@@ -300,6 +333,8 @@ export default function SeatSelectionDrawer({
 
         {/* Drawer footer */}
         <div className="px-6 py-5 border-t border-[#c7c5d1]/30 bg-white shrink-0">
+          {/* What the seat under the pointer (or the last one tapped) means. */}
+          <p aria-live="polite" className={`text-[12px] font-semibold text-[#050a44] mb-2 min-h-[18px] ${hint ? '' : 'invisible'}`}>{hint ?? '.'}</p>
           <div className="flex flex-wrap gap-2 min-h-[34px] mb-4">
             {selectedSeats.length === 0 ? (
               <p className="text-[#6b6d78] italic text-sm self-center">No seats selected yet.</p>

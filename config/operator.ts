@@ -7,6 +7,20 @@
 // the operator dashboard at /admin (see lib/seed.ts for the starting data).
 // ---------------------------------------------------------------------------
 
+// Hotline shown to passengers, from .env so it can change without editing code:
+//   NEXT_PUBLIC_HOTLINE=0771234567        (call button, "tel:" links, messages)
+//   NEXT_PUBLIC_WHATSAPP=0771234567       (optional; defaults to the hotline)
+// Leave NEXT_PUBLIC_HOTLINE empty and the site hides the call / WhatsApp buttons.
+const HOTLINE = (process.env.NEXT_PUBLIC_HOTLINE ?? '').trim();
+const WHATSAPP = (process.env.NEXT_PUBLIC_WHATSAPP ?? '').trim() || HOTLINE;
+/** 0771234567 / +94 77 123 4567 / 94771234567 → 94771234567 */
+const lkDigits = (n: string) => n.replace(/\D/g, '').replace(/^0/, '94');
+/** 94771234567 → 077 123 4567 (how the number is written for passengers) */
+const lkDisplay = (n: string) => {
+  const d = lkDigits(n).replace(/^94/, '0');
+  return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}` : n;
+};
+
 export const OPERATOR = {
   /** Full company name, shown in the footer, tickets and page titles. */
   name: 'Siyan Lanka Travels',
@@ -18,10 +32,10 @@ export const OPERATOR = {
   tagline: 'Luxury AC night coach between Colombo and the East: Polonnaruwa, Batticaloa, Kalmunai and Akkaraipattu.',
 
   contact: {
-    // TODO: add your hotline. Leave empty and the site hides call/WhatsApp buttons.
-    phone: '',
-    phoneHref: '',
-    whatsappHref: '',
+    // From NEXT_PUBLIC_HOTLINE / NEXT_PUBLIC_WHATSAPP in .env (see above).
+    phone: HOTLINE ? lkDisplay(HOTLINE) : '',
+    phoneHref: HOTLINE ? `tel:+${lkDigits(HOTLINE)}` : '',
+    whatsappHref: WHATSAPP ? `https://wa.me/${lkDigits(WHATSAPP)}` : '',
     email: 'siyanlanka3332@gmail.com',
     address: 'Bastian Mawatha, Pettah, Colombo 11',
   },

@@ -54,7 +54,7 @@ function PaymentPageInner() {
   const from = searchParams.get('from') || '';
   const to = searchParams.get('to') || '';
   const date = searchParams.get('date') || todayISO();
-  const { data, ready, createBooking } = useStore();
+  const { data, ready, createBooking, reload } = useStore();
   const bookingCode = useBookingCode();
   const { user, mode: authMode, isLoading: authLoading } = useAuth();
   // With real accounts, bookings belong to a signed-in passenger.
@@ -194,6 +194,8 @@ function PaymentPageInner() {
       if (method === 'bank' && slipFile && result.booking.status === 'held') {
         const up = await submitSlip(result.booking, slipFile, slipRef.trim());
         setSlipNote(up.ok ? '' : `Your seat is held, but the slip didn't upload (${up.reason ?? 'try again'}). Upload it below.`);
+        // Re-read the booking so the next screen shows "Slip received" and doesn't ask for it again.
+        if (up.ok) await reload();
       }
       setPaidTrip(trip);
       saved.remember({ name: lead?.name || '', gender: (lead?.gender as Gender) || '', phone: lead?.phone || contactPhone });
