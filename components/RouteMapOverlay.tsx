@@ -48,18 +48,71 @@ type LocatedStop = RouteStop & { lat: number; lng: number };
 const hasCoords = (s: RouteStop): s is LocatedStop =>
   typeof s.lat === 'number' && typeof s.lng === 'number' && Number.isFinite(s.lat) && Number.isFinite(s.lng);
 
-/** Interpolates the bus position between the two stops surrounding `progress`. */
-function interpolateBus(stops: LocatedStop[], progress: number): LatLng {
-  for (let i = 0; i < stops.length - 1; i++) {
-    const a = stops[i];
-    const b = stops[i + 1];
-    if (progress >= a.progress && progress <= b.progress) {
-      const t = b.progress === a.progress ? 0 : (progress - a.progress) / (b.progress - a.progress);
-      return [a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t];
+// ---- Road routing (OSRM) ----
+// Draws the route along actual roads rather than straight lines between stops.
+// The public demo server is fine for development; for production use your own
+// OSRM instance or a hosted service (OpenRouteService, Mapbox, GraphHopper…) via NEXT_PUBLIC_ROUTING_URL.
+const ROUTING_URL = process.env.NEXT_PUBLIC_ROUTING_URL ?? 'https://router.project-osrm.org/route/v1/driving';
+const roadCache = new Map<string, LatLng[]>();
+
+async function fetchRoadPath(stops: LatLng[], signal: AbortSignal): Promise<LatLng[] | null> {
+  if (stops.length < 2) return null;
+  const key = stops.map(([lat, lng]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(';');
+  const hit = roadCache.get(key);
+  if (hit) return hit;
+  try {
+    const res = await fetch(`${ROUTING_URL}/${key}?overview=full&geometries=geojson`, { signal });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const coords = data?.routes?.[0]?.geometry?.coordinates as [number, number][] | undefined;
+    if (!coords?.length) return null;
+    const path = coords.map(([lng, lat]): LatLng => [lat, lng]);
+    roadCache.set(key, path);
+    return path;
+  } catch {
+    return null; // aborted or offline → keep the straight-line fallback
+  }
+}
+
+/** Squared distance (equirectangular approximation, fine at city/country scale). */
+const sqDist = (a: LatLng, b: LatLng) =>
+  (a[0] - b[0]) ** 2 + ((a[1] - b[1]) * Math.cos((a[0] * Math.PI) / 180)) ** 2;
+
+/** Index of the path vertex closest to `p`, searching only within [from, to]. */
+function nearestIndex(path: LatLng[], p: LatLng, from = 0, to = path.length - 1): number {
+  let best = from;
+  let bestD = Infinity;
+  for (let i = from; i <= to; i++) {
+    const d = sqDist(path[i], p);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
     }
   }
-  const last = stops[stops.length - 1];
-  return [last.lat, last.lng];
+  return best;
+}
+
+/** Point a fraction `t` (0–1) of the way along path[i0..i1], measured by distance. */
+function pointAlongPath(path: LatLng[], i0: number, i1: number, t: number): LatLng {
+  if (i1 <= i0) return path[i0];
+  const seg: number[] = [];
+  let total = 0;
+  for (let i = i0; i < i1; i++) {
+    const d = Math.sqrt(sqDist(path[i], path[i + 1]));
+    seg.push(d);
+    total += d;
+  }
+  let target = total * Math.min(1, Math.max(0, t));
+  for (let k = 0; k < seg.length; k++) {
+    if (target <= seg[k]) {
+      const f = seg[k] === 0 ? 0 : target / seg[k];
+      const a = path[i0 + k];
+      const b = path[i0 + k + 1];
+      return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+    }
+    target -= seg[k];
+  }
+  return path[i1];
 }
 
 const SNAP_THRESHOLD = 60; // px of drag needed to change snap point
@@ -98,12 +151,13 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
     };
   }, [isOpen, onClose]);
 
-  // Real map (Leaflet + OpenStreetMap tiles)
+  // Real map (Leaflet + OpenStreetMap tiles), route drawn along actual roads
   useEffect(() => {
     const located = route.stops.filter(hasCoords);
     if (!isOpen || !mapEl.current || located.length === 0) return;
     let cancelled = false;
     let cleanup = () => {};
+    const abort = new AbortController();
 
     (async () => {
       const L = (await import('leaflet')).default;
@@ -118,16 +172,8 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
 
       const stopCoords: LatLng[] = located.map((s) => [s.lat, s.lng]);
       const progress = route.busProgress;
-      const busPos: LatLng | null = route.busPosition ?? (progress != null ? interpolateBus(located, progress) : null);
 
-      // Full route; with a known bus position, the part already covered is darker.
-      L.polyline(stopCoords, { color: busPos ? '#c7c5d1' : '#050a44', weight: busPos ? 6 : 5, opacity: busPos ? 1 : 0.75, lineCap: 'round' }).addTo(map);
-      if (busPos && progress != null) {
-        const travelled: LatLng[] = [...located.filter((s) => s.progress < progress).map((s): LatLng => [s.lat, s.lng]), busPos];
-        if (travelled.length > 1) L.polyline(travelled, { color: '#050a44', weight: 6, lineCap: 'round' }).addTo(map);
-      }
-
-      // Stops
+      // Stops (drawn once)
       located.forEach((s) => {
         const done = s.status === 'passed' || s.status === 'current';
         const size = s.status === 'current' ? 18 : 14;
@@ -145,24 +191,93 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           .addTo(map);
       });
 
-      // Bus (only when we actually know where it is)
-      if (busPos) L.marker(busPos, {
-        zIndexOffset: 1000,
-        icon: L.divIcon({
-          className: '',
-          iconSize: [34, 34],
-          iconAnchor: [17, 17],
-          html: `<div style="width:34px;height:34px;border-radius:9999px;background:#feb700;border:3px solid #050a44;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 0 6px rgba(254,183,0,.3)">🚌</div>`,
-        }),
-      })
-        .bindTooltip(`${route.busNumber} is here${route.busSeen ? ` (${route.busSeen})` : ''}`, { direction: 'top', offset: [0, -14] })
-        .addTo(map);
+      // Route line + bus: redrawn when the road geometry arrives
+      const routeLayer = L.layerGroup().addTo(map);
 
-      const fit = () => {
-        if (stopCoords.length === 1) map.setView(stopCoords[0], 15);
-        else map.fitBounds(L.latLngBounds(stopCoords), { padding: [32, 32] });
+      const drawRoute = (road: LatLng[] | null) => {
+        routeLayer.clearLayers();
+        const path = road ?? stopCoords;
+
+        // Where each stop sits along the path (searching forward so loops don't confuse it)
+        let cursor = 0;
+        const stopIdx = road
+          ? stopCoords.map((c) => (cursor = nearestIndex(path, c, cursor)))
+          : stopCoords.map((_, i) => i);
+
+        // Bus position: live GPS if shared, otherwise estimated along the route from progress
+        let busPos: LatLng | null = route.busPosition ?? null;
+        if (!busPos && progress != null) {
+          busPos = path[path.length - 1];
+          for (let i = 0; i < located.length - 1; i++) {
+            const a = located[i];
+            const b = located[i + 1];
+            if (progress >= a.progress && progress <= b.progress) {
+              const t = b.progress === a.progress ? 0 : (progress - a.progress) / (b.progress - a.progress);
+              busPos = pointAlongPath(path, stopIdx[i], stopIdx[i + 1], t);
+              break;
+            }
+          }
+        }
+
+        // Full route; with a known bus position, the part already covered is darker.
+        L.polyline(path, {
+          color: busPos ? '#c7c5d1' : '#050a44',
+          weight: busPos ? 6 : 5,
+          opacity: busPos ? 1 : 0.75,
+          lineCap: 'round',
+          lineJoin: 'round',
+        }).addTo(routeLayer);
+
+        if (busPos && progress != null) {
+          let travelled: LatLng[];
+          if (road) {
+            let lastPassed = -1;
+            located.forEach((s, i) => {
+              if (s.progress < progress) lastPassed = i;
+            });
+            const lo = lastPassed >= 0 ? stopIdx[lastPassed] : 0;
+            const hi = stopIdx[Math.min(lastPassed + 1, located.length - 1)];
+            const k = nearestIndex(path, busPos, lo, Math.max(lo, hi));
+            travelled = [...path.slice(0, k + 1), busPos];
+          } else {
+            travelled = [...located.filter((s) => s.progress < progress).map((s): LatLng => [s.lat, s.lng]), busPos];
+          }
+          if (travelled.length > 1) {
+            L.polyline(travelled, { color: '#050a44', weight: 6, lineCap: 'round', lineJoin: 'round' }).addTo(routeLayer);
+          }
+        }
+
+        // Bus (only when we actually know where it is)
+        if (busPos) {
+          L.marker(busPos, {
+            zIndexOffset: 1000,
+            icon: L.divIcon({
+              className: '',
+              iconSize: [34, 34],
+              iconAnchor: [17, 17],
+              html: `<div style="width:34px;height:34px;border-radius:9999px;background:#feb700;border:3px solid #050a44;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 0 6px rgba(254,183,0,.3)">🚌</div>`,
+            }),
+          })
+            .bindTooltip(`${route.busNumber} is here${route.busSeen ? ` (${route.busSeen})` : ''}`, { direction: 'top', offset: [0, -14] })
+            .addTo(routeLayer);
+        }
       };
-      fit();
+
+      const fit = (pts: LatLng[]) => {
+        if (pts.length === 1) map.setView(pts[0], 15);
+        else map.fitBounds(L.latLngBounds(pts), { padding: [32, 32] });
+      };
+
+      // 1) Show something immediately (straight lines between stops)…
+      drawRoute(null);
+      fit(stopCoords);
+
+      // 2) …then swap in the real road geometry once it loads
+      fetchRoadPath(stopCoords, abort.signal).then((road) => {
+        if (cancelled || !road) return;
+        drawRoute(road);
+        fit(road);
+      });
 
       // Keep tiles correct while the sheet resizes (drag / snap / rotate / layout switch)
       const ro = new ResizeObserver(() => map.invalidateSize());
@@ -176,6 +291,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
 
     return () => {
       cancelled = true;
+      abort.abort();
       cleanup();
     };
   }, [isOpen, route]);
