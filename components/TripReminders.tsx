@@ -7,13 +7,20 @@ import { useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
 import { departureDate, formatTime12, getTrip } from '@/lib/trips';
-import { notify } from '@/lib/pwa';
+import { notify, subscribeToPush } from '@/lib/pwa';
 
 const HOURS_BEFORE = 3;
 
 export function TripReminders() {
   const { user } = useAuth();
   const { data, ready } = useStore();
+
+  // Keep this browser's push subscription tied to whoever is signed in, so
+  // reminders also arrive when the app is closed (sent by the server).
+  useEffect(() => {
+    if (!user || !('Notification' in window) || Notification.permission !== 'granted') return;
+    subscribeToPush();
+  }, [user]);
 
   useEffect(() => {
     if (!ready || !user || !('Notification' in window)) return;

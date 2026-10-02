@@ -104,7 +104,7 @@ export default function ProfilePage() {
 
       <Group title={t('Travel')}>
         <Row href="/my-bookings" icon={Ticket} label={t('My trips')} hint={t('Tickets, seat changes, cancellations')} />
-        <Row href="/dashboard" icon={Wallet} label={t('Wallet & rewards')} hint="Credits, points, booking history" />
+        <Row href="/dashboard" icon={Wallet} label={t('My account')} hint="Trips, refunds, booking history" />
         {resaleOn && <Row href="/marketplace" icon={Store} label={t('Resale tickets')} hint="Buy or sell a seat" />}
         <Row href="/bus" icon={RouteIcon} label={t('Routes & timetables')} hint="Stops, times and fares" />
         <Row href="/services" icon={Package} label={t('Send a parcel or hire a bus')} hint="Get a quote" />

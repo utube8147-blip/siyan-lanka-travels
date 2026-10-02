@@ -12,6 +12,8 @@ import { cityCode, formatLKR } from '@/lib/trips';
 import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { listForResale, useMyListings, useResaleEnabled, withdrawListing } from '@/lib/resale';
 import { supabase } from '@/lib/supabase/client';
+import { PayoutsCard } from '@/components/trip/PayoutsCard';
+import { WALLET_ENABLED } from '@/lib/features';
 
 type BookingStatus = ViewStatus;
 type Booking = BookingView;
@@ -499,7 +501,7 @@ export default function Dashboard() {
           <h1 className="text-[28px] md:text-[32px] font-extrabold tracking-tight text-[#050a44] mb-2">
             Welcome back, {details.name.split(' ')[0]}
           </h1>
-          <p className="text-[14px] text-[#46464f]">Manage your journeys, tickets, and rewards in one place.</p>
+          <p className="text-[14px] text-[#46464f]">Manage your journeys and tickets in one place.</p>
         </div>
         <button
           onClick={() => router.push('/search')}
@@ -580,9 +582,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Wallet & Rewards */}
+        {/* Wallet & rewards are parked (lib/features.ts → WALLET_ENABLED); everyone gets the trip figures. */}
         <div className="md:col-span-8 flex flex-col gap-[24px]">
-          {authMode === 'demo' ? (
+          {WALLET_ENABLED && authMode === 'demo' ? (
 <div className="grid grid-cols-1 md:grid-cols-2 gap-[24px]">
             {/* Wallet */}
             <div className="keep-navy relative h-[200px] rounded-2xl p-[24px] text-white shadow-[0_10px_28px_-8px_rgba(0,0,0,0.55)] overflow-hidden bg-[#111216] ring-1 ring-[#feb700]/25">
@@ -672,6 +674,8 @@ export default function Dashboard() {
               ))}
             </div>
 )}
+
+          <PayoutsCard />
 
           {/* Upcoming Journeys — now sourced from the real bookings list */}
           <div className="bg-white border border-[#c7c5d1] p-[24px] rounded-2xl shadow-sm">

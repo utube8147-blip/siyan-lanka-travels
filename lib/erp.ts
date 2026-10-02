@@ -233,6 +233,17 @@ function demoSeed(): ErpData {
   return { expenses, income, documents, crew, accounts, settings: DEFAULT_SETTINGS };
 }
 
+/** Demo mode: the resale switch as saved in Staff area → Settings on this browser. */
+export function demoResaleEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(DEMO_KEY);
+    if (raw) return !!(JSON.parse(raw) as ErpData).settings?.resaleEnabled;
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_SETTINGS.resaleEnabled;
+}
+
 function loadDemo(): ErpData {
   try {
     const raw = localStorage.getItem(DEMO_KEY);

@@ -8,26 +8,45 @@ import { useCallback, useEffect, useState } from 'react';
 import { OPERATOR } from '@/config/operator';
 import { RESALE_TICKETS, type ResaleTicket } from '@/data/resale-tickets';
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
+import { demoResaleEnabled } from './erp';
 import { useStore } from './store';
 import { formatDateLabel, formatTime12, getTrip } from './trips';
 import type { Gender } from './types';
 
 let cachedEnabled: boolean | null = null;
 
-export function useResaleEnabled() {
-  const [on, setOn] = useState<boolean | null>(isSupabaseConfigured ? cachedEnabled : OPERATOR.features.resale);
+/**
+ * The switch in Staff area → Settings → Seat resale. `null` while it's being
+ * read. Always re-read on mount (and when the tab is looked at again), so
+ * turning resale off takes effect without waiting for a cache.
+ */
+export function useResaleState(): boolean | null {
+  const [on, setOn] = useState<boolean | null>(isSupabaseConfigured ? cachedEnabled : null);
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    supabase()
-      .from('app_settings')
-      .select('resale_enabled')
-      .maybeSingle()
-      .then(({ data }) => {
-        cachedEnabled = !!data?.resale_enabled;
-        setOn(cachedEnabled);
-      });
+    const read = () => {
+      if (!isSupabaseConfigured) return setOn(demoResaleEnabled());
+      supabase()
+        .from('app_settings')
+        .select('resale_enabled')
+        .maybeSingle()
+        .then(({ data }) => {
+          cachedEnabled = !!data?.resale_enabled;
+          setOn(cachedEnabled);
+        });
+    };
+    read();
+    const onVisible = () => document.visibilityState === 'visible' && read();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('storage', read); // demo: settings saved in another tab
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('storage', read);
+    };
   }, []);
-  return on ?? false;
+  return on;
+}
+export function useResaleEnabled() {
+  return useResaleState() ?? false;
 }
 
 /** Open listings for the marketplace, in the shape its cards use. */
@@ -76,6 +95,17 @@ export async function buyResale(listingId: string, passenger: { name: string; ge
   const { data, error } = await supabase().rpc('buy_resale', { p_listing: listingId, p_passenger: passenger, p_contact: contact });
   if (error) return { ok: false, reason: friendlyError(error) };
   return { ok: true, data: { ref: (data as { ref: string }).ref } };
+}
+
+/**
+ * With a live payment gateway: hold the listing for 15 minutes and get the
+ * order to pay. The seat changes hands when the gateway confirms the money.
+ */
+export async function reserveResale(listingId: string, passenger: { name: string; gender: Gender; phone: string }, contact: { email: string; phone: string }): Promise<R<{ orderRef: string; amount: number }>> {
+  const { data, error } = await supabase().rpc('reserve_resale', { p_listing: listingId, p_passenger: passenger, p_contact: contact });
+  if (error) return { ok: false, reason: friendlyError(error) };
+  const o = data as { order_ref: string; amount: number };
+  return { ok: true, data: { orderRef: o.order_ref, amount: o.amount } };
 }
 
 export async function listForResale(bookingId: string, price: number): Promise<R> {

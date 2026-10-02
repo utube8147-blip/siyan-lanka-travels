@@ -11,6 +11,17 @@ export const HAS_DB = Boolean(
 export const RESALE_DEMO_DEFAULT = OPERATOR.features.resale;
 
 /**
+ * Parked for a later release. While false the screens, the "free trip"
+ * checkbox and the settings field are hidden; nothing is deleted.
+ * - WALLET_ENABLED: travel-credit wallet (balance, top-up, history).
+ * - REWARDS_ENABLED: points / tiers and "every Nth trip free". To bring the
+ *   free-trip reward back, set this to true AND run
+ *   `update app_settings set rewards_enabled = true;` in the database.
+ */
+export const WALLET_ENABLED = false;
+export const REWARDS_ENABLED = false;
+
+/**
  * Sign-in cookies: kept for 400 days (the longest browsers allow) and renewed
  * on every visit, so people stay signed in on that device until they sign out
  * or clear their browser data. Secure (HTTPS-only) in production.

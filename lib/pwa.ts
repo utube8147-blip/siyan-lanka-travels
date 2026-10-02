@@ -2,6 +2,7 @@
 // lib/pwa.ts — install prompt + notification helpers shared by the UI.
 
 import { useEffect, useState } from 'react';
+import { isSupabaseConfigured, supabase } from './supabase/client';
 
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
 declare global {
@@ -107,10 +108,11 @@ export async function notify(title: string, options: NotificationOptions & { url
 }
 
 /**
- * Real push (reminders that arrive when the site is closed) needs a server.
- * If NEXT_PUBLIC_VAPID_PUBLIC_KEY is set, we subscribe this browser and keep
- * the subscription in localStorage for your backend to pick up (send it to
- * your API instead once you have one). See README → Notifications.
+ * Real push: reminders and updates that arrive when the site is closed.
+ * With NEXT_PUBLIC_VAPID_PUBLIC_KEY set, this browser is subscribed and the
+ * subscription is saved to the signed-in passenger's account
+ * (push_subscriptions); /api/messages/dispatch sends to it. Safe to call
+ * often: it reuses the existing subscription. See README → Notifications.
  */
 export async function subscribeToPush() {
   const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -124,10 +126,27 @@ export async function subscribeToPush() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(key),
       }));
-    localStorage.setItem('push-subscription', JSON.stringify(sub));
+    const json = sub.toJSON();
+    if (isSupabaseConfigured && json.endpoint && json.keys?.p256dh && json.keys?.auth) {
+      const { data } = await supabase().auth.getSession();
+      // Not signed in yet: TripReminders calls this again after sign-in.
+      if (data.session) await supabase().rpc('save_push_subscription', { p_endpoint: json.endpoint, p_p256dh: json.keys.p256dh, p_auth: json.keys.auth });
+    }
     return sub;
   } catch {
     return null;
+  }
+}
+
+/** On sign-out: stop sending this account's notifications to this browser. */
+export async function forgetPushSubscription() {
+  try {
+    if (!isSupabaseConfigured || !('serviceWorker' in navigator)) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager?.getSubscription();
+    if (sub) await supabase().rpc('remove_push_subscription', { p_endpoint: sub.endpoint });
+  } catch {
+    /* best effort */
   }
 }
 

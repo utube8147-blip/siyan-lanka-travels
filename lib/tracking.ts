@@ -1,12 +1,10 @@
 'use client';
 // lib/tracking.ts — the bus's recent positions for passenger tracking.
 //
-// TODAY: the database keeps only the latest position (bus_locations), so the
-// trail is built in the browser from live updates while the page is open
-// (up to TRAIL_SIZE points).
-// LATER: when you store the last 5 positions (see README → "Bus location
-// history"), change only loadRecentPositions() to read that table; the
-// map and page already handle a list of points.
+// The database keeps the latest position (bus_locations) plus a short history
+// (bus_location_history: a point each time the bus has moved ~50 m, last 20
+// kept). The page loads the last TRAIL_SIZE points, then adds live updates,
+// so the trail is there straight away and survives a reload.
 
 import { useEffect, useRef, useState } from 'react';
 import { isSupabaseConfigured as DB, supabase } from './supabase/client';
@@ -25,9 +23,15 @@ async function loadRecentPositions(scheduleId: string, date: string): Promise<Bu
       return [];
     }
   }
-  // Future: .from('bus_location_history').select('*').eq(...).order('recorded_at', { ascending: false }).limit(TRAIL_SIZE)
-  const { data } = await supabase().from('bus_locations').select('*').eq('schedule_id', scheduleId).eq('travel_date', date).maybeSingle();
-  return data ? [{ lat: data.lat, lng: data.lng, speedKmh: data.speed_kmh, heading: data.heading, updatedAt: data.updated_at }] : [];
+  const sb = supabase();
+  const [hist, now] = await Promise.all([
+    sb.from('bus_location_history').select('lat, lng, speed_kmh, heading, recorded_at').eq('schedule_id', scheduleId).eq('travel_date', date).order('recorded_at', { ascending: false }).limit(TRAIL_SIZE),
+    sb.from('bus_locations').select('*').eq('schedule_id', scheduleId).eq('travel_date', date).maybeSingle(),
+  ]);
+  const points: BusLocation[] = (hist.data ?? []).map((p) => ({ lat: p.lat, lng: p.lng, speedKmh: p.speed_kmh, heading: p.heading, updatedAt: p.recorded_at }));
+  // The live row is the freshest (history skips heartbeats while parked).
+  if (now.data) points.unshift({ lat: now.data.lat, lng: now.data.lng, speedKmh: now.data.speed_kmh, heading: now.data.heading, updatedAt: now.data.updated_at });
+  return points;
 }
 
 /** Latest position + the last few, kept live. */
@@ -54,8 +58,10 @@ export function useBusTrail(scheduleId?: string, date?: string) {
 }
 
 function merge(incoming: BusLocation[], current: BusLocation[]) {
-  const all = [...incoming, ...current].filter((p, i, a) => a.findIndex((q) => q.updatedAt === p.updatedAt) === i);
-  return all.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, TRAIL_SIZE);
+  // Compare as instants: the same moment can arrive as "…Z" or "…+00:00".
+  const at = (p: BusLocation) => new Date(p.updatedAt).getTime();
+  const all = [...incoming, ...current].filter((p, i, a) => a.findIndex((q) => at(q) === at(p)) === i);
+  return all.sort((a, b) => at(b) - at(a)).slice(0, TRAIL_SIZE);
 }
 
 /** Rough arrival estimate at the passenger's stop from the bus position. */

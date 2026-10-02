@@ -7,6 +7,7 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { OPERATOR } from '@/config/operator';
 import { useErp, type Settings, type BikeKind } from '@/lib/erp';
 import { formatLKR } from '@/lib/trips';
+import { REWARDS_ENABLED } from '@/lib/features';
 import { AdminOnly } from '@/components/admin/AdminOnly';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 
@@ -108,8 +109,8 @@ function SettingsForm() {
         </Card>
 
         <Card className="p-5 space-y-4">
-          <h2 className="text-[16px] font-semibold text-[#050a44]">Rewards & messages</h2>
-          <Field label="Free trip after every … completed trips" hint="0 turns rewards off"><input type="number" className={inputClass} value={s.rewardEvery} onChange={(e) => setS({ ...s, rewardEvery: n(e.target.value) })} /></Field>
+          <h2 className="text-[16px] font-semibold text-[#050a44]">{REWARDS_ENABLED ? 'Rewards & messages' : 'Messages'}</h2>
+          {REWARDS_ENABLED && <Field label="Free trip after every … completed trips" hint="0 turns rewards off"><input type="number" className={inputClass} value={s.rewardEvery} onChange={(e) => setS({ ...s, rewardEvery: n(e.target.value) })} /></Field>}
           <div className="flex flex-wrap gap-4">
             {(['sms', 'whatsapp'] as const).map((ch) => (
               <label key={ch} className="flex items-center gap-2 text-[14px] font-semibold text-[#050a44]">

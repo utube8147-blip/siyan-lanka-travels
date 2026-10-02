@@ -130,6 +130,13 @@ trip updates, waitlist offers): sent by `/api/messages/dispatch`; see Messages.
   the booking cut-off); unpaid holds are released automatically.
 - Staff take payment for holds from the departure list ("Take cash") or a
   booking ("Mark paid").
+- **Bank transfer slips:** in My trips the passenger uploads a photo of the
+  slip (or a screenshot of the transfer) with the bank reference. That keeps
+  the seat while it's checked: the hold is extended once, by the bank-transfer
+  hold time, never past the booking cut-off. Staff see **Bank slips to check**
+  in Bookings, open the slip, then **Mark paid** or send it back with a reason
+  (the passenger is told and can upload again). Slips are private (bucket
+  `payment-slips`): the passenger and office staff only.
 - **Going live with PayHere:** set `PAYHERE_MERCHANT_ID`,
   `PAYHERE_MERCHANT_SECRET` (and `PAYHERE_SANDBOX=false` when approved), add
   your domain in PayHere, then Staff area → Settings → Payments → PayHere.
@@ -137,6 +144,33 @@ trip updates, waitlist offers): sent by `/api/messages/dispatch`; see Messages.
   the signature and amount check out.
 - ⚠️ While Settings → Payments is on *Demo*, card bookings are confirmed
   without taking money. Don't open to the public like that.
+
+## Refunds & payouts
+Whenever money becomes owed to a passenger, the database adds a row to
+`payouts`: a paid booking cancelled with a refund, a paid booking made cheaper
+(a seat dropped), a gateway payment that arrived after the hold expired, or a
+resold seat (the seller's sale money).
+- **Passenger:** My trips and the account page show each refund / payout and
+  its status, and ask for the bank account to send it to (remembered for next
+  time).
+- **Office staff:** Staff area → **Refunds & payouts** lists what is owed
+  with the account details (copy button, CSV export). Send the money, then
+  **Mark paid** with the method and reference; the passenger gets a
+  notification and a text. "Not owed" removes one with a reason, kept on
+  record. Conductors can't see this page or the bank details.
+- Nothing is sent automatically. When the payment gateway is added, a card
+  refund can be issued there and recorded here as "Refunded on the card".
+- The first time the migration runs it adds payouts for bookings cancelled
+  with a refund in the last 30 days. If you already refunded those by hand,
+  mark them paid or "Not owed".
+
+## Wallet, points and free trips (parked)
+Hidden for now: the travel-credit wallet, points / tiers, and "every Nth trip
+free". Switches are in `lib/features.ts` (`WALLET_ENABLED`,
+`REWARDS_ENABLED`). The free-trip reward is also off in the database
+(`app_settings.rewards_enabled`), so it can't be claimed by calling the API
+directly. The wallet and points screens were sample data only and still need
+building before they are switched on.
 
 ## Messages (SMS / WhatsApp)
 The database queues a message when a booking is confirmed, a seat is held,
@@ -168,31 +202,13 @@ native app wrapper later, e.g. Capacitor with a background-location plugin.)
 The conductor taps **Share location** and keeps the phone in the bus; passengers open **Track** on
 their ticket to see the bus on a map, its recent positions, the arrival
 estimate at their stop and crew updates.
-Right now the database keeps the latest position only; the page builds the
-trail from live updates while it's open. To keep the **last 5 positions**
-in the database later, run this and change `loadRecentPositions()` in
-`lib/tracking.ts` to read `bus_location_history` (the map already handles
-a list):
-```sql
-create table public.bus_location_history (
-  id bigint generated always as identity primary key,
-  schedule_id text not null, travel_date date not null,
-  lat double precision not null, lng double precision not null,
-  speed_kmh numeric, heading numeric, recorded_at timestamptz not null default now()
-);
-create index on public.bus_location_history (schedule_id, travel_date, recorded_at desc);
-alter table public.bus_location_history enable row level security;
-create policy "read history" on public.bus_location_history for select using (true);
-create function public.keep_location_history() returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  insert into bus_location_history (schedule_id, travel_date, lat, lng, speed_kmh, heading)
-  values (new.schedule_id, new.travel_date, new.lat, new.lng, new.speed_kmh, new.heading);
-  delete from bus_location_history where schedule_id = new.schedule_id and travel_date = new.travel_date
-    and id not in (select id from bus_location_history where schedule_id = new.schedule_id and travel_date = new.travel_date order by recorded_at desc limit 5);
-  return new;
-end $$;
-create trigger bus_locations_history after insert or update on public.bus_locations for each row execute function public.keep_location_history();
-```
+The database keeps the latest position plus a short history
+(`bus_location_history`: a point each time the bus has moved about 50 m, last
+20 kept per departure), so the trail on the Track page is there as soon as it
+opens and survives a reload. The route map on the search page uses the same
+live position: it shows the bus only while a position shared in the last 20
+minutes exists; otherwise it shows the stops (from their map pins in Routes &
+timetable), the timetable and the road distance.
 
 ## Languages
 English, Tamil and Sinhala (switcher in the header and Profile). Strings live
@@ -241,13 +257,24 @@ speaker review the Tamil and Sinhala before launch.**
   open Business pages or read salaries, passengers can't read any of it.
 
 ## Seat resale
-Runs on the database (`resale_listings`, `list_for_resale`, `buy_resale`):
-a passenger lists a booking for no more than they paid; a buyer pays the
-price + booking fee; in one transaction the seller's booking closes (they're
-paid the price) and the buyer gets a new booking for the same seats.
-**It's off.** Customers see "coming soon" and no links. To launch: Staff area
-→ Settings → Seat resale → On → Save. (Demo mode: `features.resale` in
-`config/operator.ts`.) Payouts to sellers still need a payment gateway.
+Runs on the database (`resale_listings`, `list_for_resale`, `buy_resale`,
+`reserve_resale`): a passenger lists a booking for no more than they paid; a
+buyer pays the price + booking fee; in one transaction the seller's booking
+closes and the buyer gets a new booking for the same seats.
+- **The switch:** Staff area → Settings → **Seat resale** (super admin). Off
+  by default. While it's off customers see no links, the marketplace says
+  resale isn't available, and the database refuses to list, reserve or buy.
+  Turning it off leaves seats with their owners; existing listings come back
+  if it's turned on again. Screens read the switch on every visit, so a change
+  applies straight away. (Demo mode: the same switch, saved in the browser.)
+- **Buyer's payment:** with Settings → Payments on *Demo* the hand-over
+  happens at once and no money is taken (testing only). With *PayHere* the
+  ticket is reserved for 15 minutes, the buyer pays on PayHere, and the seat
+  changes hands only when `/api/payhere/notify` confirms the amount. If the
+  payment arrives after the ticket has gone, a full refund is added to
+  Refunds & payouts.
+- **Seller's money:** each sale adds a "Resale payout" to Refunds & payouts;
+  the seller adds a bank account in My trips and staff pay it.
 
 ## Animation
 Built with Motion (`motion/react`); see `components/motion/` (BlurText and
@@ -294,12 +321,21 @@ you can test installing locally.
 - If notifications are blocked, the card explains how to re-allow them in
   Chrome's site settings. On iPhone, notifications only work after adding the
   app to the Home Screen (iOS 16.4+).
-- **Reminders when the app is closed** need a server: generate VAPID keys
-  (`npx web-push generate-vapid-keys`), put the public key in
-  `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, save each browser's subscription (see
-  `subscribeToPush` in `lib/pwa.ts`) in your database, and send reminders
-  from a scheduled job with the `web-push` package. `public/sw.js` already
-  shows them and opens My trips when tapped.
+- **Reminders when the app is closed** are sent by the server as push
+  notifications. Set up once:
+  1. `npx web-push generate-vapid-keys`
+  2. Put the public key in `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and the private key
+     in `VAPID_PRIVATE_KEY` (server only). Optional `VAPID_SUBJECT`
+     (`mailto:you@example.com`).
+  3. Keep the every-minute cron on `/api/messages/dispatch` running (see
+     Messages); it also needs `SUPABASE_SECRET_KEY`.
+  When a passenger turns reminders on, their browser is saved to their
+  account (`push_subscriptions`). Three hours before their own boarding time
+  they get "Your bus leaves at …". The same channel delivers waitlist offers,
+  "refund paid", "seat sold" and "slip sent back". Signing out unlinks that
+  browser. On iPhone this needs the app on the Home Screen (iOS 16.4+).
+  Without the VAPID keys nothing is pushed and the in-page reminder still
+  works.
 
 ## Typography
 Headings use Bricolage Grotesque; everything else uses Plus Jakarta Sans. Both
@@ -329,7 +365,7 @@ browser). To connect a real database:
 1. **Create a project** at supabase.com (region: Mumbai / `ap-south-1` is
    closest to Sri Lanka).
 2. **Run the SQL**: open `supabase/setup.sql`, paste the whole file into
-   Supabase → SQL Editor → **Run**. It sets up everything (all four
+   Supabase → SQL Editor → **Run**. It sets up everything (all five
    migrations + starting data) and is **safe to run again**: existing
    tables, functions, rules and data are skipped or updated, so it also
    repairs a project where only some migrations ran. (The separate files in
@@ -373,22 +409,27 @@ Sign-in & pages (with Supabase):
 - Signed-in passengers skip the phone-code step (their account is the
   verification). The account page shows real figures from their bookings;
   editing name/phone saves to `profiles`.
-- Resale is on the database but switched off (see Seat resale).
+- Resale is on the database and follows the switch in Settings (see Seat resale).
 - Route pages (`/bus/...`) and the sitemap read the timetable from the
   database, refreshed hourly; new routes get pages automatically.
-- Payment is still simulated in both modes until a gateway is added.
+- Card payment is simulated until Settings → Payments is switched to PayHere
+  and its keys are set (see Payments).
 
 Changing prices or rules later: the database copy lives in the
 `app_settings` table (booking fee, promo, refund policy, bike fees). Keep it in
 step with `config/operator.ts`, which the pages use for display.
 
 ## Going live — still to do
-1. ~~Database~~ and ~~real sign-in~~: done with Supabase (see Database).
-2. Optional: phone-number sign-in with SMS codes (Supabase supports it with
-   an SMS provider such as Twilio, or a local gateway like Dialog/Notify.lk).
-3. **Payments**: a Sri Lankan gateway (e.g. PayHere); create the booking from
-   the gateway's server callback, not the browser.
-4. **SMS** for phone verification and e-tickets (e.g. Dialog/Mobitel APIs).
-5. ~~Bike photos to file storage~~: done (Supabase Storage, private bucket).
-6. The QR code on tickets uses api.qrserver.com; generate it locally instead so
-   booking details aren't sent to a third party.
+1. **Card payments:** PayHere keys + Settings → Payments → PayHere. Until then
+   online card bookings are confirmed without taking money. The card forms on
+   the payment page, the "settle the difference" step in My trips and the
+   resale checkout are placeholders that the gateway replaces.
+2. **Charging for changes:** a change that costs more (extra seat, dearer day)
+   updates the total but doesn't collect the difference yet; do this with the
+   gateway. Changes that cost less already create a refund.
+3. `SUPABASE_SECRET_KEY`, `CRON_SECRET` and the every-minute cron (messages,
+   push, releasing expired holds).
+4. Push keys (see Notifications) and SMS provider keys (see Messages).
+5. Hotline in `config/operator.ts`; legal text and Tamil / Sinhala wording
+   reviewed.
+6. Run `supabase/setup.sql` again after each update (safe to re-run).

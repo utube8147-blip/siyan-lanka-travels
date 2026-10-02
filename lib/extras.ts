@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { OPERATOR } from '@/config/operator';
+import { REWARDS_ENABLED } from './features';
 import { friendlyError, isSupabaseConfigured as DB, supabase } from './supabase/client';
 import { useStore } from './store';
 import { departureDate, genId, getTrip, todayISO, addDays } from './trips';
@@ -45,6 +46,7 @@ function useLocalKey<T>(key: string, fallback: T): [T, (v: T) => void] {
 
 // ------------------------------------------------------- public settings ---
 export interface PublicSettings {
+  bookingFee: number;
   paymentsMode: 'demo' | 'payhere';
   bankDetails: string;
   holdMinutesCounter: number;
@@ -52,6 +54,7 @@ export interface PublicSettings {
   rewardEvery: number;
 }
 const DEFAULT_PUBLIC: PublicSettings = {
+  bookingFee: OPERATOR.bookingFee,
   paymentsMode: 'demo',
   bankDetails: 'Bank of Ceylon, Pettah branch · A/C 0077411020 · Siyan Lanka Travels',
   holdMinutesCounter: 120,
@@ -64,11 +67,12 @@ export function usePublicSettings() {
     if (!DB) return;
     supabase()
       .from('app_settings')
-      .select('payments_mode, bank_details, hold_minutes_counter, hold_minutes_bank, reward_every')
+      .select('booking_fee, payments_mode, bank_details, hold_minutes_counter, hold_minutes_bank, reward_every')
       .maybeSingle()
       .then(({ data }) => {
         if (data)
           setS({
+            bookingFee: data.booking_fee,
             paymentsMode: data.payments_mode,
             bankDetails: data.bank_details || DEFAULT_PUBLIC.bankDetails,
             holdMinutesCounter: data.hold_minutes_counter,
@@ -88,7 +92,7 @@ export function useLoyalty(userId?: string | null): Loyalty | null {
   const { data, ready } = useStore();
   const [remote, setRemote] = useState<Loyalty | null>(null);
   useEffect(() => {
-    if (!DB || !userId) return;
+    if (!REWARDS_ENABLED || !DB || !userId) return;
     supabase()
       .rpc('loyalty_status')
       .then(({ data: rows }) => {
@@ -96,7 +100,7 @@ export function useLoyalty(userId?: string | null): Loyalty | null {
         if (r) setRemote({ trips: r.trips, every: r.every, available: r.available, nextIn: r.next_in });
       });
   }, [userId, data.bookings.length]);
-  if (!userId) return null;
+  if (!REWARDS_ENABLED || !userId) return null;
   if (DB) return remote;
   if (!ready) return null;
   const mine = data.bookings.filter((b) => b.userId === userId);

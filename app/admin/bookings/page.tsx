@@ -10,12 +10,19 @@ import { formatDateLabel, formatLKR, formatTime12, todayISO } from '@/lib/trips'
 import { Badge, Button, Card, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 import { BikeThumb } from '@/components/admin/BikeList';
 import { OPERATOR } from '@/config/operator';
+import { rejectSlip, slipOnFile, slipUrl, useSlips } from '@/lib/money';
 
 type When = 'upcoming' | 'past' | 'all';
 const PAGE = 40;
 
 export default function BookingsPage() {
-  const { data, updateBooking, confirmPayment } = useStore();
+  const { data, updateBooking, confirmPayment, reload } = useStore();
+  const slipFor = useSlips();
+  const [slipsOnly, setSlipsOnly] = useState(false);
+  const [slipImg, setSlipImg] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const toCheck = (b: Booking) => b.status === 'held' && slipOnFile(slipFor(b));
   const { toast, Toast } = useToast();
   const [q, setQ] = useState('');
   const [when, setWhen] = useState<When>('upcoming');
@@ -32,6 +39,7 @@ export default function BookingsPage() {
     const needle = q.trim().toLowerCase();
     return data.bookings
       .filter((b) => (when === 'upcoming' ? b.date >= today : when === 'past' ? b.date < today : true))
+      .filter((b) => !slipsOnly || toCheck(b))
       .filter((b) => status === 'all' || b.status === status)
       .filter((b) => channel === 'all' || b.channel === channel)
       .filter(
@@ -42,7 +50,18 @@ export default function BookingsPage() {
           b.passenger.phone.replace(/\s/g, '').includes(needle.replace(/\s/g, '')),
       )
       .sort((a, b) => (when === 'past' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)) || a.seats[0].localeCompare(b.seats[0], undefined, { numeric: true }));
-  }, [data.bookings, q, when, status, channel, today]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.bookings, q, when, status, channel, today, slipsOnly, slipFor]);
+  const slipCount = useMemo(() => data.bookings.filter(toCheck).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data.bookings, slipFor]);
+  const closeModal = () => {
+    setOpen(null);
+    setConfirmCancel(false);
+    setSlipImg(null);
+    setRejecting(false);
+    setRejectReason('');
+  };
 
   const exportCsv = () => {
     const header = ['Ref', 'Travel date', 'Departure', 'From', 'To', 'Seats', 'Passenger', 'Phone', 'Email', 'Channel', 'Status', 'Total (LKR)', 'Refund (LKR)', 'Booked at'];
@@ -73,9 +92,8 @@ export default function BookingsPage() {
 
   const cancel = async (b: Booking) => {
     const res = await updateBooking(b.id, { status: 'cancelled', refund: { amount: b.total - b.fee, at: new Date().toISOString() } });
-    toast(res.ok ? `${b.ref} cancelled, ${formatLKR(b.total - b.fee)} to refund` : res.reason ?? 'Could not cancel', res.ok ? 'ok' : 'error');
-    setConfirmCancel(false);
-    setOpen(null);
+    toast(res.ok ? `${b.ref} cancelled. ${formatLKR(b.total - b.fee)} is now under Refunds & payouts` : res.reason ?? 'Could not cancel', res.ok ? 'ok' : 'error');
+    closeModal();
   };
 
   const pill = (active: boolean) =>
@@ -127,6 +145,11 @@ export default function BookingsPage() {
             <option value="counter">Counter</option>
             <option value="phone">Phone</option>
           </select>
+          {(slipCount > 0 || slipsOnly) && (
+            <button className={pill(slipsOnly)} aria-pressed={slipsOnly} onClick={() => setSlipsOnly((v) => !v)}>
+              Bank slips to check ({slipCount})
+            </button>
+          )}
           <span className="ml-auto text-[13px] font-semibold text-[#46464f]">{rows.length} bookings</span>
         </div>
       </Card>
@@ -174,6 +197,7 @@ export default function BookingsPage() {
                     <td className="px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap">{formatLKR(b.total)}</td>
                     <td className="px-4 py-3">
                       <Badge value={b.status} />
+                      {toCheck(b) && <div className="mt-1"><Badge value="new" label="Slip to check" /></div>}
                     </td>
                   </tr>
                 ))}
@@ -193,17 +217,14 @@ export default function BookingsPage() {
       {open && (
         <Modal
           title={`${open.ref} · ${open.passenger.name}`}
-          onClose={() => {
-            setOpen(null);
-            setConfirmCancel(false);
-          }}
+          onClose={closeModal}
           footer={
             <>
               {open.status === 'held' && (
                 <Button variant="gold" onClick={async () => {
-                  const r = await confirmPayment(open.id, open.paymentMethod === 'bank' ? 'bank' : 'cash');
+                  const r = await confirmPayment(open.id, open.paymentMethod === 'bank' ? 'bank' : 'cash', open.slip?.reference || undefined);
                   toast(r.ok ? `${open.ref} marked paid` : r.reason ?? 'Could not confirm', r.ok ? 'ok' : 'error');
-                  if (r.ok) setOpen(null);
+                  if (r.ok) closeModal();
                 }}>
                   Mark paid ({open.paymentMethod === 'bank' ? 'bank transfer' : 'cash'})
                 </Button>
@@ -237,7 +258,7 @@ export default function BookingsPage() {
               ['Fare', `${formatLKR(open.fare)} × ${open.seats.length}`],
               ['Fee / discount', `${formatLKR(open.fee)} / ${formatLKR(open.discount)}`],
               ['Total', formatLKR(open.total)],
-              ['Refunded', open.refund ? formatLKR(open.refund.amount) : '—'],
+              ['Refund', open.refund ? `${formatLKR(open.refund.amount)} (see Refunds & payouts)` : '—'],
               ['Booked', new Date(open.createdAt).toLocaleString('en-GB')],
               ['Channel', open.channel],
             ].map(([k, v]) => (
@@ -265,6 +286,48 @@ export default function BookingsPage() {
               ))}
             </div>
           ) : null}
+          {open.status === 'held' && open.paymentMethod === 'bank' && (() => {
+            const slip = slipFor(open);
+            return (
+              <div className="rounded-xl bg-[#f8f9fb] border border-[#edeef0] p-3 space-y-2">
+                <p className="text-[11px] font-bold text-[#686873]">Bank transfer slip</p>
+                {slipOnFile(slip) ? (
+                  <>
+                    <p className="text-[13px] text-[#46464f]">
+                      Uploaded {new Date(slip.uploadedAt).toLocaleString('en-GB')}
+                      {slip.reference && <> · passenger&apos;s reference <b className="text-[#050a44]">{slip.reference}</b></>}. Check {formatLKR(open.total)} has reached the account, then mark it paid.
+                    </p>
+                    {slipImg ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <a href={slipImg} target="_blank" rel="noopener"><img src={slipImg} alt={`Payment slip for ${open.ref}`} className="w-full max-h-[420px] object-contain rounded-lg border border-[#edeef0] bg-white" /></a>
+                    ) : (
+                      <Button size="sm" variant="secondary" onClick={async () => { const u = await slipUrl(open); if (u) setSlipImg(u); else toast("Couldn't open the slip", 'error'); }}>
+                        View slip
+                      </Button>
+                    )}
+                    {rejecting ? (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <input className={`${inputClass} flex-1 min-w-[200px]`} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="What's wrong? The passenger sees this." aria-label="Reason" />
+                        <Button size="md" variant="danger" onClick={async () => {
+                          const r = await rejectSlip(open.id, rejectReason.trim());
+                          toast(r.ok ? 'Slip sent back; the passenger has been told' : r.reason ?? 'Could not save', r.ok ? 'ok' : 'error');
+                          if (r.ok) { reload(); closeModal(); }
+                        }}>
+                          Send back
+                        </Button>
+                      </div>
+                    ) : (
+                      <button className="block text-[12px] font-bold text-[#ba1a1a] underline" onClick={() => setRejecting(true)}>Slip is wrong or the money hasn&apos;t arrived</button>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[13px] text-[#46464f]">
+                    {slip && 'rejectedReason' in slip ? `Last slip was sent back: ${slip.rejectedReason}. Waiting for a new one.` : 'No slip uploaded yet.'}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
           <div>
             <Badge value={open.status} />
           </div>

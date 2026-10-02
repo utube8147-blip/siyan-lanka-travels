@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { X, MapPin, Bus, Clock, Navigation } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 
-// npm i leaflet && npm i -D @types/leaflet
+// Route map for a departure: the stops (from their map pins in Staff area →
+// Routes & timetable), the timetable, and the bus itself when the conductor
+// is sharing its location.
 
 export interface RouteStop {
   id: string;
@@ -25,10 +27,12 @@ export interface RouteData {
   arrivalTime: string;
   duration: string;
   distance: string;
-  /** 0–100, how far along the route the bus is. Used when busPosition is not given. */
-  busProgress: number;
-  /** Real GPS position [lat, lng]. Overrides busProgress when provided. */
+  /** 0–100, how far along these stops the bus is; null when its position isn't known (no bus is drawn). */
+  busProgress: number | null;
+  /** Live GPS position [lat, lng] from the conductor's phone, when it's being shared. */
   busPosition?: [number, number];
+  /** e.g. "2 min ago"; shown next to LIVE. */
+  busSeen?: string;
   stops: RouteStop[];
 }
 
@@ -37,25 +41,6 @@ interface RouteMapOverlayProps {
   onClose: () => void;
   route: RouteData;
 }
-
-export const MOCK_ROUTE: RouteData = {
-  busNumber: 'VD-204',
-  origin: 'Colombo Fort',
-  destination: 'Negombo Bus Stand',
-  departureTime: '08:15 AM',
-  arrivalTime: '09:40 AM',
-  duration: '1h 25m',
-  distance: '37 km',
-  busProgress: 42,
-  stops: [
-    { id: 's1', name: 'Colombo Fort', time: '08:15 AM', progress: 0, lat: 6.9344, lng: 79.85, status: 'passed' },
-    { id: 's2', name: 'Wattala', time: '08:35 AM', progress: 28, lat: 6.9894, lng: 79.8913, status: 'passed' },
-    { id: 's3', name: 'Ja-Ela', time: '08:52 AM', progress: 42, lat: 7.0744, lng: 79.8919, status: 'current' },
-    { id: 's4', name: 'Seeduwa', time: '09:08 AM', progress: 61, lat: 7.1236, lng: 79.8841, status: 'upcoming' },
-    { id: 's5', name: 'Katunayake', time: '09:22 AM', progress: 78, lat: 7.1697, lng: 79.8706, status: 'upcoming' },
-    { id: 's6', name: 'Negombo Bus Stand', time: '09:40 AM', progress: 100, lat: 7.2083, lng: 79.8358, status: 'upcoming' },
-  ],
-};
 
 type LatLng = [number, number];
 type LocatedStop = RouteStop & { lat: number; lng: number };
@@ -132,15 +117,15 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
       }).addTo(map);
 
       const stopCoords: LatLng[] = located.map((s) => [s.lat, s.lng]);
-      const busPos = route.busPosition ?? interpolateBus(located, route.busProgress);
+      const progress = route.busProgress;
+      const busPos: LatLng | null = route.busPosition ?? (progress != null ? interpolateBus(located, progress) : null);
 
-      // Full route (faded) + travelled portion
-      L.polyline(stopCoords, { color: '#c7c5d1', weight: 6, lineCap: 'round' }).addTo(map);
-      const travelled: LatLng[] = [
-        ...located.filter((s) => s.progress < route.busProgress).map((s): LatLng => [s.lat, s.lng]),
-        busPos,
-      ];
-      L.polyline(travelled, { color: '#050a44', weight: 6, lineCap: 'round' }).addTo(map);
+      // Full route; with a known bus position, the part already covered is darker.
+      L.polyline(stopCoords, { color: busPos ? '#c7c5d1' : '#050a44', weight: busPos ? 6 : 5, opacity: busPos ? 1 : 0.75, lineCap: 'round' }).addTo(map);
+      if (busPos && progress != null) {
+        const travelled: LatLng[] = [...located.filter((s) => s.progress < progress).map((s): LatLng => [s.lat, s.lng]), busPos];
+        if (travelled.length > 1) L.polyline(travelled, { color: '#050a44', weight: 6, lineCap: 'round' }).addTo(map);
+      }
 
       // Stops
       located.forEach((s) => {
@@ -160,8 +145,8 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           .addTo(map);
       });
 
-      // Bus
-      L.marker(busPos, {
+      // Bus (only when we actually know where it is)
+      if (busPos) L.marker(busPos, {
         zIndexOffset: 1000,
         icon: L.divIcon({
           className: '',
@@ -170,7 +155,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           html: `<div style="width:34px;height:34px;border-radius:9999px;background:#feb700;border:3px solid #050a44;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 0 6px rgba(254,183,0,.3)">🚌</div>`,
         }),
       })
-        .bindTooltip(`${route.busNumber} is here`, { direction: 'top', offset: [0, -14] })
+        .bindTooltip(`${route.busNumber} is here${route.busSeen ? ` (${route.busSeen})` : ''}`, { direction: 'top', offset: [0, -14] })
         .addTo(map);
 
       if (stopCoords.length === 1) map.setView(stopCoords[0], 15);
@@ -257,8 +242,8 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
                 <Bus className="w-3 h-3" />
                 {route.busNumber}
               </span>
-              <span className="text-[11px] font-semibold text-[#46464f] tracking-[0.02em]">
-                LIVE ROUTE
+              <span className={`text-[11px] font-semibold tracking-[0.02em] ${route.busPosition ? 'text-[#006e1c]' : 'text-[#46464f]'}`}>
+                {route.busPosition ? `LIVE${route.busSeen ? ` · ${route.busSeen}` : ''}` : 'ROUTE & STOPS'}
               </span>
             </div>
             <h2 className="text-[17px] md:text-[20px] leading-[1.3] font-black text-[#050a44] tracking-tight">

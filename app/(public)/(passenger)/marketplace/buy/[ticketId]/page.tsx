@@ -8,7 +8,9 @@ import { OPERATOR } from '@/config/operator';
 import { useQrDataUrl } from '@/lib/qr';
 import { formatLKR } from '@/lib/trips';
 import { useAuth } from '@/contexts/AuthContext';
-import { useResaleListings, buyResale } from '@/lib/resale';
+import { useResaleListings, buyResale, reserveResale } from '@/lib/resale';
+import { startPayhereResale } from '@/lib/payhere-client';
+import { usePublicSettings } from '@/lib/extras';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { PageSkeleton } from '@/lib/store';
 
@@ -37,9 +39,8 @@ function formatExpiry(value: string) {
   return `${digits.slice(0, 2)}/${digits.slice(2)}`;
 }
 
-// Flat marketplace service fee — separate line from the operator's fare,
-// same idea as the platformFee shown on /payment.
-const SERVICE_FEE = 50;
+// The marketplace service fee is the booking fee from Staff area → Settings
+// (the database charges the same figure).
 
 export default function MarketplaceBuyPage() {
   const router = useRouter();
@@ -50,6 +51,10 @@ export default function MarketplaceBuyPage() {
   const ticket = useMemo(() => listings.find((t) => t.id === params.ticketId), [listings, params.ticketId]);
 
   const savings = ticket ? ticket.originalPrice - ticket.listedPrice : 0;
+  const pub = usePublicSettings();
+  const SERVICE_FEE = pub.bookingFee;
+  // Live gateway: the buyer pays on PayHere and the seat changes hands when the payment is confirmed.
+  const payhereLive = isSupabaseConfigured && pub.paymentsMode === 'payhere';
   const totalPrice = ticket ? ticket.listedPrice + SERVICE_FEE : 0;
 
   const [buyerName, setBuyerName] = useState(isLoggedIn && user ? user.user_metadata?.full_name ?? '' : '');
@@ -76,7 +81,7 @@ export default function MarketplaceBuyPage() {
     /^\d{2}\/\d{2}$/.test(expiry) &&
     cvv.length === 3;
   const walletValid = wallet !== '';
-  const canPay = !!ticket && buyerValid && (method === 'card' ? cardValid : walletValid);
+  const canPay = !!ticket && buyerValid && (payhereLive || (method === 'card' ? cardValid : walletValid));
 
   const handlePay = () => {
     setError('');
@@ -90,7 +95,19 @@ export default function MarketplaceBuyPage() {
       return;
     }
     setPurchaseState('processing');
-    // Mock card payment, then the real hand-over in the database.
+    if (payhereLive) {
+      const passenger = { name: buyerName.trim(), gender: buyerGender, phone: buyerPhone.trim() };
+      (async () => {
+        const r = await reserveResale(ticket.id, passenger, { email: buyerEmail.trim(), phone: buyerPhone.trim() });
+        const err = r.ok ? await startPayhereResale(r.data!.orderRef) : r.reason;
+        if (err) {
+          setPurchaseState('idle');
+          setError(err);
+        }
+      })();
+      return;
+    }
+    // Demo payments (Settings → Payments → Demo): no money is taken; the hand-over in the database is real.
     setTimeout(async () => {
       if (!isSupabaseConfigured) {
         setPurchaseRef(`RS-${Math.random().toString(36).slice(2, 10).toUpperCase()}`);
@@ -472,7 +489,15 @@ export default function MarketplaceBuyPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
+          {payhereLive && (
+            <div className="bg-white rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
+              <h2 className="text-[16px] font-semibold mb-[8px]">Payment</h2>
+              <p className="text-[14px] text-[#46464f]">
+                You&apos;ll pay securely on PayHere (card, eZ Cash, mCash or Genie). We hold this ticket for you for 15 minutes; it becomes yours as soon as the payment goes through.
+              </p>
+            </div>
+          )}
+          <div className={`bg-white rounded-xl p-[24px] shadow-sm border border-[#c7c5d1] ${payhereLive ? 'hidden' : ''}`}>
             <h2 className="text-[16px] font-semibold mb-[16px]">Payment Method</h2>
 
             <div className="flex p-1 bg-[#f2f4f6] rounded-xl mb-[20px] border border-[#e1e2e4]/60 max-w-sm">

@@ -34,6 +34,7 @@ select 'gateway confirm (server key) → ' || status || ' / ' || payment_status 
 update app_settings set payments_mode = 'demo';
 
 select '--- rewards (every 10 trips)';
+reset role; update app_settings set rewards_enabled = true; -- off by default since migration 5
 insert into bookings (ref, schedule_id, travel_date, from_stop, to_stop, seats, passenger_name, user_id, fare, total, status)
 select 'OLD-' || g, 'sch-cmb-2100', current_date - 7*g, 'Colombo', 'Batticaloa', array['5A'], 'Alex A', 'aaaaaaaa-0000-0000-0000-000000000001', 2400, 2450, 'boarded'
 from generate_series(1, 10) g;

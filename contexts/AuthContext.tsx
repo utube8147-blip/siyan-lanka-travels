@@ -5,6 +5,7 @@
 // - Demo mode (no keys): a pretend user so the site can be clicked through.
 
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
+import { forgetPushSubscription } from '@/lib/pwa';
 import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase, friendlyError } from '@/lib/supabase/client';
 import { toE164LK } from '@/lib/phone';
@@ -210,8 +211,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    if (mode === 'supabase') await supabase().auth.signOut();
-    else setDemoUser(null);
+    if (mode === 'supabase') {
+      await forgetPushSubscription(); // this browser stops getting this account's reminders
+      await supabase().auth.signOut();
+    } else setDemoUser(null);
     setUserState(null);
   };
 

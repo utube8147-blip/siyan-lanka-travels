@@ -11,6 +11,10 @@ import { useQrDataUrl } from '@/lib/qr';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { NextTripPanel } from '@/components/trip/NextTripPanel';
 import { LoyaltyCard, PastTripsCard, WaitlistCard } from '@/components/trip/SidebarCards';
+import { PaymentSlipCard } from '@/components/trip/PaymentSlipCard';
+import { PayoutsCard } from '@/components/trip/PayoutsCard';
+import { PaymentReturnNotice } from '@/components/trip/PaymentReturnNotice';
+import { REWARDS_ENABLED } from '@/lib/features';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { toBookingView, type BookingView, type ViewStatus } from '@/lib/bookingView';
@@ -797,7 +801,7 @@ export default function MyBookingsPage() {
                     <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Upcoming</span>
                     <span className="text-[18px] font-bold">{upcoming.length} Trips</span>
                   </div>
-                  {authMode === 'demo' && (
+                  {REWARDS_ENABLED && authMode === 'demo' && (
 <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
                     <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Rewards</span>
                     <span className="text-[18px] font-bold">{(rewardsPoints / 1000).toFixed(1)}k pts</span>
@@ -816,7 +820,10 @@ export default function MyBookingsPage() {
           </section>
 
           {/* Upcoming journeys */}
+          <PaymentReturnNotice />
           <NextTripPanel />
+          <PaymentSlipCard />
+          <PayoutsCard />
           <section>
             <div className="flex items-center justify-between mb-[16px]">
               <h2 className="text-[18px] font-bold text-[#050a44] flex items-center gap-2">
@@ -956,10 +963,12 @@ export default function MyBookingsPage() {
         {/* Sidebar — informational only now; actions live on the booking they affect */}
         <aside className="w-full lg:w-[300px] flex-shrink-0 space-y-[20px]">
           <NotificationOptIn />
-          <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
-            <LoyaltyCard />
           <WaitlistCard />
           <PastTripsCard />
+          {/* Rewards are parked (lib/features.ts → REWARDS_ENABLED). */}
+          {REWARDS_ENABLED && <LoyaltyCard />}
+          {REWARDS_ENABLED && authMode === 'demo' && (
+          <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
             <h4 className="font-bold text-[#050a44] text-[14px]">{OPERATOR.shortName} Rewards</h4>
             <p className="text-[12px] text-[#46464f]">
               You're only <span className="font-bold text-[#050a44]">{pointsToNextReward} pts</span> away from a free Gold-class upgrade!
@@ -974,6 +983,7 @@ export default function MyBookingsPage() {
               Explore Perks →
             </button>
           </div>
+          )}
 
 
           <div className="bg-[#f2f4f6] rounded-2xl p-[20px] border border-[#e1e2e4] space-y-[8px]">

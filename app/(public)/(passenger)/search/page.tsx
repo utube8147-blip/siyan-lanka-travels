@@ -1,7 +1,7 @@
 // app/(public)/(passenger)/search/page.tsx
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { OPERATOR } from '@/config/operator';
@@ -24,6 +24,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { RouteMapOverlay, type RouteData, type RouteStop } from '@/components/RouteMapOverlay';
+import { km, useLiveTrip } from '@/lib/extras';
 
 interface Schedule {
   id: string;
@@ -61,14 +62,18 @@ function toSchedule(t: Trip): Schedule {
   };
 }
 
-// Turns "6h 30m" into a rough mock distance, assuming ~55km/h average — purely
-// cosmetic for the route overlay's stat row until real route data is wired in.
-function estimateDistanceKm(durationLabel: string) {
-  const hMatch = durationLabel.match(/(\d+)h/);
-  const mMatch = durationLabel.match(/(\d+)m/);
-  const hours = (hMatch ? parseInt(hMatch[1], 10) : 0) + (mMatch ? parseInt(mMatch[1], 10) : 0) / 60;
-  return `${Math.round(hours * 55)} km`;
+// Road distance between the stops' map pins. Straight lines between pins come
+// out ~12% short of the road on this route, so they're scaled up and rounded.
+const ROAD_FACTOR = 1.12;
+function routeDistanceLabel(stops: { lat?: number; lng?: number }[]) {
+  if (stops.length < 2 || stops.some((s) => s.lat == null || s.lng == null)) return '—';
+  let total = 0;
+  for (let i = 1; i < stops.length; i++) total += km({ lat: stops[i - 1].lat!, lng: stops[i - 1].lng! }, { lat: stops[i].lat!, lng: stops[i].lng! });
+  const road = total * ROAD_FACTOR;
+  return `~${road < 20 ? Math.round(road) : Math.round(road / 5) * 5} km`;
 }
+/** A shared position older than this isn't shown as "live". */
+const LIVE_MAX_AGE_MIN = 20;
 
 type SortField = 'departure' | 'price';
 
@@ -218,8 +223,13 @@ function SearchPageInner() {
 
   const activeFilterCount = busTypeFilter !== 'all' ? 1 : 0;
 
-  // Builds the RouteMapOverlay's mock RouteData from a schedule + the current
-  // from/to/via search fields. Swap this out for real stop/geo data later.
+  const closeRoute = useCallback(() => setRouteSchedule(null), []);
+  // The bus's position, when the conductor is sharing it for this departure.
+  const live = useLiveTrip(routeSchedule?.trip.scheduleId, routeSchedule?.trip.date);
+
+  // RouteMapOverlay data for a departure: the passenger's part of the route
+  // with each stop's map pin and timetable time, the road distance, and the
+  // live bus position when there is a fresh one.
   const buildRouteData = (s: Schedule): RouteData => {
     const trip = s.trip;
     const route = data.routes.find((r) => r.id === trip.routeId);
@@ -237,9 +247,27 @@ function SearchPageInner() {
         name: x.name,
         time: formatTime12(hhmm),
         progress: Math.round(((x.offsetMin - segment[0].offsetMin) / span) * 100),
-        status: i === 0 ? 'passed' : 'upcoming',
+        lat: x.lat,
+        lng: x.lng,
+        status: 'upcoming',
       };
     });
+
+    // Live bus: fresh position only; mark the stops it has passed.
+    const loc = live.location;
+    const ageMin = loc ? (Date.now() - new Date(loc.updatedAt).getTime()) / 60000 : Infinity;
+    let busPosition: [number, number] | undefined;
+    let busProgress: number | null = null;
+    if (loc && ageMin <= LIVE_MAX_AGE_MIN) {
+      const dist = stops.map((st) => (st.lat != null && st.lng != null ? km(loc, { lat: st.lat, lng: st.lng }) : Infinity));
+      const near = dist.indexOf(Math.min(...dist));
+      // Shown only while the bus is on (or within ~15 km of) this stretch.
+      if (near >= 0 && dist[near] < 15) {
+        busPosition = [loc.lat, loc.lng];
+        busProgress = stops[near].progress;
+        stops.forEach((st, i) => (st.status = i < near ? 'passed' : i === near && dist[near] < 2 ? 'current' : 'upcoming'));
+      }
+    }
 
     return {
       busNumber: trip.bus.regNo,
@@ -248,11 +276,21 @@ function SearchPageInner() {
       departureTime: s.departure,
       arrivalTime: s.arrival,
       duration: s.durationLabel,
-      distance: estimateDistanceKm(s.durationLabel),
-      busProgress: 8,
+      distance: routeDistanceLabel(segment),
+      busProgress,
+      busPosition,
+      busSeen: busPosition ? (ageMin < 1 ? 'just now' : `${Math.round(ageMin)} min ago`) : undefined,
       stops,
     };
   };
+
+  // Memoised so the map isn't rebuilt on every keystroke, only when the
+  // departure or the bus position changes.
+  const routeData = useMemo(
+    () => (routeSchedule ? buildRouteData(routeSchedule) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routeSchedule, live.location, data.routes],
+  );
 
   const inputClass = 'w-full bg-white border-none rounded-xl font-medium outline-none focus:ring-1 focus:ring-[#050a44]';
 
@@ -621,12 +659,12 @@ function SearchPageInner() {
         </div>
       </main>
 
-      {/* Route map overlay — mock map for now, opens when a card's route row is clicked */}
-      {routeSchedule && (
+      {/* Route map overlay: real stops, timetable and (when shared) the live bus */}
+      {routeSchedule && routeData && (
         <RouteMapOverlay
           isOpen={!!routeSchedule}
-          onClose={() => setRouteSchedule(null)}
-          route={buildRouteData(routeSchedule)}
+          onClose={closeRoute}
+          route={routeData}
         />
       )}
     </div>
