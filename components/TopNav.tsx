@@ -19,15 +19,18 @@ import { Wordmark } from './Wordmark';
 import { ThemeToggle } from './ThemeToggle';
 import { InstallAppButton } from './InstallAppButton';
 import { LanguageSwitcher, useT } from '@/lib/i18n';
+import { label } from 'motion/react-client';
 
 // Desktop/tablet header (md and up). Phones use components/mobile/* instead:
 // a slim top bar and a bottom tab bar, like a native app.
 // Header links = where you go to travel. Account things live only in the
 // avatar menu, so nothing appears twice.
 const BASE_LINKS = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/search', label: 'Book', icon: Search },
   { href: '/my-bookings', label: 'My trips', icon: Ticket },
 ];
+
 const RESALE_LINK = { href: '/marketplace', label: 'Resale', icon: Store };
 
 export function TopNav() {

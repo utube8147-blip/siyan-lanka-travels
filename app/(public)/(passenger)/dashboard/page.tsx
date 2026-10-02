@@ -553,17 +553,6 @@ export default function Dashboard() {
                 <p className="text-[14px] font-bold text-[#050a44]">{details.phone}</p>
               </div>
             </div>
-            <div className="flex items-center gap-[16px]">
-              <div className="w-10 h-10 rounded-full bg-[#f2f4f6] flex items-center justify-center text-[#46464f]">
-                <span className="material-symbols-outlined text-[20px]">badge</span>
-              </div>
-              {authMode === 'demo' && (
-<div>
-                <p className="text-[11px] font-bold text-[#6b6d78] uppercase tracking-wide">National ID</p>
-                <p className="text-[14px] font-bold text-[#050a44]">ID-8849-2024-X</p>
-              </div>
-)}
-            </div>
           </div>
 
           {/* Support & Help — every other passenger-facing page (refund, my-bookings)
@@ -583,81 +572,81 @@ export default function Dashboard() {
         </div>
 
         {/* Wallet & rewards are parked (lib/features.ts → WALLET_ENABLED); everyone gets the trip figures. */}
-        <div className="md:col-span-8 flex flex-col gap-[24px]">
+        <div className="md:col-span-8 flex flex-col gap-[24px] h-full">
           {WALLET_ENABLED && authMode === 'demo' ? (
-<div className="grid grid-cols-1 md:grid-cols-2 gap-[24px]">
-            {/* Wallet */}
-            <div className="keep-navy relative h-[200px] rounded-2xl p-[24px] text-white shadow-[0_10px_28px_-8px_rgba(0,0,0,0.55)] overflow-hidden bg-[#111216] ring-1 ring-[#feb700]/25">
-              <div className="absolute inset-0 bg-gradient-to-br from-[#2a2b31] via-[#17181c] to-[#0b0c0e]" />
-              <div className="absolute inset-0 bg-[linear-gradient(115deg,transparent_35%,rgba(255,255,255,0.08)_50%,transparent_65%)]" />
-              <div
-                className="absolute inset-0 opacity-[0.05] mix-blend-overlay"
-                style={{ backgroundImage: 'repeating-linear-gradient(115deg, #ffffff 0px, #ffffff 1px, transparent 1px, transparent 5px)' }}
-              />
-              <div className="absolute -right-16 -bottom-16 w-56 h-56 bg-[#feb700] opacity-[0.14] rounded-full blur-3xl" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-[24px]">
+              {/* Wallet */}
+              <div className="keep-navy relative h-[200px] rounded-2xl p-[24px] text-white shadow-[0_10px_28px_-8px_rgba(0,0,0,0.55)] overflow-hidden bg-[#111216] ring-1 ring-[#feb700]/25">
+                <div className="absolute inset-0 bg-gradient-to-br from-[#2a2b31] via-[#17181c] to-[#0b0c0e]" />
+                <div className="absolute inset-0 bg-[linear-gradient(115deg,transparent_35%,rgba(255,255,255,0.08)_50%,transparent_65%)]" />
+                <div
+                  className="absolute inset-0 opacity-[0.05] mix-blend-overlay"
+                  style={{ backgroundImage: 'repeating-linear-gradient(115deg, #ffffff 0px, #ffffff 1px, transparent 1px, transparent 5px)' }}
+                />
+                <div className="absolute -right-16 -bottom-16 w-56 h-56 bg-[#feb700] opacity-[0.14] rounded-full blur-3xl" />
 
-              <div className="relative z-10 h-full flex flex-col justify-between">
-                <div className="flex items-start justify-between">
+                <div className="relative z-10 h-full flex flex-col justify-between">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-[#ffd54a] uppercase tracking-[0.15em] opacity-90">Available Credits</p>
+                      <h3 className="text-[34px] font-extrabold tracking-tight mt-1 tabular-nums">{formatLKR(walletBalance)}</h3>
+                    </div>
+                    <div className="w-9 h-7 rounded-[5px] bg-gradient-to-br from-[#ffd54a] to-[#b47c00] shadow-inner mt-1" />
+                  </div>
+
+                  <div className="flex items-end justify-between">
+                    <p className="text-[11px] font-medium text-white/70 tracking-[0.1em] tabular-nums">•••• •••• •••• 4821</p>
+                    <div className="flex gap-[10px]">
+                      <button
+                        onClick={() => setAddingFunds(true)}
+                        className="bg-[#ffd54a] text-[#050a44] text-[12px] font-bold px-4 py-2 rounded-lg hover:bg-[#ffe27a] transition-colors"
+                      >
+                        Add Funds
+                      </button>
+                      <button
+                        onClick={() => setViewingHistory(true)}
+                        className="bg-white/10 text-white border border-white/25 text-[12px] font-bold px-4 py-2 rounded-lg hover:bg-white/20 transition-colors"
+                      >
+                        History
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rewards */}
+              <div className="on-gold relative h-[200px] rounded-2xl p-[24px] overflow-hidden shadow-[0_8px_24px_-6px_rgba(180,124,0,0.35)] bg-gradient-to-br from-[#feb700] to-[#e6a300]">
+                <div
+                  className="absolute inset-0 opacity-[0.08]"
+                  style={{ backgroundImage: 'radial-gradient(circle, #6b4b00 1px, transparent 1px)', backgroundSize: '14px 14px' }}
+                />
+                <div className="relative z-10 h-full flex flex-col justify-between text-[#3d2b00]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[#3d2b00] text-[18px]">workspace_premium</span>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#3d2b00]">Gold Tier</p>
+                    </div>
+                    <div className="w-9 h-9 rounded-full bg-white/40 border border-[#7c5800]/20 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-[#3d2b00] text-[18px]">stars</span>
+                    </div>
+                  </div>
+
                   <div>
-                    <p className="text-[10px] font-bold text-[#ffd54a] uppercase tracking-[0.15em] opacity-90">Available Credits</p>
-                    <h3 className="text-[34px] font-extrabold tracking-tight mt-1 tabular-nums">{formatLKR(walletBalance)}</h3>
-                  </div>
-                  <div className="w-9 h-7 rounded-[5px] bg-gradient-to-br from-[#ffd54a] to-[#b47c00] shadow-inner mt-1" />
-                </div>
-
-                <div className="flex items-end justify-between">
-                  <p className="text-[11px] font-medium text-white/70 tracking-[0.1em] tabular-nums">•••• •••• •••• 4821</p>
-                  <div className="flex gap-[10px]">
-                    <button
-                      onClick={() => setAddingFunds(true)}
-                      className="bg-[#ffd54a] text-[#050a44] text-[12px] font-bold px-4 py-2 rounded-lg hover:bg-[#ffe27a] transition-colors"
-                    >
-                      Add Funds
-                    </button>
-                    <button
-                      onClick={() => setViewingHistory(true)}
-                      className="bg-white/10 text-white border border-white/25 text-[12px] font-bold px-4 py-2 rounded-lg hover:bg-white/20 transition-colors"
-                    >
-                      History
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Rewards */}
-            <div className="on-gold relative h-[200px] rounded-2xl p-[24px] overflow-hidden shadow-[0_8px_24px_-6px_rgba(180,124,0,0.35)] bg-gradient-to-br from-[#feb700] to-[#e6a300]">
-              <div
-                className="absolute inset-0 opacity-[0.08]"
-                style={{ backgroundImage: 'radial-gradient(circle, #6b4b00 1px, transparent 1px)', backgroundSize: '14px 14px' }}
-              />
-              <div className="relative z-10 h-full flex flex-col justify-between text-[#3d2b00]">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[#3d2b00] text-[18px]">workspace_premium</span>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#3d2b00]">Gold Tier</p>
-                  </div>
-                  <div className="w-9 h-9 rounded-full bg-white/40 border border-[#7c5800]/20 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[#3d2b00] text-[18px]">stars</span>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-[28px] font-extrabold tabular-nums leading-none">{rewardsPoints.toLocaleString()} pts</h3>
-                  <div className="mt-4">
-                    <div className="w-full bg-black/10 h-1.5 rounded-full">
-                      <div className="bg-[#3d2b00] h-full rounded-full" style={{ width: `${rewardsProgress}%` }} />
-                    </div>
-                    <div className="flex justify-between mt-[6px]">
-                      <p className="text-[10px] font-bold text-[#3d2b00] uppercase tracking-wide">Gold</p>
-                      <p className="text-[11px] font-semibold text-[#3d2b00]">{pointsToNextTier.toLocaleString()} pts to Platinum</p>
+                    <h3 className="text-[28px] font-extrabold tabular-nums leading-none">{rewardsPoints.toLocaleString()} pts</h3>
+                    <div className="mt-4">
+                      <div className="w-full bg-black/10 h-1.5 rounded-full">
+                        <div className="bg-[#3d2b00] h-full rounded-full" style={{ width: `${rewardsProgress}%` }} />
+                      </div>
+                      <div className="flex justify-between mt-[6px]">
+                        <p className="text-[10px] font-bold text-[#3d2b00] uppercase tracking-wide">Gold</p>
+                        <p className="text-[11px] font-semibold text-[#3d2b00]">{pointsToNextTier.toLocaleString()} pts to Platinum</p>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-) : (
+          ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-[16px]">
               {[
                 { label: 'Upcoming trips', value: upcoming.length, icon: 'event_upcoming' },
@@ -674,12 +663,14 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-)}
+          )}
 
           <PayoutsCard />
 
-          {/* Upcoming Journeys — now sourced from the real bookings list */}
-          <div className="bg-white border border-[#c7c5d1] p-[24px] rounded-2xl shadow-sm">
+          {/* Upcoming Journeys — sourced from the real bookings list.
+              flex-1 makes it absorb leftover height so the right column
+              matches the Personal Details card on the left. */}
+          <div className="bg-white border border-[#c7c5d1] p-[24px] rounded-2xl shadow-sm flex-1 flex flex-col">
             <div className="flex justify-between items-center mb-[20px]">
               <h2 className="text-[16px] font-semibold text-[#050a44]">Upcoming Journeys</h2>
               <Link className="text-[#050a44] text-[12px] font-bold hover:underline" href="/my-bookings">
@@ -688,13 +679,13 @@ export default function Dashboard() {
             </div>
 
             {upcoming.length === 0 ? (
-              <div className="bg-[#f2f4f6] rounded-xl p-[24px] text-center">
+              <div className="bg-[#f2f4f6] rounded-xl p-[24px] text-center flex-1 flex items-center justify-center">
                 <p className="text-[13px] text-[#46464f]">No upcoming journeys. Time to plan your next trip!</p>
               </div>
             ) : (
-              <div className="flex gap-[16px] overflow-x-auto pb-2 no-scrollbar">
+              <div className="flex gap-[16px] overflow-x-auto pb-2 no-scrollbar flex-1 items-stretch">
                 {upcoming.map((b) => (
-                  <div key={b.id} className="min-w-[300px] bg-[#f2f4f6] p-[16px] rounded-xl border border-[#c7c5d1] flex flex-col gap-[16px]">
+                  <div key={b.id} className="min-w-[300px] bg-[#f2f4f6] p-[16px] rounded-xl border border-[#c7c5d1] flex flex-col justify-between gap-[16px]">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-2">
                         <OperatorBadge operator={b.operator} />
@@ -741,85 +732,85 @@ export default function Dashboard() {
         <div className="md:col-span-12 grid grid-cols-1 md:grid-cols-3 gap-[24px]">
           {/* My Resale Listings */}
           {resaleOn && (
-<div className="md:col-span-1 bg-white border border-[#c7c5d1] p-[24px] rounded-2xl shadow-sm h-full flex flex-col">
-            <div className="flex justify-between items-start mb-[20px]">
-              <h2 className="text-[16px] font-semibold text-[#050a44]">My Resale Listings</h2>
-              {totalResaleEarned > 0 && (
-                <p className="text-[11px] font-bold text-[#006e1c] bg-[#006e1c]/10 px-2.5 py-1 rounded-full">
-                  {formatLKR(totalResaleEarned)} earned
-                </p>
-              )}
-            </div>
+            <div className="md:col-span-1 bg-white border border-[#c7c5d1] p-[24px] rounded-2xl shadow-sm h-full flex flex-col">
+              <div className="flex justify-between items-start mb-[20px]">
+                <h2 className="text-[16px] font-semibold text-[#050a44]">My Resale Listings</h2>
+                {totalResaleEarned > 0 && (
+                  <p className="text-[11px] font-bold text-[#006e1c] bg-[#006e1c]/10 px-2.5 py-1 rounded-full">
+                    {formatLKR(totalResaleEarned)} earned
+                  </p>
+                )}
+              </div>
 
-            <div className="flex flex-col gap-[12px] flex-1">
-              {listings.length === 0 && (
-                <p className="text-[12px] text-[#46464f] text-center py-[8px]">No listings yet.</p>
-              )}
-              {listings.map((listing) => (
-                <div key={listing.id} className="p-[14px] bg-[#f2f4f6] rounded-xl border border-[#c7c5d1] flex flex-col gap-[10px]">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-[13px] font-bold text-[#050a44]">{listing.route}</p>
-                      <p className="text-[11px] font-medium text-[#46464f]">{listing.date} · Seat {listing.seat}</p>
+              <div className="flex flex-col gap-[12px] flex-1">
+                {listings.length === 0 && (
+                  <p className="text-[12px] text-[#46464f] text-center py-[8px]">No listings yet.</p>
+                )}
+                {listings.map((listing) => (
+                  <div key={listing.id} className="p-[14px] bg-[#f2f4f6] rounded-xl border border-[#c7c5d1] flex flex-col gap-[10px]">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-[13px] font-bold text-[#050a44]">{listing.route}</p>
+                        <p className="text-[11px] font-medium text-[#46464f]">{listing.date} · Seat {listing.seat}</p>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide shrink-0 ${RESALE_STATUS_BADGE[listing.status].className}`}>
+                        {RESALE_STATUS_BADGE[listing.status].label}
+                      </span>
                     </div>
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide shrink-0 ${RESALE_STATUS_BADGE[listing.status].className}`}>
-                      {RESALE_STATUS_BADGE[listing.status].label}
-                    </span>
-                  </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-baseline gap-[6px]">
-                      <p className="text-[15px] font-extrabold text-[#050a44]">{formatLKR(listing.listedPrice)}</p>
-                      {listing.listedPrice < listing.originalPrice && (
-                        <p className="text-[11px] font-medium text-[#6b6d78] line-through">{formatLKR(listing.originalPrice)}</p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-baseline gap-[6px]">
+                        <p className="text-[15px] font-extrabold text-[#050a44]">{formatLKR(listing.listedPrice)}</p>
+                        {listing.listedPrice < listing.originalPrice && (
+                          <p className="text-[11px] font-medium text-[#6b6d78] line-through">{formatLKR(listing.originalPrice)}</p>
+                        )}
+                      </div>
+
+                      {listing.status === 'active' && (
+                        <div className="flex items-center gap-[12px]">
+                          <button onClick={() => setEditingListing(listing)} className="text-[#050a44] font-bold text-[11px] hover:underline">
+                            Edit
+                          </button>
+                          <button onClick={() => setCancellingListing(listing)} className="text-[#ba1a1a] font-bold text-[11px] hover:underline">
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                      {listing.status === 'sold' && (
+                        <button onClick={() => setReceiptListing(listing)} className="text-[#050a44] font-bold text-[11px] hover:underline">
+                          Receipt
+                        </button>
+                      )}
+                      {listing.status === 'expired' && (
+                        <button
+                          onClick={async () => {
+                            if (db) {
+                              const r = await listForResale(listing.bookingId, listing.listedPrice);
+                              if (!r.ok) return setToast(r.reason);
+                              return my.reload();
+                            }
+                            setListings((prev) => prev.map((l) => (l.id === listing.id ? { ...l, status: 'active' } : l)));
+                          }}
+                          className="text-[#050a44] font-bold text-[11px] hover:underline"
+                        >
+                          Relist
+                        </button>
                       )}
                     </div>
-
-                    {listing.status === 'active' && (
-                      <div className="flex items-center gap-[12px]">
-                        <button onClick={() => setEditingListing(listing)} className="text-[#050a44] font-bold text-[11px] hover:underline">
-                          Edit
-                        </button>
-                        <button onClick={() => setCancellingListing(listing)} className="text-[#ba1a1a] font-bold text-[11px] hover:underline">
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                    {listing.status === 'sold' && (
-                      <button onClick={() => setReceiptListing(listing)} className="text-[#050a44] font-bold text-[11px] hover:underline">
-                        Receipt
-                      </button>
-                    )}
-                    {listing.status === 'expired' && (
-                      <button
-                        onClick={async () => {
-                          if (db) {
-                            const r = await listForResale(listing.bookingId, listing.listedPrice);
-                            if (!r.ok) return setToast(r.reason);
-                            return my.reload();
-                          }
-                          setListings((prev) => prev.map((l) => (l.id === listing.id ? { ...l, status: 'active' } : l)));
-                        }}
-                        className="text-[#050a44] font-bold text-[11px] hover:underline"
-                      >
-                        Relist
-                      </button>
-                    )}
                   </div>
-                </div>
-              ))}
+                ))}
 
-              <button
-                onClick={() => setAddingListing(true)}
-                className="border-2 border-dashed border-[#c7c5d1] rounded-xl p-[20px] flex flex-col items-center justify-center text-center text-[#46464f] hover:border-[#050a44] hover:text-[#050a44] hover:bg-[#f2f4f6]/60 transition-colors"
-              >
-                <span className="material-symbols-outlined text-[28px] mb-1.5">add_circle</span>
-                <p className="text-[12px] font-medium">Sell your unused ticket</p>
-                <span className="mt-1.5 text-[#050a44] font-bold text-[12px] underline">List Now</span>
-              </button>
+                <button
+                  onClick={() => setAddingListing(true)}
+                  className="border-2 border-dashed border-[#c7c5d1] rounded-xl p-[20px] flex flex-col items-center justify-center text-center text-[#46464f] hover:border-[#050a44] hover:text-[#050a44] hover:bg-[#f2f4f6]/60 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[28px] mb-1.5">add_circle</span>
+                  <p className="text-[12px] font-medium">Sell your unused ticket</p>
+                  <span className="mt-1.5 text-[#050a44] font-bold text-[12px] underline">List Now</span>
+                </button>
+              </div>
             </div>
-          </div>
-)}
+          )}
 
           {/* Full Booking History — sourced from the real bookings list */}
           <div className={`${resaleOn ? 'md:col-span-2' : 'md:col-span-3'} bg-white border border-[#c7c5d1] rounded-2xl shadow-sm overflow-hidden`}>

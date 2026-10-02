@@ -778,38 +778,39 @@ export default function MyBookingsPage() {
       <div className="flex flex-col lg:flex-row gap-[32px]">
         {/* Main content */}
         <div className="flex-1 space-y-[40px] min-w-0">
-          {/* Hero */}
-          <section className="keep-navy relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1c1d22] to-[#111216] p-[32px] md:p-[40px] text-white shadow-lg">
+          {/* Hero — follows the theme: light card in light mode, charcoal in dark
+              mode (the dark-mode CSS remaps these colours; no `keep-navy` here). */}
+          <section className="relative overflow-hidden rounded-2xl bg-white border border-[#e1e2e4] p-[32px] md:p-[40px] text-[#050a44] shadow-sm">
             <div
-              className="absolute inset-0 opacity-[0.07] pointer-events-none"
+              className="absolute inset-0 opacity-[0.05] pointer-events-none"
               style={{
-                backgroundImage: 'radial-gradient(circle, #ffffff 1.5px, transparent 1.5px)',
+                backgroundImage: 'radial-gradient(circle, #050a44 1.5px, transparent 1.5px)',
                 backgroundSize: '18px 18px',
               }}
             />
             <div className="relative flex flex-col md:flex-row justify-between items-center gap-[24px]">
               <div className="space-y-[12px] max-w-md text-center md:text-left">
-                <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-[#ffd54a]">
+                <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-[#7c5800]">
                   {OPERATOR.name}
                 </span>
                 <h1 className="hidden md:block text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Your Journeys</h1>
-                <p className="text-white/70 text-[14px] md:text-[15px]">
+                <p className="text-[#46464f] text-[14px] md:text-[15px]">
                   Change seats, move to another day or cancel. Show the ticket to the conductor when you board.
                 </p>
                 <div className="flex gap-[12px] pt-[8px] justify-center md:justify-start">
-                  <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
-                    <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Upcoming</span>
+                  <div className="bg-[#f2f4f6] px-4 py-2 rounded-lg border border-[#e1e2e4]">
+                    <span className="block text-[10px] uppercase tracking-widest text-[#7c5800] font-bold">Upcoming</span>
                     <span className="text-[18px] font-bold">{upcoming.length} Trips</span>
                   </div>
                   {REWARDS_ENABLED && authMode === 'demo' && (
-<div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
-                    <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Rewards</span>
-                    <span className="text-[18px] font-bold">{(rewardsPoints / 1000).toFixed(1)}k pts</span>
-                  </div>
-)}
+                    <div className="bg-[#f2f4f6] px-4 py-2 rounded-lg border border-[#e1e2e4]">
+                      <span className="block text-[10px] uppercase tracking-widest text-[#7c5800] font-bold">Rewards</span>
+                      <span className="text-[18px] font-bold">{(rewardsPoints / 1000).toFixed(1)}k pts</span>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="relative hidden md:block w-full md:w-80 h-40 md:h-48 rounded-xl overflow-hidden shadow-xl border-4 border-white/10 flex-shrink-0">
+              <div className="relative hidden md:block w-full md:w-80 h-40 md:h-48 rounded-xl overflow-hidden shadow-xl border-4 border-[#e1e2e4] flex-shrink-0">
                 <img
                   alt="Siyan Lanka coach interior"
                   className="w-full h-full object-cover"
@@ -917,20 +918,20 @@ export default function MyBookingsPage() {
                             </button>
                           ) : (
                             <>
-                            <a
-                              href={`/track?ref=${booking.bookingRef}`}
-                              className="bg-[#feb700] text-[#14120a] px-3 py-2.5 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
-                            >
-                              <span className="material-symbols-outlined text-[14px]">my_location</span>
-                              Track
-                            </a>
-                            <button
-                              onClick={() => setTicketTarget(booking)}
-                              className="bg-[#050a44] text-white px-4 py-2.5 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
-                            >
-                              View Ticket
-                              <span className="material-symbols-outlined text-[14px]">confirmation_number</span>
-                            </button>
+                              <a
+                                href={`/track?ref=${booking.bookingRef}`}
+                                className="bg-[#feb700] text-[#14120a] px-3 py-2.5 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">my_location</span>
+                                Track
+                              </a>
+                              <button
+                                onClick={() => setTicketTarget(booking)}
+                                className="bg-[#050a44] text-white px-4 py-2.5 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                              >
+                                View Ticket
+                                <span className="material-symbols-outlined text-[14px]">confirmation_number</span>
+                              </button>
                             </>
                           )}
                         </div>
@@ -968,23 +969,22 @@ export default function MyBookingsPage() {
           {/* Rewards are parked (lib/features.ts → REWARDS_ENABLED). */}
           {REWARDS_ENABLED && <LoyaltyCard />}
           {REWARDS_ENABLED && authMode === 'demo' && (
-          <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
-            <h4 className="font-bold text-[#050a44] text-[14px]">{OPERATOR.shortName} Rewards</h4>
-            <p className="text-[12px] text-[#46464f]">
-              You're only <span className="font-bold text-[#050a44]">{pointsToNextReward} pts</span> away from a free Gold-class upgrade!
-            </p>
-            <div className="w-full bg-[#f2f4f6] h-2 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#feb700] to-[#ffe08a]"
-                style={{ width: `${rewardsProgress}%` }}
-              />
+            <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
+              <h4 className="font-bold text-[#050a44] text-[14px]">{OPERATOR.shortName} Rewards</h4>
+              <p className="text-[12px] text-[#46464f]">
+                You're only <span className="font-bold text-[#050a44]">{pointsToNextReward} pts</span> away from a free Gold-class upgrade!
+              </p>
+              <div className="w-full bg-[#f2f4f6] h-2 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[#feb700] to-[#ffe08a]"
+                  style={{ width: `${rewardsProgress}%` }}
+                />
+              </div>
+              <button className="text-[#7c5800] text-[11px] font-extrabold uppercase tracking-widest hover:underline">
+                Explore Perks →
+              </button>
             </div>
-            <button className="text-[#7c5800] text-[11px] font-extrabold uppercase tracking-widest hover:underline">
-              Explore Perks →
-            </button>
-          </div>
           )}
-
 
           <div className="bg-[#f2f4f6] rounded-2xl p-[20px] border border-[#e1e2e4] space-y-[8px]">
             <h4 className="font-bold text-[#050a44] text-[14px] flex items-center gap-2">
