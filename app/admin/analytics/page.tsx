@@ -16,6 +16,7 @@ import {
   isPaidBooking, leadDays, presetDates, previous, routeKm, runsIn, seatOrder, toDate, weekdayIndex, type Range,
 } from '@/lib/analytics';
 import { bikeKind } from '@/lib/bikeConfig';
+import { allReadings, dailyDistance, useOdometer } from '@/lib/odometer';
 import { formatDateLabel, formatLKR, formatTime12, isLiveBooking, netRevenue, routeLabel, todayISO } from '@/lib/trips';
 
 type Tab = 'overview' | 'income' | 'expenses' | 'buses' | 'passengers' | 'fleet';
@@ -41,6 +42,7 @@ export default function AnalyticsPage() {
 function Analytics() {
   const { data } = useStore();
   const erp = useErp({ admin: true });
+  const odo = useOdometer();
   const [range, setRange] = useState<Range>({ ...presetDates('month'), busId: '', routeId: '' });
   // The open tab lives in the address (#expenses), so a reload or a shared link opens the same one.
   const [tab, setTab] = useState<Tab>('overview');
@@ -163,8 +165,16 @@ function Analytics() {
     const promo = cur.live.filter((b) => b.discount > 0);
 
     // ---- fleet & fuel
-    const fleet = fleetFigures(data, expensesAll, range, RUNNING_COSTS).map((f) => ({ ...f, name: busName(f.busId) }));
-    const km = fleet.reduce((n, f) => n + f.kmPlanned, 0);
+    // Real distance comes from the odometer: the daily readings (Staff area → Odometer) plus the ones
+    // entered with fuel or a service. Where a bus has no readings, the timetable estimate is used.
+    const readings = allReadings(odo.logs, expensesAll);
+    const withLogs = [...expensesAll, ...odo.logs.map((l) => ({ id: l.id, spentOn: l.date, category: 'odometer', amount: 0, busId: l.busId, odometerKm: l.km }))];
+    const fleet = fleetFigures(data, withLogs, range, RUNNING_COSTS).map((f) => ({ ...f, name: busName(f.busId), km: f.kmLogged ?? f.kmPlanned }));
+    const km = fleet.reduce((n, f) => n + f.km, 0);
+    const kmEstimated = fleet.reduce((n, f) => n + f.kmPlanned, 0);
+    const kmFromOdometer = fleet.some((f) => f.kmLogged != null);
+    const perDay = data.buses.filter((b) => !range.busId || b.id === range.busId).map((b) => dailyDistance(readings, b.id));
+    const kmLoggedOver = bk.map((x) => perDay.reduce((n, m) => n + [...m.entries()].filter(([d]) => inRange(d, x)).reduce((a, [, v]) => a + v, 0), 0));
     const litres = fleet.reduce((n, f) => n + f.litres, 0);
     const fuelCost = fleet.reduce((n, f) => n + f.fuelCost, 0);
     const pinsMissing = data.routes.some((r) => routeKm(r) === 0);
@@ -176,13 +186,14 @@ function Analytics() {
       seatsOver, emptyOver, routes, cell, ranked, topSeats,
       lead, byChannel, boardAt, getOff, gender, loyalty, lostCancel, unpaidNoShow, noShowSeats: cur.noShow.reduce((n, b) => n + b.seats.length, 0),
       bikes, bikeCount: bikeBookings.reduce((n, b) => n + (b.bikes?.length ?? 0), 0), bikeIncome: bikeBookings.reduce((n, b) => n + (b.bikeFee ?? 0), 0), promo, promoDiscount: promo.reduce((n, b) => n + b.discount, 0),
-      fleet, km, litres, fuelCost, pinsMissing, busName, runIncome: fleet.reduce((n, f) => n + f.income, 0),
+      fleet, km, kmEstimated, kmFromOdometer, kmLoggedOver, litres, fuelCost, pinsMissing, busName, runIncome: fleet.reduce((n, f) => n + f.income, 0),
     };
-  }, [range, data, erp.data]);
+  }, [range, data, erp.data, odo.logs]);
 
   const num = (n: number) => n.toLocaleString('en-LK');
   const unit = fig.bk.length && fig.bk[0].from === fig.bk[0].to ? 'day' : daysIn(range) <= 120 ? 'week' : 'month';
   const labels = fig.bk.map((x) => x.label);
+  // Columns compare amounts; lines are kept for trends (how full the buses ran, kilometres driven).
   // Line charts stop at today: days still to come are shaded, not drawn as zero.
   const drawTo = fig.bk.filter((x) => x.from <= todayISO()).length;
   const titles = fig.bk.map((x) => x.title);
@@ -208,9 +219,8 @@ function Analytics() {
             <Stat label="Distance driven" value={`${num(fig.km)} km`} note={`${fig.cur.runs.length} trip${fig.cur.runs.length === 1 ? '' : 's'}`} />
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
-            <Panel title="Income, expenses and profit" hint={`One point per ${unit}. Profit is income minus expenses.${routeNote}`}>
-              <Lines
-                drawTo={drawTo}
+            <Panel title="Income, expenses and profit" hint={`Each shaded column is one ${unit}. Profit is income minus expenses: green above the line, red (a loss) below it.${routeNote}`}>
+              <Bars
                 label="Income, expenses and profit over the chosen period"
                 labels={labels}
                 titles={titles}
@@ -218,7 +228,7 @@ function Analytics() {
                 series={[
                   { name: 'Income', color: CHART.income, values: fig.over.map((x) => x.income) },
                   { name: 'Expenses', color: CHART.expenses, values: fig.over.map((x) => x.costs) },
-                  { name: 'Profit', color: CHART.profit, values: fig.over.map((x) => x.profit) },
+                  { name: 'Profit', color: CHART.profit, negativeColor: CHART.loss, negativeName: 'Loss', values: fig.over.map((x) => x.profit) },
                 ]}
               />
             </Panel>
@@ -262,8 +272,7 @@ function Analytics() {
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-6 mb-6">
             <Panel title="Income over time" hint={`Ticket income (by travel date, after refunds) and other income, per ${unit}.`}>
-              <Lines
-                drawTo={drawTo}
+              <Bars
                 label="Income over the chosen period"
                 labels={labels}
                 titles={titles}
@@ -308,18 +317,21 @@ function Analytics() {
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_1.3fr] gap-6 mb-6">
             <Panel title="Expense breakdown" hint="What each category cost, and its share of the total.">
-              <Pie label="Expenses by category" rows={fig.byCat} format={formatLKR} />
+              <Pie
+                showZero
+                label="Expenses by category"
+                rows={(Object.keys(CATEGORY_LABEL) as (keyof typeof CATEGORY_LABEL)[]).map((c) => ({ label: CATEGORY_LABEL[c], value: fig.byCat.find((x) => x.label === CATEGORY_LABEL[c])?.value ?? 0 })).sort((a, b) => b.value - a.value)}
+                format={formatLKR}
+              />
             </Panel>
-            <Panel title="Spending over time" hint={`Total spent per ${unit}${fig.topCats.length ? ', with the largest categories' : ''}.`}>
+            <Panel title="Spending over time" hint={`What the largest categories cost in each ${unit}. Hover a column for the figures.`}>
               {fig.cur.exp.length === 0 ? <Empty>No expenses in this period.</Empty> : (
-                <Lines
-                drawTo={drawTo}
+                <Bars
                   label="Expenses over the chosen period"
                   labels={labels}
                   titles={titles}
                   format={formatLKR}
                   series={[
-                    { name: 'All expenses', color: CHART.muted, values: fig.over.map((x) => x.costs) },
                     ...fig.topCats.map((c, i) => ({ name: CATEGORY_LABEL[c as keyof typeof CATEGORY_LABEL] ?? c, color: [CHART.expenses, CHART.income, '#a855f7'][i], values: fig.catOver[i] })),
                   ]}
                 />
@@ -457,7 +469,7 @@ function Analytics() {
             <p className="-mt-2 mb-5 text-[13px] font-semibold text-[#9a5b00]">Some stops have no map pin, so the distance for those routes shows as 0. Add the pins in Routes &amp; timetable → Edit stops &amp; fares.</p>
           )}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            <Stat label="Distance driven" value={`${num(fig.km)} km`} note="trips run × route length" />
+            <Stat label="Distance driven" value={`${num(fig.km)} km`} note={fig.kmFromOdometer ? `from odometer readings · timetable says ${num(fig.kmEstimated)} km` : 'estimate: trips run × route length'} />
             <Stat label="Per day" value={`${num(Math.round(fig.km / Math.max(1, daysIn(toDate(range)))))} km`} note="average over the period so far" />
             <Stat label="Fuel bought" value={`${num(Math.round(fig.litres))} L`} note={formatLKR(fig.fuelCost)} />
             <Stat label="Fuel cost per km" value={perKm(fig.fuelCost, fig.km)} />
@@ -465,14 +477,28 @@ function Analytics() {
             <Stat label="Income per km" value={perKm(fig.runIncome, fig.km)} note="tickets on trips already run" />
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
-            <Panel title="Kilometres driven" hint={`Distance covered by the trips of each ${unit} (from the timetable and the route's length).`}>
-              {fig.km === 0 ? <Empty>No distance to show for this period.</Empty> : (
-                <Lines drawTo={drawTo} label="Kilometres driven over the chosen period" labels={labels} titles={titles} format={(n) => `${num(n)} km`} series={[{ name: 'Kilometres', color: CHART.income, values: fig.kmOver }]} />
+            <Panel
+              title="Kilometres driven"
+              hint={
+                fig.kmFromOdometer
+                  ? `From the odometer readings logged each ${unit === 'day' ? 'day' : unit}, with the timetable estimate for comparison.`
+                  : `No odometer readings in this period, so this is an estimate: the trips of each ${unit} × the route's length. Log readings under Odometer for the real distance.`
+              }
+            >
+              {fig.km === 0 && fig.kmEstimated === 0 ? <Empty>No distance to show for this period.</Empty> : (
+                <Lines
+                  drawTo={drawTo}
+                  label="Kilometres driven over the chosen period"
+                  labels={labels}
+                  titles={titles}
+                  format={(n) => `${num(n)} km`}
+                  series={fig.kmFromOdometer ? [{ name: 'From the odometer', color: CHART.income, values: fig.kmLoggedOver }, { name: 'Timetable estimate', color: CHART.muted, values: fig.kmOver }] : [{ name: 'Timetable estimate', color: CHART.income, values: fig.kmOver }]}
+                />
               )}
             </Panel>
             <Panel title="Fuel spending" hint={`What was spent on fuel per ${unit}.`}>
               {fig.fuelCost === 0 ? <Empty>No fuel logged in this period. Add fuel under Expenses &amp; fuel, with litres and the odometer reading.</Empty> : (
-                <Lines drawTo={drawTo} label="Fuel spending over the chosen period" labels={labels} titles={titles} format={formatLKR} series={[{ name: 'Fuel', color: CHART.expenses, values: fig.over.map((x) => x.exp.filter((e) => e.category === 'fuel').reduce((n, e) => n + e.amount, 0)) }]} />
+                <Bars label="Fuel spending over the chosen period" labels={labels} titles={titles} format={formatLKR} series={[{ name: 'Fuel', color: CHART.expenses, values: fig.over.map((x) => x.exp.filter((e) => e.category === 'fuel').reduce((n, e) => n + e.amount, 0)) }]} />
               )}
             </Panel>
           </div>
@@ -480,7 +506,7 @@ function Analytics() {
             <div className="px-5 py-4 border-b border-[#edeef0]">
               <h2 className="text-[16px] font-semibold text-[#050a44]">Each bus</h2>
               <p className="text-[12px] text-[#6b6d78]">
-                Usage and mileage for the period. &ldquo;Km driven&rdquo; comes from the trips run; &ldquo;Odometer&rdquo; and &ldquo;Mileage&rdquo; come from the readings and litres logged with fuel, so they need at least two fuel entries with an odometer reading in the period.
+                Usage and mileage for the period. &ldquo;By timetable&rdquo; is an estimate from the trips run. &ldquo;By odometer&rdquo; is the real distance, from the daily readings (Staff area → Odometer) and the readings entered with fuel. Costs per km use the odometer distance when there is one. Mileage needs at least two fuel entries with litres and a reading.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -489,8 +515,8 @@ function Analytics() {
                   <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
                     <th className="px-4 py-2.5">Bus</th>
                     <th className="px-4 py-2.5 text-right">Trips</th>
-                    <th className="px-4 py-2.5 text-right">Km driven</th>
-                    <th className="px-4 py-2.5 text-right">Odometer</th>
+                    <th className="px-4 py-2.5 text-right">By timetable</th>
+                    <th className="px-4 py-2.5 text-right">By odometer</th>
                     <th className="px-4 py-2.5 text-right">Fuel</th>
                     <th className="px-4 py-2.5 text-right">Mileage</th>
                     <th className="px-4 py-2.5 text-right">Cost per km</th>
@@ -508,8 +534,8 @@ function Analytics() {
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">{f.litres ? <>{num(Math.round(f.litres))} L<span className="block text-[11px] text-[#6b6d78]">{formatLKR(f.fuelCost)}</span></> : <span className="text-[#6b6d78]">—</span>}</td>
                       <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#050a44]">{f.kmPerLitre ? `${f.kmPerLitre.toFixed(1)} km/L` : <span className="font-normal text-[#6b6d78]">needs 2 fill-ups</span>}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">{perKm(f.allCost, f.kmPlanned)}<span className="block text-[11px] text-[#6b6d78]">{perKm(f.runningCost, f.kmPlanned)} running</span></td>
-                      <td className="px-4 py-3 text-right tabular-nums">{perKm(f.income, f.kmPlanned)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{perKm(f.allCost, f.km)}<span className="block text-[11px] text-[#6b6d78]">{perKm(f.runningCost, f.km)} running</span></td>
+                      <td className="px-4 py-3 text-right tabular-nums">{perKm(f.income, f.km)}</td>
                     </tr>
                   ))}
                 </tbody>

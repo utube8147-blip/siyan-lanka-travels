@@ -219,6 +219,9 @@ export function fleetFigures(data: StoreData, logs: FuelLog[], r: Range, running
       const runs = runsIn(data, { ...r, busId: b.id });
       const mine = logs.filter((e) => e.busId === b.id && inRange(e.spentOn, r));
       const odo = mine.filter((e) => e.odometerKm).map((e) => e.odometerKm!).sort((x, y) => x - y);
+      // the last reading before the period is the starting point for the first day in it
+      const beforeStart = logs.filter((e) => e.busId === b.id && e.odometerKm && e.spentOn < r.from).reduce((m, e) => Math.max(m, e.odometerKm!), 0);
+      if (beforeStart && odo.length) odo.unshift(beforeStart);
       const fills = mine.filter((e) => e.category === 'fuel' && e.odometerKm && e.litres).sort((x, y) => x.odometerKm! - y.odometerKm!);
       const fillKm = fills.length >= 2 ? fills[fills.length - 1].odometerKm! - fills[0].odometerKm! : 0;
       const fillLitres = fills.slice(1).reduce((n, f) => n + (f.litres ?? 0), 0);

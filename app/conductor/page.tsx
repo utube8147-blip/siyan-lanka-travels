@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { Banknote, Check, ChevronDown, FileDown, LogOut, MapPin, Megaphone, MessageCircle, Phone, Radio, ScanLine, Search, UserX, Undo2, Wallet } from 'lucide-react';
+import { Banknote, Check, ChevronDown, FileDown, LogOut, MapPin, Megaphone, MessageCircle, Phone, Radio, ScanLine, Search, UserX, Undo2, Wallet, Gauge } from 'lucide-react';
 import { isStaffRole, useAuth } from '@/contexts/AuthContext';
 import { PageSkeleton, useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatLKR, formatTime12, listRuns, routeLabel, todayISO, departureDate } from '@/lib/trips';
@@ -281,6 +281,10 @@ export default function ConductorPage() {
               })
             )}
 
+            {/* The day's odometer reading for this bus: the distance driven is worked out from it. */}
+            <Link href={`/conductor/odometer?bus=${encodeURIComponent(run.bus.id)}`} className="flex items-center justify-center gap-2 h-12 rounded-xl bg-white/5 border border-white/15 text-[14px] font-semibold mb-2">
+              <Gauge className="w-4 h-4" /> Log odometer reading
+            </Link>
             {/* Closes the cash for the departure chosen at the top of this screen (not just "today"). */}
             <Link href={`/conductor/cash?date=${run.date}&schedule=${encodeURIComponent(run.schedule.id)}`} className="flex items-center justify-center gap-2 h-12 rounded-xl bg-white/5 border border-white/15 text-[14px] font-semibold">
               <Wallet className="w-4 h-4" /> Close this trip

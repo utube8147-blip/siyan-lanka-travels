@@ -180,4 +180,25 @@ select 'salary expenses before removing the advance: ' || count(*) from expenses
 delete from crew_pay where kind = 'advance';
 select 'after removing it: ' || count(*) || ' (its expense went too)' from expenses where id = '33333333-0000-0000-0000-000000000001';
 reset role;
+
+select '--- daily odometer readings';
+delete from odometer_logs;
+set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
+select pg_temp.try('a passenger logs a reading', $q$insert into odometer_logs (bus_id, log_date, reading_km) values ('bus-1', current_date - 3, 145000)$q$);
+select 'a passenger sees readings: ' || count(*) from odometer_logs;
+reset role;
+set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select pg_temp.try('counter staff log 145,000 three days ago', $q$insert into odometer_logs (bus_id, log_date, reading_km, notes) values ('bus-1', current_date - 3, 145000, 'told by the conductor')$q$);
+select pg_temp.try('counter staff log 145,380 two days ago', $q$insert into odometer_logs (bus_id, log_date, reading_km) values ('bus-1', current_date - 2, 145380)$q$);
+reset role;
+set role authenticated; select pg_temp.as_user('eeeeeeee-0000-0000-0000-000000000005');
+select pg_temp.try('the conductor logs today: 146,120', $q$insert into odometer_logs (bus_id, log_date, reading_km) values ('bus-1', (now() at time zone 'Asia/Colombo')::date, 146120)$q$);
+select pg_temp.try('a reading lower than an earlier day', $q$insert into odometer_logs (bus_id, log_date, reading_km) values ('bus-1', current_date - 1, 144000)$q$);
+select pg_temp.try('a reading higher than a later day', $q$insert into odometer_logs (bus_id, log_date, reading_km) values ('bus-1', current_date - 1, 150000)$q$);
+select pg_temp.try('a reading dated next week', $q$insert into odometer_logs (bus_id, log_date, reading_km) values ('bus-1', current_date + 7, 150000)$q$);
+select pg_temp.try('yesterday filled in afterwards: 145,750', $q$insert into odometer_logs (bus_id, log_date, reading_km) values ('bus-1', current_date - 1, 145750)$q$);
+select pg_temp.try('the conductor deletes a reading', $q$delete from odometer_logs where reading_km = 145380$q$);
+select 'still there after the conductor''s delete: ' || count(*) from odometer_logs where reading_km = 145380;
+reset role;
+select 'distance per day: ' || string_agg(km::text || ' km', ', ' order by d) from (select log_date d, reading_km - lag(reading_km) over (order by log_date, reading_km) km from odometer_logs where bus_id = 'bus-1') x where km is not null;
 update app_settings set card_payments = true;

@@ -11,7 +11,7 @@ import { useStore } from '@/lib/store';
 import { CATEGORY_LABEL, RUNNING_COSTS, useErp, type Income, type IncomeCategory } from '@/lib/erp';
 import { addDays, formatDateLabel, formatLKR, formatTime12, netRevenue, routeLabel, todayISO } from '@/lib/trips';
 import { PAY_LABEL, bookingsIn, buckets, change, daysIn, groupSum, inRange, presetDates, previous, runsIn, toDate, type Range } from '@/lib/analytics';
-import { Bars, CHART, Empty, Panel, RangeFilter, Stat } from '@/components/admin/charts';
+import { Bars, CHART, Empty, Panel, Pie, RangeFilter, Stat } from '@/components/admin/charts';
 import { usePayouts } from '@/lib/money';
 import { useCashCounts } from '@/lib/extras';
 import { AdminOnly, BarList } from '@/components/admin/AdminOnly';
@@ -136,8 +136,17 @@ function Finance() {
             ]}
           />
         </Panel>
-        <Panel title="Where the money went" hint="Expenses in the period, by category.">
-          {fig.byCat.length ? <BarList rows={fig.byCat} format={formatLKR} /> : <Empty>No expenses in this period.</Empty>}
+        <Panel title="Where the money went" hint="Every kind of expense in the period, and its share of the total.">
+          <Pie
+            stack
+            showZero
+            label="Expenses by category"
+            // every category is listed, largest first; ones with nothing spent are greyed
+            rows={(Object.keys(CATEGORY_LABEL) as (keyof typeof CATEGORY_LABEL)[])
+              .map((c) => ({ label: CATEGORY_LABEL[c], value: fig.byCat.find((x) => x.label === CATEGORY_LABEL[c])?.value ?? 0 }))
+              .sort((a, b) => b.value - a.value)}
+            format={formatLKR}
+          />
         </Panel>
       </div>
 

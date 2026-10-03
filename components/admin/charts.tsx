@@ -297,18 +297,19 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
 }
 
 /** Slice colours for pie charts: distinct on both the light and the dark theme. */
-export const PIE_COLORS = ['#3b82f6', '#feb700', '#16a34a', '#a855f7', '#f97316', '#14b8a6', '#ec4899', '#9ca3af'];
+export const PIE_COLORS = ['#3b82f6', '#feb700', '#16a34a', '#a855f7', '#f97316', '#14b8a6', '#ec4899', '#ef4444', '#84cc16', '#06b6d4', '#8b5cf6', '#eab308', '#f43f5e', '#9ca3af'];
 
 /**
  * A pie chart (drawn as a ring) with its legend: each slice's name, amount
  * and share. Hovering or tapping a slice or a legend row highlights it and
  * puts its figure in the middle. Slices under 1% are still listed.
  */
-export function Pie({ rows, format, label, total: totalLabel = 'Total', stack = false, centerFormat }: { rows: { label: string; value: number }[]; format: (n: number) => string; label: string; total?: string; /** Shorter wording for the figure in the middle of the ring. */ centerFormat?: (n: number) => string; /** Put the legend under the ring (for narrow cards). */ stack?: boolean }) {
+export function Pie({ rows, format, label, total: totalLabel = 'Total', stack = false, centerFormat, showZero = false }: { rows: { label: string; value: number }[]; format: (n: number) => string; label: string; total?: string; /** Also list the rows with nothing in them (greyed), so every category is visible. */ showZero?: boolean; /** Shorter wording for the figure in the middle of the ring. */ centerFormat?: (n: number) => string; /** Put the legend under the ring (for narrow cards). */ stack?: boolean }) {
   const [active, setActive] = useState<number | null>(null);
   const data = rows.filter((r) => r.value > 0);
+  const zero = showZero ? rows.filter((r) => !(r.value > 0)) : [];
   const sum = data.reduce((n, r) => n + r.value, 0);
-  if (sum <= 0) return <Empty>Nothing to show for this period.</Empty>;
+  if (sum <= 0 && zero.length === 0) return <Empty>Nothing to show for this period.</Empty>;
   const R = 54;
   const C = 2 * Math.PI * R;
   let run = 0;
@@ -320,6 +321,7 @@ export function Pie({ rows, format, label, total: totalLabel = 'Total', stack = 
     <figure aria-label={label} className={`flex flex-col ${stack ? '' : 'sm:flex-row'} items-center gap-5`}>
       <div className="relative shrink-0" style={{ width: 150, height: 150 }}>
         <svg viewBox="0 0 150 150" width="150" height="150" role="img" aria-label={label} onMouseLeave={() => setActive(null)}>
+          {sum <= 0 && <circle cx="75" cy="75" r={R} fill="none" stroke="#9ca3af" strokeOpacity="0.3" strokeWidth="22" />}
           <g transform="rotate(-90 75 75)">
             {data.map((r, i) => {
               const len = (r.value / sum) * C;
@@ -366,6 +368,14 @@ export function Pie({ rows, format, label, total: totalLabel = 'Total', stack = 
               <span className="tabular-nums text-[#46464f] shrink-0">{format(r.value)}</span>
               <span className="tabular-nums font-bold text-[#050a44] w-10 text-right shrink-0">{pct(r.value)}</span>
             </button>
+          </li>
+        ))}
+        {zero.map((r) => (
+          <li key={r.label} className="flex items-center gap-2 text-[13px] px-1.5 py-0.5 opacity-55">
+            <span className="w-3 h-3 rounded-sm shrink-0 border border-[#9ca3af]" />
+            <span className="flex-1 min-w-0 text-[#46464f] break-words">{r.label}</span>
+            <span className="tabular-nums text-[#6b6d78] shrink-0">{format(0)}</span>
+            <span className="tabular-nums text-[#6b6d78] w-10 text-right shrink-0">0%</span>
           </li>
         ))}
       </ul>

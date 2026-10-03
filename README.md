@@ -355,7 +355,9 @@ over is compared up to today.
     its stop pins) in total and per day, fuel bought, fuel / running cost and
     income per km, and for each bus the odometer distance and mileage (km per
     litre) from the readings logged with fuel.
-  Line charts stop at today: days still to come are shaded, not drawn as zero.
+  Amounts are shown as columns (income, expenses, fuel spending) and shares
+  as pie charts; line charts are kept for trends (how full the buses ran,
+  kilometres driven) and stop at today.
 Everything is worked out in the browser from bookings (by travel date),
 expenses, payouts and cash counts already loaded for staff. Expenses and
 other income belong to a bus, not a route, so they are left out while a route
@@ -392,6 +394,22 @@ crew member). For the chosen month:
   change what is owed.
 - A cash shortage from Close the day is not deducted automatically: add it as
   a deduction if the person should bear it.
+
+## Odometer (daily distance)
+Staff area → **Odometer**, and "Log odometer reading" in the conductor app
+(migration 23). Once a day the counter staff (asking the conductor) or the
+conductor enters the reading on each bus's odometer.
+- The distance for a day is the reading minus the one before it.
+- A reading can't be lower than an earlier day's, higher than a later day's,
+  dated in the future, or more than 3,000 km above the last one.
+- Readings entered with fuel or a service in Expenses count too, so they
+  don't need entering twice.
+- The page warns about days in the last week when the bus ran and nobody
+  logged a reading; picking one fills in the date.
+- Office staff can remove a wrong reading; conductors can only add.
+- Analytics → Fleet & fuel uses these readings for the real distance, the
+  daily kilometres line, and the cost and income per km, with the timetable
+  estimate beside them for comparison.
 
 ## Closing the day (cash)
 Staff area → **Close the day** (conductors reach it from the conductor app).
