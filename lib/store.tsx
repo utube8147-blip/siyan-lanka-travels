@@ -82,7 +82,9 @@ function availabilityBookings(seats: any[], bikeUsage: any[], visible: Booking[]
   const out: Booking[] = [];
   const groups = new Map<string, { scheduleId: string; date: string; gender: string; seats: string[] }>();
   for (const r of seats ?? []) {
-    const key = `${r.schedule_id}|${r.travel_date}|${r.gender}`;
+    // A seat booked by someone travelling alone stays a placeholder of its own (one seat), so the
+    // seat map can tell "a woman travelling alone" from a group. Everything else is merged by gender.
+    const key = r.solo ? `${r.schedule_id}|${r.travel_date}|${r.gender}|solo-${r.seat}` : `${r.schedule_id}|${r.travel_date}|${r.gender}`;
     const g = groups.get(key) ?? { scheduleId: r.schedule_id, date: r.travel_date, gender: r.gender, seats: [] as string[] };
     g.seats.push(r.seat);
     groups.set(key, g);
@@ -122,13 +124,16 @@ async function fetchRemote(userId: string | null, staff: boolean): Promise<Store
   const today = todayISO();
   const from = addDays(today, -2);
   const to = addDays(today, 120);
-  const [buses, routes, schedules, seats, bikes] = await Promise.all([
+  const seatRows = (cols: string) => sb.from('booking_seats').select(cols).eq('active', true).gte('travel_date', from).lte('travel_date', to);
+  const [buses, routes, schedules, seatsFirst, bikes] = await Promise.all([
     sb.from('buses').select('*').order('created_at'),
     sb.from('routes').select('*').order('created_at'),
     sb.from('schedules').select('*').order('departure'),
-    sb.from('booking_seats').select('schedule_id, travel_date, seat, gender').eq('active', true).gte('travel_date', from).lte('travel_date', to),
+    seatRows('schedule_id, travel_date, seat, gender, solo'),
     sb.rpc('get_bike_usage', { p_from: from, p_to: to }),
   ]);
+  // A database that hasn't had the latest setup.sql has no "solo" column: seats must still load.
+  const seats = seatsFirst.error ? await seatRows('schedule_id, travel_date, seat, gender') : seatsFirst;
   const firstError = buses.error || routes.error || schedules.error || seats.error || bikes.error;
   if (firstError) throw firstError;
 

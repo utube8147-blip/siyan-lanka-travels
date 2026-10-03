@@ -3,6 +3,7 @@
 \pset tuples_only on
 \pset format unaligned
 update routes set flat_fare = false;
+update app_settings set ladies_adjacent = false;
 create or replace function pg_temp.as_user(u text) returns void language sql as $$ select set_config('request.jwt.claim.sub', coalesce(u,''), false) $$;
 create or replace function pg_temp.try(label text, q text) returns text language plpgsql as $$
 begin execute q; return 'OK      ' || label; exception when others then return 'BLOCKED ' || label || '  → ' || left(sqlerrm, 100); end $$;

@@ -52,6 +52,8 @@ export interface PublicSettings {
   promoPercent: number;
   /** A one-time code is asked for on every online booking. */
   bookingOtp: boolean;
+  /** The seat beside a woman travelling alone is kept for women. */
+  ladiesAdjacent: boolean;
   /** Card / mobile wallet can be chosen at checkout (off until the gateway is live). */
   cardPayments: boolean;
   /** "Pay on the bus" (cash to the conductor) can be chosen at checkout. */
@@ -67,6 +69,7 @@ const DEFAULT_PUBLIC: PublicSettings = {
   promoCode: OPERATOR.promo.code,
   promoPercent: OPERATOR.promo.percentOff,
   bookingOtp: false,
+  ladiesAdjacent: true,
   cardPayments: false,
   payOnBus: true,
   paymentsMode: 'demo',
@@ -81,7 +84,9 @@ export function usePublicSettings() {
     if (!DB) return;
     supabase()
       .from('app_settings')
-      .select('booking_fee, promo_code, promo_percent, booking_otp, card_payments, pay_on_bus, payments_mode, bank_details, hold_minutes_counter, hold_minutes_bank, reward_every')
+      // The whole row (it is public): naming columns would make every setting fall back to its default
+      // as soon as the database is one update behind and a single column is missing.
+      .select('*')
       .maybeSingle()
       .then(({ data }) => {
         if (data)
@@ -90,6 +95,7 @@ export function usePublicSettings() {
             promoCode: data.promo_code || null,
             promoPercent: data.promo_percent ?? 0,
             bookingOtp: data.booking_otp !== false,
+            ladiesAdjacent: data.ladies_adjacent !== false,
             cardPayments: data.card_payments === true,
             payOnBus: data.pay_on_bus !== false,
             paymentsMode: data.payments_mode,

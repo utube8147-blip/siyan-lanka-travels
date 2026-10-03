@@ -1,6 +1,7 @@
 // app/(public)/(passenger)/my-bookings/page.tsx
 'use client';
 
+import { usePublicSettings } from '@/lib/extras';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -18,7 +19,7 @@ import { REWARDS_ENABLED } from '@/lib/features';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { toBookingView, type BookingView, type ViewStatus } from '@/lib/bookingView';
-import { addDays, cityCode, formatDateLabel, formatLKR, formatTime12, getTrip, refundQuote, runsOn, takenSeats } from '@/lib/trips';
+import { addDays, cityCode, formatDateLabel, formatLKR, formatTime12, getTrip, refundQuote, runsOn, takenSeats, seatsBesideLoneWoman, BESIDE_WOMAN_MESSAGE } from '@/lib/trips';
 import { useT } from '@/lib/i18n';
 
 type BookingStatus = ViewStatus;
@@ -594,6 +595,7 @@ export default function MyBookingsPage() {
   const [ticketTarget, setTicketTarget] = useState<Booking | null>(null);
   const [draftSeats, setDraftSeats] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const pub = usePublicSettings();
 
   // Any change that costs the passenger more money is held here until it's
   // actually paid — nothing gets applied to the booking until settlement
@@ -757,13 +759,24 @@ export default function MyBookingsPage() {
     }
   };
 
+  // The booking whose seats are being changed, and the seats kept for women on its trip.
+  const seatChangeRaw = seatChangeTarget ? rawOf(seatChangeTarget.id) : undefined;
+  const seatChangeGender = seatChangeRaw?.passenger.gender ?? '';
+  const seatChangeBus = seatChangeRaw ? data.buses.find((b) => b.id === data.schedules.find((x) => x.id === seatChangeRaw.scheduleId)?.busId) : undefined;
+  const seatChangeWomenOnly =
+    seatChangeRaw && seatChangeBus && pub.ladiesAdjacent ? seatsBesideLoneWoman(data.bookings, seatChangeBus, seatChangeRaw.scheduleId, seatChangeRaw.date, user?.id, seatChangeRaw.id) : new Set<string>();
   const toggleDraftSeat = (seatId: string) => {
+    // A seat beside a woman travelling alone is kept for women (the database checks the same when the change is saved).
+    if (!draftSeats.includes(seatId) && seatChangeWomenOnly.has(seatId) && seatChangeGender !== 'Female') {
+      setToast(BESIDE_WOMAN_MESSAGE(seatId));
+      setTimeout(() => setToast(null), 5000);
+      return;
+    }
     setDraftSeats((prev) => (prev.includes(seatId) ? prev.filter((s) => s !== seatId) : [...prev, seatId]));
   };
 
   if (!ready) return <StoreLoading />;
 
-  const seatChangeRaw = seatChangeTarget ? rawOf(seatChangeTarget.id) : undefined;
   const seatChangeTrip = seatChangeRaw ? getTrip(data, seatChangeRaw.scheduleId, seatChangeRaw.date, seatChangeRaw.from, seatChangeRaw.to) : null;
 
   return (
@@ -1032,9 +1045,10 @@ export default function MyBookingsPage() {
           onClose={confirmSeatChange}
           selectedSeats={draftSeats}
           onToggleSeat={toggleDraftSeat}
+          womenOnly={[...seatChangeWomenOnly]}
           timeLeft={600}
           seatPrice={seatChangeTarget.seatPrice}
-          passengerGender={'' as Gender}
+          passengerGender={seatChangeGender as Gender}
           maxSeatsPerBooking={OPERATOR.maxSeatsPerBooking}
           originalSeatCount={seatChangeTarget.seats.length}
         />

@@ -167,6 +167,31 @@ export function takenSeats(bookings: Booking[], scheduleId: string, date: string
   return map;
 }
 
+/**
+ * Free seats that are kept for women because the seat right beside them
+ * (same side of the aisle) is booked by a woman travelling alone.
+ * `myUserId`: seats beside the signed-in person's own booking aren't
+ * restricted for them (she can add a seat for a companion).
+ * The database enforces the same rule (migration 20); this is what the seat
+ * map shows before anyone tries.
+ */
+export function seatsBesideLoneWoman(bookings: Booking[], bus: Pick<Bus, 'rows' | 'backRowSeats' | 'seatMap'>, scheduleId: string, date: string, myUserId?: string | null, ignoreBookingId?: string) {
+  const here = bookings.filter((b) => b.scheduleId === scheduleId && b.date === date && isLiveBooking(b) && b.id !== ignoreBookingId);
+  const taken = new Set(here.flatMap((b) => b.seats));
+  // seats on my own bookings (their anonymous "availability" twin has no user on it)
+  const mine = new Set(myUserId ? here.filter((b) => b.userId === myUserId).flatMap((b) => b.seats) : []);
+  const lone = new Set(here.filter((b) => b.passenger.gender === 'Female' && b.seats.length === 1 && !mine.has(b.seats[0])).map((b) => b.seats[0]));
+  const out = new Set<string>();
+  for (const row of busSeatMap(bus).cells) {
+    row.forEach((cell, i) => {
+      if (!cell || taken.has(cell)) return;
+      for (const nb of [row[i - 1], row[i + 1]]) if (nb && lone.has(nb)) out.add(cell);
+    });
+  }
+  return out;
+}
+export const BESIDE_WOMAN_MESSAGE = (seat: string) => `Seat ${seat} is beside a woman travelling alone, so it is kept for women passengers. Please choose another seat.`;
+
 // ---------------------------------------------------------------- trips ----
 export function allStopNames(data: Pick<StoreData, 'routes'>) {
   const names = new Set<string>();

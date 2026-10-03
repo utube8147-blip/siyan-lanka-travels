@@ -13,7 +13,7 @@ import { useSavedPassengers, usePublicSettings } from '@/lib/extras';
 import { isLkMobile, useBookingCode } from '@/components/BookingCodeGate';
 import type { BikeItem } from '@/lib/types';
 import { useStore, StoreLoading } from '@/lib/store';
-import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO } from '@/lib/trips';
+import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO, seatsBesideLoneWoman, BESIDE_WOMAN_MESSAGE } from '@/lib/trips';
 import { useT } from '@/lib/i18n';
 
 const MAX_SEATS_PER_BOOKING = OPERATOR.maxSeatsPerBooking;
@@ -242,6 +242,12 @@ function BookingPageInner() {
   const seatPrice = trip ? trip.fare : 0;
   const platformFee = OPERATOR.bookingFee;
   const FEMALE_ONLY_SEATS = trip ? trip.bus.ladiesSeats : [];
+  // Seats kept for women on this trip because the seat beside them is booked by a woman travelling alone
+  // (Settings → "Seat beside a woman travelling alone"). The database enforces the same rule.
+  const besideWoman = useMemo(
+    () => (trip && pub.ladiesAdjacent ? seatsBesideLoneWoman(data.bookings, trip.bus, trip.scheduleId, date, user?.id) : new Set<string>()),
+    [trip, pub.ladiesAdjacent, data.bookings, date, user?.id],
+  );
 
   const toggleSeat = (seatId: string) => {
     setSelectedSeats((prev) => {
@@ -249,6 +255,10 @@ function BookingPageInner() {
 
       if (!isSelected && FEMALE_ONLY_SEATS.includes(seatId) && hasMalePassenger) {
         addToast(`Seat ${seatId} is reserved for female passengers.`, 'error');
+        return prev;
+      }
+      if (!isSelected && besideWoman.has(seatId) && passengerGender !== 'Female') {
+        addToast(BESIDE_WOMAN_MESSAGE(seatId), 'error');
         return prev;
       }
 
@@ -722,7 +732,7 @@ function BookingPageInner() {
               )}
 
               <p className="text-center text-[12px] font-medium text-[#46464f] mt-[16px]">
-                By proceeding, you agree to our <a className="text-[#000000] underline" href="#">Terms of Service</a>
+                By proceeding, you agree to our <a className="text-[#000000] underline" href="/legal#terms" target="_blank" rel="noopener">Terms of Service</a>
               </p>
             </div>
 
@@ -762,6 +772,7 @@ function BookingPageInner() {
         onClose={() => setSeatMapOpen(false)}
         selectedSeats={selectedSeats}
         onToggleSeat={toggleSeat}
+        womenOnly={[...besideWoman]}
         timeLeft={timeLeft}
         seatPrice={seatPrice}
         passengerGender={passengerGender}

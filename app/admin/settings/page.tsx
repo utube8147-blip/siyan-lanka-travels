@@ -204,6 +204,23 @@ function SettingsForm() {
         </Card>
 
         <Card className="p-5 space-y-4">
+          <h2 className="text-[16px] font-semibold text-[#050a44]">Seat beside a woman travelling alone</h2>
+          <p className="text-[13px] text-[#46464f]">
+            When a woman has booked one seat, the seat right beside hers (same side of the aisle) is kept for women. A man booking online is told why and asked to pick another seat. It doesn&apos;t apply when the same account books the next seat, or when two or more seats are booked together. Office staff can override it when selling at the counter.
+          </p>
+          <label className="flex items-center justify-between gap-4 rounded-xl bg-[#f2f4f6] p-4">
+            <span>
+              <span className="block text-[15px] font-semibold text-[#050a44]">{s.ladiesAdjacent ? 'On: the seat beside her is kept for women' : 'Off: anyone can book the seat beside her'}</span>
+              <span className="block text-[12px] text-[#6b6d78]">Ladies-only seats set on each bus are separate and always apply. Save changes to apply.</span>
+            </span>
+            <button type="button" role="switch" aria-checked={s.ladiesAdjacent} aria-label="Seat beside a woman travelling alone" onClick={() => setS({ ...s, ladiesAdjacent: !s.ladiesAdjacent })}
+              className={`relative w-12 h-7 rounded-full shrink-0 transition-colors ${s.ladiesAdjacent ? 'bg-[#006e1c]' : 'bg-[#c7c5d1]'}`}>
+              <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${s.ladiesAdjacent ? 'left-6' : 'left-1'}`} />
+            </button>
+          </label>
+        </Card>
+
+        <Card className="p-5 space-y-4">
           <h2 className="text-[16px] font-semibold text-[#050a44]">Code on every booking</h2>
           <p className="text-[13px] text-[#46464f]">
             Passengers stay signed in, and before paying for an online booking they give a mobile number and confirm it with a 6-digit code we text to it, whether they signed in with an email address or a phone number. A code works for one booking, for 20 minutes. Counter and phone bookings by staff are never asked. Each code is one text message.

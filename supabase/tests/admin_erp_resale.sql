@@ -3,6 +3,7 @@
 \pset tuples_only on
 \pset format unaligned
 update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
+update app_settings set ladies_adjacent = false; -- the seat-beside-a-woman rule is tested in seat_overrides.sql
 update routes set flat_fare = false; -- these tests check per-stop fares; one-price routes are tested in seat_overrides.sql
 create or replace function pg_temp.as_user(u text) returns void language sql as $$ select set_config('request.jwt.claim.sub', coalesce(u,''), false) $$;
 create or replace function pg_temp.try(label text, q text) returns text language plpgsql as $$

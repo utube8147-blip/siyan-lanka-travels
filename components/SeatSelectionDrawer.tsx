@@ -39,6 +39,8 @@ interface SeatSelectionDrawerProps {
   confirmLabel?: string;
   /** Bus layout. */
   layout: { rows: number; backRowSeats: number; ladiesSeats: string[]; reservedSeats?: string[]; seatMap?: SeatMap | null };
+  /** Free seats kept for women because the seat beside them is booked by a woman travelling alone. */
+  womenOnly?: string[];
   /** Seats already sold on this departure → gender of the passenger holding it. */
   taken: Map<string, Gender>;
 }
@@ -56,6 +58,7 @@ export default function SeatSelectionDrawer({
   confirmLabel,
   layout,
   taken,
+  womenOnly,
 }: SeatSelectionDrawerProps) {
   const isEditingExisting = originalSeatCount !== undefined;
   const deltaCount = isEditingExisting ? selectedSeats.length - (originalSeatCount as number) : 0;
@@ -86,7 +89,9 @@ export default function SeatSelectionDrawer({
     if (!isOpen) setExpanded(false);
   }, [isOpen]);
 
-  const FEMALE_ONLY_SEATS = layout.ladiesSeats;
+  // Ladies-only seats set on the bus, plus seats kept for women on this trip (beside a woman travelling alone).
+  const BESIDE_WOMAN = womenOnly ?? [];
+  const FEMALE_ONLY_SEATS = [...layout.ladiesSeats, ...BESIDE_WOMAN];
   const isBookedByMale = (id: string) => taken.has(id) && taken.get(id) !== 'Female';
   const isBookedByFemale = (id: string) => taken.get(id) === 'Female';
   // The bus's seat grid and its drawn size: seats are 44px wide when they fit, smaller on wide layouts / narrow phones.
@@ -123,6 +128,10 @@ export default function SeatSelectionDrawer({
           ? 'held by another passenger'
           : selectedSeats.includes(seatId)
             ? 'selected by you (tap to remove)'
+            : BESIDE_WOMAN.includes(seatId)
+              ? passengerGender === 'Female'
+                ? 'beside a woman travelling alone, available to you'
+                : 'beside a woman travelling alone, kept for women'
             : FEMALE_ONLY_SEATS.includes(seatId)
               ? passengerGender === 'Female'
                 ? 'ladies-only seat, available to you'

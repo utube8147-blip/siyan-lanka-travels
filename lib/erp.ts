@@ -78,6 +78,8 @@ export interface Settings {
   resaleEnabled: boolean;
   /** Ask for a one-time code on every online booking. */
   bookingOtp: boolean;
+  /** Keep the seat beside a woman travelling alone for women. */
+  ladiesAdjacent: boolean;
   /** Card / wallet selectable at checkout. */
   cardPayments: boolean;
   /** "Pay on the bus" selectable at checkout. */
@@ -132,13 +134,13 @@ function normalizeSettings(s: Settings): Settings {
 
 const settingsFrom = (r: any): Settings => normalizeSettings({
   bookingFee: r.booking_fee, promoCode: r.promo_code ?? '', promoPercent: r.promo_percent, maxSeats: r.max_seats_per_booking,
-  cutoffMinutes: r.booking_cutoff_minutes, refundPolicy: r.refund_policy, bikes: r.bikes, resaleEnabled: !!r.resale_enabled, bookingOtp: r.booking_otp !== false, cardPayments: r.card_payments === true, payOnBus: r.pay_on_bus !== false,
+  cutoffMinutes: r.booking_cutoff_minutes, refundPolicy: r.refund_policy, bikes: r.bikes, resaleEnabled: !!r.resale_enabled, bookingOtp: r.booking_otp !== false, ladiesAdjacent: r.ladies_adjacent !== false, cardPayments: r.card_payments === true, payOnBus: r.pay_on_bus !== false,
   paymentsMode: r.payments_mode ?? 'demo', bankDetails: r.bank_details ?? '', holdMinutesCounter: r.hold_minutes_counter ?? 120,
   holdMinutesBank: r.hold_minutes_bank ?? 1440, rewardEvery: r.reward_every ?? 10, messaging: r.messaging ?? { sms: true, whatsapp: false }, siteUrl: r.site_url ?? '',
 });
 const settingsTo = (s: Settings) => ({
   booking_fee: s.bookingFee, promo_code: s.promoCode || null, promo_percent: s.promoPercent, max_seats_per_booking: s.maxSeats,
-  booking_cutoff_minutes: s.cutoffMinutes, refund_policy: s.refundPolicy, bikes: s.bikes, resale_enabled: s.resaleEnabled, booking_otp: s.bookingOtp, card_payments: s.cardPayments, pay_on_bus: s.payOnBus,
+  booking_cutoff_minutes: s.cutoffMinutes, refund_policy: s.refundPolicy, bikes: s.bikes, resale_enabled: s.resaleEnabled, booking_otp: s.bookingOtp, ladies_adjacent: s.ladiesAdjacent, card_payments: s.cardPayments, pay_on_bus: s.payOnBus,
   payments_mode: s.paymentsMode, bank_details: s.bankDetails, hold_minutes_counter: s.holdMinutesCounter, hold_minutes_bank: s.holdMinutesBank,
   reward_every: s.rewardEvery, messaging: s.messaging, site_url: s.siteUrl,
 });
@@ -157,6 +159,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   resaleEnabled: OPERATOR.features.resale,
   bookingOtp: true,
+  ladiesAdjacent: true,
   cardPayments: false,
   payOnBus: true,
   paymentsMode: 'demo',

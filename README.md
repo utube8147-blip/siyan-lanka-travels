@@ -211,6 +211,19 @@ the bus's grid. Buses that were never edited keep the classic 2+2 layout
 change numbers on a bus before it has upcoming bookings, or check those
 departures afterwards.
 
+## The seat beside a woman travelling alone
+When a woman has booked one seat, the seat right beside hers (same side of
+the aisle, no gap between) is kept for women (migration 20).
+- A man booking online is refused with an explanation and asked to choose
+  another seat. On the seat map those seats are outlined in rose and say why.
+- It doesn't apply when the same account books the next seat (she is adding
+  a seat for a companion), or when two or more seats are booked together.
+- Office staff selling at the counter see a warning and can tick "Override
+  the ladies seating rule for this sale". Conductors can't override.
+- **Switch:** Staff area → Settings → "Seat beside a woman travelling alone"
+  (on by default). The database enforces it, so it can't be skipped.
+- Ladies-only seats set on each bus are a separate rule and always apply.
+
 ## Seat overrides
 Set per bus in Staff area → Buses → Edit (migration 9).
 - **Reserved seats (owner's approval):** list the seats, e.g. `1C, 1D`.

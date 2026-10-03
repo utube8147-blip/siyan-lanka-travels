@@ -849,7 +849,7 @@ function PaymentPageInner() {
             )}
             <p className="text-center text-[11px] font-medium text-[#46464f] mt-[12px]">
               Payments are securely processed. By paying you agree to our{' '}
-              <a className="text-[#000000] underline" href="#">Terms of Service</a>.
+              <a className="text-[#000000] underline" href="/legal#terms" target="_blank" rel="noopener">Terms of Service</a>.
             </p>
           </div>
         </div>

@@ -20,13 +20,13 @@ import {
   seatIds,
   takenSeats,
   todayISO,
-  type Run,
-} from '@/lib/trips';
+  type Run, seatsBesideLoneWoman } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, stackTable, useToast } from '@/components/admin/ui';
 import { BikeLoadingList } from '@/components/admin/BikeList';
 import { TripTools } from '@/components/admin/TripTools';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
 import { slipOnFile, slipUrl, useSlips } from '@/lib/money';
+import { usePublicSettings } from '@/lib/extras';
 import { busSeatMap, layoutSegments } from '@/lib/seatLayout';
 import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
@@ -471,6 +471,11 @@ function SellSeatsModal({
   const validSegment = stops.indexOf(from) < stops.indexOf(to);
   const fare = validSegment && trip ? trip.fare : 0;
   const ladiesClash = gender === 'Male' && seats.some((s) => run.bus.ladiesSeats.includes(s));
+  // Seats beside a woman travelling alone are kept for women; office staff can override at the counter.
+  const { data: storeData } = useStore();
+  const pubSettings = usePublicSettings();
+  const besideWoman = pubSettings.ladiesAdjacent ? seatsBesideLoneWoman(storeData.bookings, run.bus, run.schedule.id, run.date) : new Set<string>();
+  const besideClash = gender !== '' && gender !== 'Female' ? seats.filter((s) => besideWoman.has(s)) : [];
   // Office staff may override the ladies-only rule for this one sale.
   const { user } = useAuth();
   const canOverride = isOfficeRole(user?.role);
@@ -514,7 +519,7 @@ function SellSeatsModal({
   };
 
   const valid =
-    validSegment && name.trim().length > 1 && phone.trim().length >= 9 && gender !== '' && (!ladiesClash || (canOverride && overrideLadies)) && (reservedPicked.length === 0 || approved);
+    validSegment && name.trim().length > 1 && phone.trim().length >= 9 && gender !== '' && ((!ladiesClash && besideClash.length === 0) || (canOverride && overrideLadies)) && (reservedPicked.length === 0 || approved);
 
   return (
     <Modal
@@ -583,13 +588,18 @@ function SellSeatsModal({
           </select>
         </Field>
       </div>
-      {ladiesClash && (
+      {(ladiesClash || besideClash.length > 0) && (
         <div className="rounded-xl bg-pink-50 border border-pink-200 p-3 space-y-2">
-          <p className="text-[12px] font-semibold text-[#9d174d]">Seats {run.bus.ladiesSeats.join(', ')} are for female passengers.</p>
+          {ladiesClash && <p className="text-[12px] font-semibold text-[#9d174d]">Seats {run.bus.ladiesSeats.join(', ')} are for female passengers.</p>}
+          {besideClash.length > 0 && (
+            <p className="text-[12px] font-semibold text-[#9d174d]">
+              Seat {besideClash.join(', ')} is beside a woman travelling alone, so it is kept for women. Offer another seat if you can; override only if the two are travelling together or she agrees.
+            </p>
+          )}
           {canOverride ? (
             <label className="flex items-start gap-2 text-[13px] font-semibold text-[#050a44]">
               <input type="checkbox" className="mt-0.5 w-4 h-4" checked={overrideLadies} onChange={(e) => setOverrideLadies(e.target.checked)} />
-              Override ladies-only for this sale
+              Override the ladies seating rule for this sale
             </label>
           ) : (
             <p className="text-[12px] text-[#46464f]">Only office staff can override this.</p>

@@ -94,7 +94,7 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
       aria-label={`Seat number, row ${r + 1}, position ${c + 1}`}
       placeholder="·"
       className={`${tight ? 'h-8' : 'h-9'} min-w-0 w-full rounded-lg text-center text-[13px] font-bold outline-none focus:ring-2 focus:ring-[#050a44] ${
-        cell ? 'bg-white border border-[#050a44]/40 text-[#050a44]' : cell === '' ? 'bg-white border border-[#ba1a1a] text-[#050a44]' : 'bg-transparent border border-dashed border-[#c7c5d1] text-[#6b6d78] placeholder:text-[#c7c5d1]'
+        cell ? 'bg-white border-2 border-[#8b90a8] text-[#050a44] hover:border-[#3b82f6] cursor-text' : cell === '' ? 'bg-white border border-[#ba1a1a] text-[#050a44]' : 'bg-transparent border border-dashed border-[#c7c5d1] text-[#6b6d78] placeholder:text-[#c7c5d1]'
       }`}
     />
   );
@@ -151,8 +151,8 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
         <p className="text-[13px] font-bold text-[#050a44]">2. Adjust any seat</p>
         <p className="text-[12px] text-[#46464f]">
           {value.stagger
-            ? 'Each side is shown as its own stack of rows, front of the bus at the top. Type any seat number to change it. Use the bin to remove a row from one side, or "Add a row" under a side.'
-            : 'Each box is one position, front of the bus at the top, left side on the left. Type the seat number, or clear the box where there is no seat (a door, a gap).'}
+            ? 'Each side is shown as its own stack of rows, front of the bus at the top. Every box can be typed in: click a seat and type its number (17, 3A…). To number them all at once, pick a style under "Seat numbers" and press "Renumber the seats". Use the bin to remove a row from one side, or "Add a row" under a side.'
+            : 'Each box is one position, front of the bus at the top, left side on the left. Every box can be typed in: click a seat and type its number (17, 3A…), or clear the box where there is no seat (a door, a gap). To number them all at once, pick a style under "Seat numbers" and press "Renumber the seats".'}
         </p>
         {value.stagger ? (
           // Sides with different numbers of rows: each side is its own stack, exactly as passengers
@@ -222,7 +222,7 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
                       aria-label={`Row ${r + 1}, position ${c + 1}`}
                       placeholder="·"
                       className={`h-9 min-w-0 w-full rounded-lg text-center text-[13px] font-bold outline-none focus:ring-2 focus:ring-[#050a44] ${
-                        cell ? 'bg-white border border-[#050a44]/40 text-[#050a44]' : 'bg-transparent border border-dashed border-[#c7c5d1] text-[#6b6d78] placeholder:text-[#c7c5d1]'
+                        cell ? 'bg-white border-2 border-[#8b90a8] text-[#050a44] hover:border-[#3b82f6] cursor-text' : 'bg-transparent border border-dashed border-[#c7c5d1] text-[#6b6d78] placeholder:text-[#c7c5d1]'
                       }`}
                     />
                   ))}
