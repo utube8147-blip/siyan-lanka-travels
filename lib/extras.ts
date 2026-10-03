@@ -390,15 +390,54 @@ export interface CashSummary {
   taken: { ref: string; name: string; seats: string[]; from: string; to: string; amount: number; at: string; where: string }[];
   refunds: { ref: string; name: string; amount: number; at: string }[];
 }
+/** An earlier day or trip where this person took cash and never closed. */
+export interface UnclosedCash { kind: 'day' | 'trip'; date: string; schedule_id: string | null; amount: number; payments: number }
+export function useCashUnclosed(refreshKey: unknown) {
+  const [list, setList] = useState<UnclosedCash[]>([]);
+  useEffect(() => {
+    if (!DB) return;
+    let live = true;
+    supabase()
+      .rpc('cash_unclosed')
+      .then(({ data }) => live && setList((data as UnclosedCash[]) ?? []));
+    return () => {
+      live = false;
+    };
+  }, [refreshKey]);
+  return list;
+}
+
+/** Super admin: one day's money, bus by bus, and who has closed their cash. */
+export interface CashPerson { name: string; role: string; expected: number; closed: boolean; counted: number | null; recorded_expected: number | null; notes: string }
+export interface CashOverview {
+  trips: { schedule_id: string; departure: string; route: string; bus: string; capacity: number; seats: number; cash: number; other_paid: number; unpaid: number; people: CashPerson[] }[];
+  days: CashPerson[];
+}
+export function useCashOverview(date: string, enabled: boolean, refreshKey: unknown) {
+  const [overview, setOverview] = useState<CashOverview | null>(null);
+  useEffect(() => {
+    if (!DB || !enabled) return;
+    let live = true;
+    supabase()
+      .rpc('cash_overview', { p_date: date })
+      .then(({ data }) => live && setOverview((data as CashOverview) ?? null));
+    return () => {
+      live = false;
+    };
+  }, [date, enabled, refreshKey]);
+  return overview;
+}
+
 /** `scheduleId` given: the cash for that departure (travel date `date`). Otherwise: cash taken on `date`. */
 export function useCashSummary(date: string, scheduleId: string | null, refreshKey: unknown) {
-  const [summary, setSummary] = useState<CashSummary | null>(null);
+  const [summary, setSummary] = useState<CashSummary | null | 'error'>(null);
   useEffect(() => {
     if (!DB) return;
     let live = true;
     supabase()
       .rpc('cash_summary', { p_date: date, p_schedule: scheduleId })
-      .then(({ data }) => live && setSummary((data as CashSummary) ?? null));
+      // 'error' = the database doesn't have this yet (setup.sql not run) or refused: the page says so, not an endless "…".
+      .then(({ data, error }) => live && setSummary(error ? 'error' : ((data as CashSummary) ?? null)));
     return () => {
       live = false;
     };

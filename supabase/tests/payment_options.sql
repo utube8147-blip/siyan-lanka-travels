@@ -121,5 +121,28 @@ select pg_temp.try('conductor closes the trip balanced', format($q$insert into c
 select pg_temp.try('conductor closes the same trip again', format($q$insert into cash_counts (count_date, schedule_id, expected, counted, notes) values ('%s', 'sch-cmb-2100', 0, 1, 'again')$q$, (select fri from t7)));
 select pg_temp.try('conductor closes a day that hasn''t happened', $q$insert into cash_counts (count_date, expected, counted, notes) values (current_date + 3, 0, 0, '')$q$);
 reset role;
+select '--- unfinished closes and the admin overview';
+delete from cash_counts;
+-- pretend the conductor's cash for that Friday trip was taken on an earlier trip date, and the office cash two days ago
+alter table bookings disable trigger bookings_running_day; -- test data only: that weekday may not be a running day
+update bookings set travel_date = (now() at time zone 'Asia/Colombo')::date - 2, paid_at = now() - interval '2 days' where paid_by = 'eeeeeeee-0000-0000-0000-000000000005' and schedule_id = 'sch-cmb-2100' and travel_date = (select fri from t7) and seats <@ '{9A,9B}';
+alter table bookings enable trigger bookings_running_day;
+update bookings set paid_at = now() - interval '2 days' where paid_by = 'cccccccc-0000-0000-0000-000000000003' and seats = '{10A}';
+set role authenticated; select pg_temp.as_user('eeeeeeee-0000-0000-0000-000000000005');
+select 'conductor reminded of: ' || coalesce((select string_agg((x ->> 'kind') || ' ' || to_char((x ->> 'date')::date, 'Dy') || ' LKR ' || (x ->> 'amount') || ' (' || (x ->> 'payments') || ' payments)', ', ') from jsonb_array_elements(cash_unclosed()) x), 'nothing');
+insert into cash_counts (count_date, schedule_id, expected, counted, notes) values ((now() at time zone 'Asia/Colombo')::date - 2, 'sch-cmb-2100', 0, 4900, '');
+select 'after closing that trip, reminded of: ' || coalesce((select string_agg(x ->> 'kind', ', ') from jsonb_array_elements(cash_unclosed()) x), 'nothing');
+select pg_temp.try('conductor opens the admin overview', $q$select cash_overview(current_date)$q$);
+reset role;
+set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select 'office staff reminded of: ' || coalesce((select string_agg((x ->> 'kind') || ' LKR ' || (x ->> 'amount'), ', ') from jsonb_array_elements(cash_unclosed()) x), 'nothing');
+reset role;
+set role authenticated; select pg_temp.as_user('dddddddd-0000-0000-0000-000000000004');
+select 'admin overview, 2 days ago: ' || jsonb_array_length(o -> 'trips') || ' trips; trip cash LKR ' || (select sum((t ->> 'cash')::int) from jsonb_array_elements(o -> 'trips') t)
+  || '; ' || (select string_agg((p ->> 'name') || ' ' || case when (p ->> 'closed')::boolean then 'closed, counted ' || (p ->> 'counted') else 'NOT closed, should have ' || (p ->> 'expected') end, ' | ') from jsonb_array_elements(o -> 'trips') t, jsonb_array_elements(t -> 'people') p)
+  from (select cash_overview((now() at time zone 'Asia/Colombo')::date - 2) as o) q;
+select 'office cash that day: ' || (select string_agg((p ->> 'name') || ' ' || case when (p ->> 'closed')::boolean then 'closed' else 'NOT closed, should have ' || (p ->> 'expected') end, ' | ') from jsonb_array_elements(cash_overview((now() at time zone 'Asia/Colombo')::date - 2) -> 'days') p);
+reset role;
+delete from notifications where title like 'Cash %' and body not like '%short by change%';
 select 'balanced days are not reported: ' || (count(*) = 1) from (select distinct body from notifications where title like 'Cash %') x;
 update app_settings set card_payments = true;

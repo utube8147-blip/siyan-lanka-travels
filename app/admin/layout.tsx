@@ -6,7 +6,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, CalendarClock, Ticket, Bus, Route as RouteIcon, ExternalLink, LogOut, Wallet, Receipt, Wrench, Users, UserCog, Settings as SettingsIcon, Package, Banknote, ScanLine, HandCoins, Menu, X } from 'lucide-react';
+import { LayoutDashboard, CalendarClock, Ticket, Bus, Route as RouteIcon, ExternalLink, LogOut, Wallet, Receipt, Wrench, Users, UserCog, Settings as SettingsIcon, Package, Banknote, ScanLine, HandCoins, Menu, X, BarChart3 } from 'lucide-react';
 import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -35,6 +35,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Business',
     items: [
       { href: '/admin/finance', label: 'Finance', icon: Wallet, adminOnly: true },
+      { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, adminOnly: true },
       { href: '/admin/fleet-health', label: 'Fleet health', icon: Wrench, adminOnly: true },
       { href: '/admin/crew', label: 'Crew', icon: Users, adminOnly: true },
       { href: '/admin/accounts', label: 'Accounts & roles', icon: UserCog, adminOnly: true },

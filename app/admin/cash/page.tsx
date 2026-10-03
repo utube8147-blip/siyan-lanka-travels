@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
-import { useCashCounts, useCashSummary } from '@/lib/extras';
+import { useCashCounts, useCashOverview, useCashSummary, useCashUnclosed, type CashPerson } from '@/lib/extras';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { formatDateLabel, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
@@ -20,6 +20,26 @@ function Difference({ expected, counted, className = '' }: { expected: number; c
     <span className={`font-bold ${d === 0 ? 'text-[#006e1c]' : d < 0 ? 'text-[#ba1a1a]' : 'text-[#9a5b00]'} ${className}`}>
       {d === 0 ? 'Balanced' : `${d < 0 ? 'Short' : 'Over'} by ${formatLKR(Math.abs(d))}`}
     </span>
+  );
+}
+
+/** One person's cash for a trip or a day: closed (with the result) or still open. */
+function PersonRow({ p }: { p: CashPerson }) {
+  const role = p.role === 'conductor' ? 'conductor' : p.role === 'admin' ? 'super admin' : 'office';
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[13px]">
+      <span className="font-semibold text-[#050a44]">{p.name}</span>
+      <span className="text-[12px] text-[#6b6d78]">{role}</span>
+      {p.closed ? (
+        <>
+          <span className="text-[#46464f] tabular-nums">should have {formatLKR(p.recorded_expected ?? p.expected)} · counted {formatLKR(p.counted ?? 0)}</span>
+          <Difference expected={p.recorded_expected ?? p.expected} counted={p.counted ?? 0} />
+          {p.notes && <span className="basis-full text-[12px] text-[#46464f]">Note: {p.notes}</span>}
+        </>
+      ) : (
+        <span className="font-bold text-[#9a5b00]">Not closed yet · should have {formatLKR(p.expected)}</span>
+      )}
+    </li>
   );
 }
 
@@ -48,7 +68,16 @@ export default function CashPage() {
 
   // Database: this person's own takings and refunds. Re-read whenever a payment is recorded.
   const paidCount = data.bookings.filter((b) => b.paymentStatus === 'paid').length;
-  const summary = useCashSummary(date, scheduleId, paidCount);
+  const summaryState = useCashSummary(date, scheduleId, paidCount);
+  const summaryError = summaryState === 'error';
+  const summary = summaryState === 'error' ? null : summaryState;
+  // Earlier days / trips where this person took cash and never closed; and, for the super admin, the whole day bus by bus.
+  const unclosed = useCashUnclosed(`${paidCount}-${counts.length}`);
+  const overview = useCashOverview(date, isAdmin && !scheduleId, `${paidCount}-${counts.length}`);
+  const tripName = (id: string | null) => {
+    const sc = id ? data.schedules.find((x) => x.id === id) : undefined;
+    return sc ? `${formatTime12(sc.departure)} ${routeLabel(data.routes.find((r) => r.id === sc.routeId))}` : '';
+  };
   // A different day or trip starts with an empty count.
   useEffect(() => {
     setCounted('');
@@ -70,7 +99,7 @@ export default function CashPage() {
   const takenTotal = taken.reduce((n, t) => n + t.amount, 0);
   const refundTotal = refunds.reduce((n, r) => n + r.amount, 0);
   const expected = isSupabaseConfigured ? summary?.expected ?? 0 : takenTotal;
-  const loading = isSupabaseConfigured && !summary;
+  const loading = isSupabaseConfigured && !summary && !summaryError;
 
   const closedToday = counts.find((c) => c.date === date && (c.scheduleId ?? null) === scheduleId && c.mine !== false);
   const diff = typeof counted === 'number' ? counted - expected : 0;
@@ -83,12 +112,50 @@ export default function CashPage() {
         title={scheduleId ? 'Close this trip' : 'Close the day'}
         description={`Cash count for ${formatDateLabel(date)}${tripLabel ? ` · ${tripLabel}` : ''}${user ? ` · ${user.user_metadata.full_name}` : ''}.`}
       />
+      {summaryError && (
+        <p role="alert" className="mb-4 rounded-xl bg-[#ba1a1a]/10 border border-[#ba1a1a]/25 text-[#93000a] text-[14px] font-semibold px-4 py-3">
+          The cash figures couldn&apos;t be loaded. The database is missing the latest update: run supabase/setup.sql in the Supabase SQL Editor, then reload this page.
+        </p>
+      )}
+      {unclosed.length > 0 && (
+        <div role="alert" className="mb-4 rounded-xl bg-[#feb700]/15 border border-[#feb700]/50 px-4 py-3">
+          <p className="text-[14px] font-bold text-[#050a44]">
+            You have {unclosed.length} unfinished cash count{unclosed.length === 1 ? '' : 's'}
+          </p>
+          <p className="text-[13px] text-[#46464f]">You took cash on these and didn&apos;t close them. Pick one to finish it now.</p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {unclosed.map((u) => {
+              const on = u.date === date && (u.schedule_id ?? null) === scheduleId;
+              return (
+                <button
+                  key={`${u.kind}-${u.date}-${u.schedule_id}`}
+                  onClick={() => {
+                    setDate(u.date);
+                    setScheduleId(u.schedule_id ?? null);
+                  }}
+                  aria-pressed={on}
+                  className={`px-3 py-2 rounded-lg text-[13px] font-bold border text-left ${on ? 'bg-[#050a44] text-white border-[#050a44]' : 'bg-white text-[#050a44] border-[#c7c5d1]'}`}
+                >
+                  {formatDateLabel(u.date, false)}
+                  {u.kind === 'trip' ? ` · ${tripName(u.schedule_id)}` : ''}
+                  <span className="block text-[12px] font-semibold opacity-80">{formatLKR(u.amount)} · {u.payments} payment{u.payments === 1 ? '' : 's'}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {scheduleId && isAdmin && (
+        <div className="mb-4">
+          <Button size="sm" variant="secondary" onClick={() => setScheduleId(null)}>← Back to the whole day</Button>
+        </div>
+      )}
       {!scheduleId && (
         <Card className="p-4 mb-4 flex flex-wrap items-center gap-3">
           <label className="text-[13px] font-bold text-[#050a44]" htmlFor="cash-date">Day</label>
           <input id="cash-date" type="date" max={today} className={`${inputClass} !w-auto`} value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
           {date !== today && <Button size="sm" variant="secondary" onClick={() => setDate(today)}>Today</Button>}
-          <span className="text-[12px] text-[#6b6d78]">Cash you took on this day. Conductors close each trip from the conductor screen.</span>
+          <span className="text-[12px] text-[#6b6d78]">Pick the day you want to count. It shows the cash you personally took that day.</span>
         </Card>
       )}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-6">
@@ -195,6 +262,54 @@ export default function CashPage() {
           )}
         </Card>
       </div>
+
+      {isAdmin && !scheduleId && overview && (
+        <Card className="mt-6 overflow-hidden">
+          <div className="px-5 py-4 border-b border-[#edeef0]">
+            <h2 className="text-[16px] font-semibold text-[#050a44]">All buses and trips on {formatDateLabel(date, false)}</h2>
+            <p className="text-[12px] text-[#6b6d78] mt-0.5">Every departure that day: what was sold, how it was paid, who took the cash and whether they have closed it.</p>
+          </div>
+          {overview.trips.length === 0 ? (
+            <p className="p-5 text-[14px] text-[#46464f]">No departures on this day.</p>
+          ) : (
+            <ul className="divide-y divide-[#edeef0]">
+              {overview.trips.map((t) => (
+                <li key={t.schedule_id} className="px-5 py-4 space-y-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                    <p className="text-[14px] font-bold text-[#050a44]">
+                      {formatTime12(t.departure)} · {t.route}
+                      <span className="font-medium text-[#46464f]"> · {t.bus}</span>
+                    </p>
+                    <p className="text-[13px] font-semibold text-[#46464f]">{t.seats} of {t.capacity} seats sold</p>
+                  </div>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px]">
+                    <span>Cash <b className="text-[#050a44] tabular-nums">{formatLKR(t.cash)}</b></span>
+                    <span>Bank / online <b className="text-[#050a44] tabular-nums">{formatLKR(t.other_paid)}</b></span>
+                    <span className={t.unpaid > 0 ? 'text-[#ba1a1a]' : ''}>Not paid yet <b className="tabular-nums">{formatLKR(t.unpaid)}</b></span>
+                  </div>
+                  {t.people.length === 0 ? (
+                    <p className="text-[12px] text-[#6b6d78]">{t.cash > 0 ? 'Cash was taken, but there is no record of who took it (recorded before cash closing was tracked).' : 'No cash taken for this trip.'}</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {t.people.map((p) => <PersonRow key={p.name + p.role} p={p} />)}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="px-5 py-4 border-t border-[#edeef0] bg-[#f8f9fb]">
+            <h3 className="text-[13px] font-bold text-[#050a44] mb-1.5">Office cash taken on this day</h3>
+            {overview.days.length === 0 ? (
+              <p className="text-[12px] text-[#6b6d78]">No office staff took cash on this day.</p>
+            ) : (
+              <ul className="space-y-1">
+                {overview.days.map((p) => <PersonRow key={p.name + p.role} p={p} />)}
+              </ul>
+            )}
+          </div>
+        </Card>
+      )}
 
       {counts.length > 0 && (
         <Card className="mt-6 overflow-hidden">

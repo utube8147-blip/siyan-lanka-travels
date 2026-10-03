@@ -277,6 +277,26 @@ in with an email address is asked for a mobile number too.
   text is sent and that code works for every number. Never set it on the live
   site.
 
+## Finance and Analytics (super admin)
+Both pages share one filter bar: a period (last 7 days, this month, last
+month, last 90 days, or custom dates), a bus and a route. Headline numbers
+show the change against the same number of days before; a month that isn't
+over is compared up to today.
+- **Finance** (money): ticket income, other income, expenses and profit;
+  income / expenses / profit over time (by day, week or month depending on
+  the period); where the money went; how tickets were paid; what is still
+  owed; refunds and payouts; cash that didn't match at close; profit per trip
+  as a chart and a table; other income.
+- **Analytics** (buses and passengers): seats sold, average fill, bookings,
+  cancellations and no-shows; seats sold vs left empty over time; how full by
+  weekday and direction; fullest and emptiest trips; how early people book;
+  where seats are sold (online, counter, phone); boarding and drop-off stops;
+  seats lost to cancellations and unpaid no-shows; bikes carried; promo use.
+Everything is worked out in the browser from bookings (by travel date),
+expenses, payouts and cash counts already loaded for staff. Expenses and
+other income belong to a bus, not a route, so they are left out while a route
+is selected. No extra tables.
+
 ## Closing the day (cash)
 Staff area → **Close the day** (conductors reach it from the conductor app).
 Each person closes their own cash (migration 15):
@@ -296,6 +316,21 @@ Each person closes their own cash (migration 15):
   night bus spans two dates, so "today" is the wrong unit for it.
 - **Office staff close a day:** today by default; the Day box picks any
   earlier day. A day that hasn't happened can't be closed.
+- **Unfinished counts** (migration 17): if someone took cash on an earlier
+  day (office) or an earlier trip (conductor) and never closed it, the page
+  opens with an alert listing each one with its amount; choosing one opens
+  that count so it can be finished late.
+- **Super admin overview:** under the count, "All buses and trips" for the
+  chosen day lists every departure with seats sold, cash, bank / online and
+  not-yet-paid totals, who took the cash and whether they closed it (balanced,
+  short or over, with their note), followed by the office cash for that day.
+- **Unfinished counts** (migration 17): if someone took cash on an earlier day
+  or trip and never closed it, a yellow alert at the top of the page lists
+  each one with its amount; picking one opens it to be finished.
+- **All buses and trips** (super admin): for the chosen day, every departure
+  with seats sold, cash / bank and online / not paid yet, and each person who
+  took cash for it, marked closed (balanced, short or over, with their note)
+  or not closed yet. Office staff who took cash that day are listed below.
 - One close per person per day, and one per person per trip. Payments
   recorded before migration 15 by marking a held booking paid have no "taken
   by" on them and aren't counted.

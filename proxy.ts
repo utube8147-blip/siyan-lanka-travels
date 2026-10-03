@@ -9,7 +9,7 @@ import { createServerClient } from '@supabase/ssr';
 import { AUTH_COOKIE_MAX_AGE } from '@/lib/features';
 
 /** Business pages: super admins only. */
-const ADMIN_ONLY = ['/admin/finance', '/admin/fleet-health', '/admin/crew', '/admin/accounts', '/admin/settings'];
+const ADMIN_ONLY = ['/admin/finance', '/admin/analytics', '/admin/fleet-health', '/admin/crew', '/admin/accounts', '/admin/settings'];
 
 /** Pages that need a signed-in passenger (with Supabase connected). */
 const SIGNED_IN_ONLY = ['/my-bookings', '/dashboard', '/payment', '/refund', '/marketplace/buy', '/track'];
