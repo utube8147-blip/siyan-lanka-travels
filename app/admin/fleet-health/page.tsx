@@ -5,7 +5,7 @@
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { DOCUMENT_LABEL, daysUntil, fuelEfficiency, latestOdometer, nextService, useErp, type BusDocument, type DocumentKind } from '@/lib/erp';
+import { CATEGORY_LABEL, DOCUMENT_LABEL, daysUntil, fuelEfficiency, latestOdometer, nextService, useErp, type BusDocument, type DocumentKind, type Expense, type ExpenseCategory } from '@/lib/erp';
 import { formatDateLabel, formatLKR, genId, todayISO, addDays } from '@/lib/trips';
 import { AdminOnly, ExpiryBadge } from '@/components/admin/AdminOnly';
 import { Button, Card, Field, Modal, PageHeader, inputClass, useToast } from '@/components/admin/ui';
@@ -24,6 +24,12 @@ function FleetHealth() {
   const erp = useErp({ admin: true });
   const { toast, Toast } = useToast();
   const [doc, setDoc] = useState<BusDocument | null>(null);
+  // What was paid for the document being added / renewed. Saved as an expense so it shows in Finance.
+  const [paid, setPaid] = useState<{ amount: number | ''; on: string; method: Expense['paymentMethod'] }>({ amount: '', on: todayISO(), method: 'bank' });
+  const openDoc = (d: BusDocument) => {
+    setPaid({ amount: '', on: todayISO(), method: 'bank' });
+    setDoc(d);
+  };
   const exps = erp.data?.expenses ?? [];
 
   return (
@@ -43,7 +49,7 @@ function FleetHealth() {
                   <h2 className="text-[17px] font-semibold text-[#050a44]">{bus.name} · {bus.regNo}</h2>
                   <p className="text-[12px] text-[#6b6d78]">{bus.type} · {bus.status}</p>
                 </div>
-                <Button size="sm" variant="secondary" onClick={() => setDoc({ id: uuid(), busId: bus.id, kind: 'insurance', number: '', expiresOn: addDays(todayISO(), 365), notes: '' })}>
+                <Button size="sm" variant="secondary" onClick={() => openDoc({ id: uuid(), busId: bus.id, kind: 'insurance', number: '', expiresOn: addDays(todayISO(), 365), notes: '' })}>
                   <Plus className="w-4 h-4" /> Add document
                 </Button>
               </div>
@@ -67,7 +73,7 @@ function FleetHealth() {
                         <p className="text-[12px] text-[#6b6d78] truncate">{[d.number, d.notes].filter(Boolean).join(' · ') || '—'}</p>
                       </div>
                       <ExpiryBadge date={d.expiresOn} />
-                      <Button size="sm" variant="ghost" onClick={() => setDoc(d)}>Renew</Button>
+                      <Button size="sm" variant="ghost" onClick={() => openDoc(d)}>Renew</Button>
                       <Button size="sm" variant="ghost" aria-label="Delete document" onClick={async () => {
                         const r = await erp.documents.remove(d.id);
                         toast(r.ok ? 'Removed' : r.reason ?? 'Could not remove', r.ok ? 'ok' : 'error');
@@ -92,6 +98,22 @@ function FleetHealth() {
               <Button disabled={!doc.expiresOn} onClick={async () => {
                 const r = await erp.documents.save(doc);
                 if (!r.ok) return toast(r.reason ?? 'Could not save', 'error');
+                // A cost was entered: record it under Expenses (Insurance / Licence / Permit) for this bus.
+                if (typeof paid.amount === 'number' && paid.amount > 0) {
+                  const bus = data.buses.find((b) => b.id === doc.busId);
+                  const e = await erp.expenses.save({
+                    id: uuid(),
+                    spentOn: paid.on,
+                    category: DOC_EXPENSE[doc.kind],
+                    amount: paid.amount,
+                    busId: doc.busId,
+                    description: `${DOCUMENT_LABEL[doc.kind]}${doc.number ? ` ${doc.number}` : ''}${bus ? ` · ${bus.regNo}` : ''}, valid to ${formatDateLabel(doc.expiresOn, false)}`,
+                    vendor: doc.notes,
+                    paymentMethod: paid.method,
+                  });
+                  setDoc(null);
+                  return toast(e.ok ? `Saved. ${formatLKR(paid.amount)} added to Expenses.` : `Document saved, but the expense wasn't: ${e.reason ?? 'try adding it in Expenses'}`, e.ok ? 'ok' : 'error');
+                }
                 setDoc(null);
                 toast('Saved');
               }}>Save</Button>
@@ -116,12 +138,43 @@ function FleetHealth() {
           <Field label="Notes">
             <input className={inputClass} value={doc.notes} onChange={(e) => setDoc({ ...doc, notes: e.target.value })} placeholder="e.g. insurer, cover type" />
           </Field>
+          <div className="rounded-xl bg-[#f2f4f6] p-3 space-y-3">
+            <p className="text-[13px] font-bold text-[#050a44]">What did it cost?</p>
+            <p className="text-[12px] text-[#46464f] -mt-2">Enter the amount paid and it is added to Expenses under {CATEGORY_LABEL[DOC_EXPENSE[doc.kind]]} for this bus, so it counts in Finance. Leave it empty if you already entered it there.</p>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Amount paid (LKR)">
+                <input type="number" min={0} inputMode="numeric" className={inputClass} value={paid.amount} onChange={(e) => setPaid({ ...paid, amount: e.target.value === '' ? '' : Math.max(0, Number(e.target.value)) })} placeholder="Optional" />
+              </Field>
+              <Field label="Paid on">
+                <input type="date" max={todayISO()} className={inputClass} value={paid.on} onChange={(e) => e.target.value && setPaid({ ...paid, on: e.target.value })} />
+              </Field>
+              <Field label="Paid by">
+                <select className={inputClass} value={paid.method} onChange={(e) => setPaid({ ...paid, method: e.target.value as Expense['paymentMethod'] })}>
+                  <option value="bank">Bank</option>
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="other">Other</option>
+                </select>
+              </Field>
+            </div>
+          </div>
         </Modal>
       )}
       <Toast />
     </>
   );
 }
+
+/** Which expense category a document's cost is filed under. */
+const DOC_EXPENSE: Record<DocumentKind, ExpenseCategory> = {
+  insurance: 'insurance',
+  revenue_license: 'license',
+  route_permit: 'permit',
+  emission_test: 'license',
+  fitness_certificate: 'license',
+  other: 'other',
+};
 
 function Stat({ label, value, note, warn }: { label: string; value: string; note: string; warn?: boolean }) {
   return (

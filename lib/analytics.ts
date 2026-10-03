@@ -140,3 +140,31 @@ export const CHANNEL_LABEL: Record<string, string> = { online: 'Online', counter
 export const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 /** 0 = Monday … 6 = Sunday */
 export const weekdayIndex = (date: string) => (parseISODate(date).getDay() + 6) % 7;
+
+// ------------------------------------------------------------ income sources
+/** Counts as money received: paid, or (older / demo records with no payment status) a live booking that isn't a hold. */
+export const isPaidBooking = (b: Booking) => b.status !== 'cancelled' && (b.paymentStatus === 'paid' || (b.paymentStatus === undefined && b.status !== 'held'));
+
+/**
+ * How the money for a booking reached the company. `roleOf` gives the role of
+ * the staff member who recorded a cash payment, which is how cash taken by a
+ * conductor on the bus is told apart from cash taken at the office.
+ */
+export function incomeSource(b: Booking, roleOf: (userId: string) => string | undefined): string {
+  const m = b.paymentMethod;
+  if (m === 'bank') return 'Bank transfer';
+  if (m === 'card' || m === 'wallet') return 'Card / wallet online';
+  if (m === 'cash' || m === undefined) {
+    if (b.channel === 'counter') return 'Counter sales (cash)';
+    if (b.channel === 'phone') return 'Phone sales (cash)';
+    if (m === undefined) return 'Online payment';
+    const role = b.paidBy ? roleOf(b.paidBy) : undefined;
+    if (role === 'conductor') return 'Collected on the bus (conductor)';
+    if (role) return 'Paid at the counter for an online booking';
+    return 'Cash for online bookings';
+  }
+  return PAY_LABEL[m] ?? 'Other';
+}
+
+/** Seat ids in a sensible order: 2 before 10, 3A before 3B. */
+export const seatOrder = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });

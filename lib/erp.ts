@@ -57,6 +57,8 @@ export type CrewRole = 'driver' | 'conductor' | 'cleaner' | 'mechanic' | 'office
 export interface CrewMember {
   id: string; fullName: string; role: CrewRole; phone: string; licenseNo: string; licenseExpires?: string | null;
   monthlySalary: number; busId?: string | null; active: boolean; notes: string;
+  /** Paid for each trip their bus runs, on top of (or instead of) the monthly salary. */
+  perTripPay?: number;
 }
 export type AccountRole = 'passenger' | 'conductor' | 'staff' | 'admin';
 export interface Account { id: string; email: string; fullName: string; phone: string; role: AccountRole; createdAt: string; lastSignIn?: string | null }
@@ -116,11 +118,11 @@ const docFrom = (r: any): BusDocument => ({ id: r.id, busId: r.bus_id, kind: r.k
 const docTo = (d: BusDocument) => ({ id: asUuid(d.id), bus_id: d.busId, kind: d.kind, number: d.number, expires_on: d.expiresOn, notes: d.notes });
 const crewFrom = (r: any): CrewMember => ({
   id: r.id, fullName: r.full_name, role: r.role, phone: r.phone, licenseNo: r.license_no, licenseExpires: r.license_expires,
-  monthlySalary: r.monthly_salary, busId: r.bus_id, active: r.active, notes: r.notes,
+  monthlySalary: r.monthly_salary, busId: r.bus_id, active: r.active, notes: r.notes, perTripPay: r.per_trip_pay ?? 0,
 });
 const crewTo = (c: CrewMember) => ({
   id: asUuid(c.id), full_name: c.fullName, role: c.role, phone: c.phone, license_no: c.licenseNo, license_expires: c.licenseExpires || null,
-  monthly_salary: c.monthlySalary, bus_id: c.busId || null, active: c.active, notes: c.notes,
+  monthly_salary: c.monthlySalary, bus_id: c.busId || null, active: c.active, notes: c.notes, per_trip_pay: c.perTripPay ?? 0,
 });
 
 /** Fills in anything missing on the bike categories (names, icons, order) so every screen gets complete data. */

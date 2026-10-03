@@ -1,9 +1,10 @@
 'use client';
-// Crew — drivers, conductors, cleaners: contacts, licence expiry, salaries.
-// "Pay salaries" records this month's salary expenses in one go.
+// Crew — drivers, conductors, cleaners: contacts, licence expiry, and each
+// month's salaries settled person by person (components/admin/SalarySettlement).
 
 import { useState } from 'react';
-import { Plus, Wallet } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { SalarySettlement } from '@/components/admin/SalarySettlement';
 import { useStore } from '@/lib/store';
 import { useErp, type CrewMember, type CrewRole } from '@/lib/erp';
 import { formatLKR, genId, todayISO } from '@/lib/trips';
@@ -26,23 +27,7 @@ function Crew() {
   const erp = useErp({ admin: true });
   const { toast, Toast } = useToast();
   const [editing, setEditing] = useState<CrewMember | null>(null);
-  const [paying, setPaying] = useState(false);
   const crew = erp.data?.crew ?? [];
-  const payroll = crew.filter((c) => c.active).reduce((n, c) => n + c.monthlySalary, 0);
-  const month = todayISO().slice(0, 7);
-  const paidThisMonth = (erp.data?.expenses ?? []).filter((e) => e.category === 'salary' && e.spentOn.startsWith(month));
-
-  const paySalaries = async () => {
-    for (const c of crew.filter((x) => x.active && x.monthlySalary > 0)) {
-      const r = await erp.expenses.save({
-        id: uuid(), spentOn: todayISO(), category: 'salary', amount: c.monthlySalary, busId: c.busId ?? null,
-        description: `${c.role[0].toUpperCase() + c.role.slice(1)}: ${c.fullName}`, vendor: '', paymentMethod: 'bank',
-      });
-      if (!r.ok) return toast(r.reason ?? 'Could not record salaries', 'error');
-    }
-    setPaying(false);
-    toast(`Salaries recorded: ${formatLKR(payroll)}`);
-  };
 
   return (
     <>
@@ -51,25 +36,14 @@ function Crew() {
         description="Who drives and works the buses, their licences and pay."
         actions={
           <>
-            <Button variant="secondary" disabled={!payroll} onClick={() => setPaying(true)}>
-              <Wallet className="w-4 h-4" /> Pay salaries
-            </Button>
             <Button variant="gold" onClick={() => setEditing({ id: uuid(), fullName: '', role: 'driver', phone: '', licenseNo: '', licenseExpires: null, monthlySalary: 0, busId: data.buses[0]?.id ?? null, active: true, notes: '' })}>
               <Plus className="w-4 h-4" /> Add person
             </Button>
           </>
         }
       />
-      <div className="grid grid-cols-2 gap-4 mb-5 max-w-xl">
-        <Card className="p-4">
-          <p className="text-[12px] font-bold text-[#46464f]">Monthly payroll</p>
-          <p className="text-[22px] font-semibold text-[#050a44] tabular-nums">{formatLKR(payroll)}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-[12px] font-bold text-[#46464f]">Paid this month</p>
-          <p className="text-[22px] font-semibold text-[#050a44] tabular-nums">{formatLKR(paidThisMonth.reduce((n, e) => n + e.amount, 0))}</p>
-        </Card>
-      </div>
+      <SalarySettlement crew={crew} saveExpense={erp.expenses.save} removeExpense={erp.expenses.remove} />
+
       <Card className="overflow-hidden">
         {crew.length === 0 ? (
           <p className="p-8 text-center text-[14px] text-[#46464f]">No crew yet. Add your drivers and conductors.</p>
@@ -96,7 +70,7 @@ function Crew() {
                     <td className="px-4 py-3"><Badge value={c.role} /></td>
                     <td className="px-4 py-3 whitespace-nowrap">{c.phone ? <a href={`tel:${c.phone.replace(/\s/g, '')}`} className="underline">{c.phone}</a> : '—'}</td>
                     <td className="px-4 py-3">{c.role === 'driver' ? <ExpiryBadge date={c.licenseExpires} /> : <span className="text-[#6b6d78]">—</span>}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{c.monthlySalary ? formatLKR(c.monthlySalary) : '—'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{c.monthlySalary ? formatLKR(c.monthlySalary) : '—'}{c.perTripPay ? <span className="block text-[11px] text-[#6b6d78]">+ {formatLKR(c.perTripPay)} a trip</span> : null}</td>
                     <td className="px-4 py-3 text-right"><Button size="sm" variant="ghost" onClick={() => setEditing(c)}>Edit</Button></td>
                   </tr>
                 ))}
@@ -106,23 +80,6 @@ function Crew() {
         )}
       </Card>
 
-      {paying && (
-        <Modal
-          title="Record this month's salaries?"
-          onClose={() => setPaying(false)}
-          footer={
-            <>
-              <Button variant="secondary" onClick={() => setPaying(false)}>Cancel</Button>
-              <Button variant="gold" onClick={paySalaries}>Record {formatLKR(payroll)}</Button>
-            </>
-          }
-        >
-          <p className="text-[14px] text-[#46464f]">
-            Adds a salary expense for each active person with a monthly salary, dated today.
-            {paidThisMonth.length > 0 && <strong className="block mt-2 text-[#ba1a1a]">{paidThisMonth.length} salary payments are already recorded this month.</strong>}
-          </p>
-        </Modal>
-      )}
       {editing && (
         <Modal
           title={editing.fullName || 'New crew member'}
@@ -164,6 +121,7 @@ function Crew() {
           )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Monthly salary (LKR)" hint="0 if paid per trip"><input type="number" min={0} className={inputClass} value={editing.monthlySalary || ''} onChange={(e) => setEditing({ ...editing, monthlySalary: Number(e.target.value) })} /></Field>
+            <Field label="Pay per trip (LKR)" hint="Added for each trip their bus runs. 0 if none."><input type="number" min={0} className={inputClass} value={editing.perTripPay || ''} onChange={(e) => setEditing({ ...editing, perTripPay: Number(e.target.value) })} /></Field>
             <Field label="Status">
               <select className={inputClass} value={editing.active ? 'yes' : 'no'} onChange={(e) => setEditing({ ...editing, active: e.target.value === 'yes' })}>
                 <option value="yes">Active</option>

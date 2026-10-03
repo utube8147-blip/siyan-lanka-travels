@@ -287,6 +287,12 @@ over is compared up to today.
   the period); where the money went; how tickets were paid; what is still
   owed; refunds and payouts; cash that didn't match at close; profit per trip
   as a chart and a table; other income.
+- **Analytics, income** (pie charts): where the money came from (counter
+  cash, cash the conductor collected on the bus, cash paid at the counter for
+  an online booking, bank transfer, card, and other income such as charters
+  and parcels); what ticket income is made of (fares, booking fees, bike
+  fees); income by sales channel, by direction and by bus; income by weekday;
+  new and returning passengers; average income per seat and per trip.
 - **Analytics** (buses and passengers): seats sold, average fill, bookings,
   cancellations and no-shows; seats sold vs left empty over time; how full by
   weekday and direction; fullest and emptiest trips; how early people book;
@@ -296,6 +302,38 @@ Everything is worked out in the browser from bookings (by travel date),
 expenses, payouts and cash counts already loaded for staff. Expenses and
 other income belong to a bus, not a route, so they are left out while a route
 is selected. No extra tables.
+
+## Renewals: documents and licences
+Staff area → **Fleet health** holds each bus's paperwork (insurance, revenue
+licence, route permit, emission test, fitness certificate) with its expiry
+date; **Crew** holds driving licence expiry dates.
+- **Reminders** (migration 18) go out 30, 14, 7, 3 and 1 days before the
+  expiry date, on the day, and every 3 days once it has expired, until the
+  date is updated. Each goes to every super admin as a notification (and a
+  push notification on devices where they turned notifications on), and the
+  owner gets one text listing them (`OWNER_PHONE` in `.env`).
+- They are sent by the every-minute cron on `/api/messages/dispatch`, so they
+  need that cron, `SUPABASE_SECRET_KEY` and, for the text, the Notify.lk keys.
+- The Overview and Fleet health pages show what is due as before.
+- **Paying for a renewal:** the add / renew form has "What did it cost?".
+  Enter the amount and it is added to Expenses (Insurance, Licence or Permit)
+  for that bus, so it counts in Finance.
+
+## Salaries (settlement)
+Staff area → **Crew** → "Salaries for <month>" (super admin; migration 19).
+Each person has a monthly salary and, optionally, a pay per trip (edit the
+crew member). For the chosen month:
+- **Earned** = monthly salary + pay per trip × the trips their bus has run in
+  the month so far + bonuses − deductions.
+- **Balance** = earned − advances given − salary already paid.
+- Buttons per person: **Advance**, **Bonus**, **Deduction**, **Pay balance**,
+  and **History** (every record, each removable). **Pay all balances** pays
+  everyone with something owed.
+- Advances and salary payments are added to Expenses under Salary (and so to
+  Finance). Removing one removes its expense. Bonuses and deductions only
+  change what is owed.
+- A cash shortage from Close the day is not deducted automatically: add it as
+  a deduction if the person should bear it.
 
 ## Closing the day (cash)
 Staff area → **Close the day** (conductors reach it from the conductor app).

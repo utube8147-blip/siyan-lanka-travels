@@ -37,9 +37,11 @@ update app_settings set payments_mode = 'demo';
 
 select '--- rewards (every 10 trips)';
 reset role; update app_settings set rewards_enabled = true; -- off by default since migration 5
+alter table bookings disable trigger bookings_running_day; -- test data: these past dates need not be running days
 insert into bookings (ref, schedule_id, travel_date, from_stop, to_stop, seats, passenger_name, user_id, fare, total, status)
 select 'OLD-' || g, 'sch-cmb-2100', current_date - 7*g, 'Colombo', 'Batticaloa', array['5A'], 'Alex A', 'aaaaaaaa-0000-0000-0000-000000000001', 2400, 2450, 'boarded'
 from generate_series(1, 10) g;
+alter table bookings enable trigger bookings_running_day;
 set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
 select 'A loyalty: ' || trips || ' trips, ' || available || ' free trip available' from loyalty_status();
 select 'A books with free trip: fare ' || fare || ' x2, discount ' || discount || ', total ' || total from create_booking(format($q${"schedule_id":"sch-cmb-2100","date":"%s","from":"Colombo","to":"Batticaloa","seats":["10A","10B"],"passenger":{"name":"Alex A","gender":"Male"},"use_reward":true}$q$, (select wed from t3))::jsonb);
@@ -79,7 +81,9 @@ reset role;
 set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
 select 'conductor for a trip 4 weeks away: ' || coalesce((select name from get_trip_contact((select id from bookings where seats = '{9A}' and passenger_name = 'Alex A' order by created_at desc limit 1))), '(hidden until the day)');
 reset role;
+alter table bookings disable trigger bookings_running_day; -- test data: today need not be a running day
 update bookings set travel_date = current_date where seats = '{9A}' and travel_date = (select wed from t3) and passenger_name = 'Alex A';
+alter table bookings enable trigger bookings_running_day;
 set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
 select 'conductor on travel day: ' || name || ' ' || phone from get_trip_contact((select id from bookings where seats = '{9A}' and passenger_name = 'Alex A' order by created_at desc limit 1));
 reset role;

@@ -89,6 +89,7 @@ export const bookingFromRow = (r: any, photoUrls: Record<string, string> = {}): 
   rewardUsed: r.reward_used,
   createdAt: r.created_at,
   refund: r.refund_amount != null ? { amount: r.refund_amount, at: r.refunded_at } : undefined,
+  paidBy: r.paid_by ?? null,
   slip: r.slip_path ? { path: r.slip_path, reference: r.slip_reference ?? '', uploadedAt: r.slip_uploaded_at } : null,
   slipRejectedReason: r.slip_rejected_reason ?? null,
 });

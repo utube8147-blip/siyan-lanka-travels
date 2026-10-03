@@ -19,8 +19,14 @@ export function AdminOnly({ children }: { children: React.ReactNode }) {
 }
 
 /** Tiny horizontal bar list (no chart library needed). */
-export function BarList({ rows, format }: { rows: { label: string; value: number; hint?: string }[]; format: (n: number) => string }) {
-  const max = Math.max(1, ...rows.map((r) => r.value));
+/**
+ * A list of labelled bars. By default each bar is measured against the
+ * largest row (the biggest is full width). Pass `max` when the values have a
+ * natural ceiling, e.g. 100 for percentages, so 10% draws as a tenth of the
+ * width and not as a full bar.
+ */
+export function BarList({ rows, format, max: ceiling }: { rows: { label: string; value: number; hint?: string }[]; format: (n: number) => string; max?: number }) {
+  const max = ceiling ?? Math.max(1, ...rows.map((r) => r.value));
   return (
     <ul className="space-y-2.5">
       {rows.map((r) => (
@@ -33,7 +39,7 @@ export function BarList({ rows, format }: { rows: { label: string; value: number
             </span>
           </div>
           <div className="h-2 mt-1 rounded-full bg-[#f2f4f6] overflow-hidden">
-            <div className="h-full rounded-full bg-[#feb700]" style={{ width: `${(r.value / max) * 100}%` }} />
+            <div className="h-full rounded-full bg-[#feb700]" style={{ width: `${Math.min(100, (r.value / max) * 100)}%` }} />
           </div>
         </li>
       ))}

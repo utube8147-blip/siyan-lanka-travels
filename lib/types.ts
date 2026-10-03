@@ -138,6 +138,8 @@ export interface Booking {
   rewardUsed?: boolean;
   createdAt: string; // ISO
   refund?: { amount: number; at: string };
+  /** Staff member who recorded the payment (cash taken at the counter or on the bus). */
+  paidBy?: string | null;
   /** Bank-transfer slip the passenger uploaded for a held booking. */
   slip?: { path: string; reference: string; uploadedAt: string } | null;
   /** Why staff sent the last slip back (cleared when a new one is uploaded). */

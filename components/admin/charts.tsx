@@ -176,6 +176,83 @@ export function Bars({ labels, titles, series, format, height = 190, label }: { 
   );
 }
 
+/** Slice colours for pie charts: distinct on both the light and the dark theme. */
+export const PIE_COLORS = ['#3b82f6', '#feb700', '#16a34a', '#a855f7', '#f97316', '#14b8a6', '#ec4899', '#9ca3af'];
+
+/**
+ * A pie chart (drawn as a ring) with its legend: each slice's name, amount
+ * and share. Hovering or tapping a slice or a legend row highlights it and
+ * puts its figure in the middle. Slices under 1% are still listed.
+ */
+export function Pie({ rows, format, label, total: totalLabel = 'Total', stack = false, centerFormat }: { rows: { label: string; value: number }[]; format: (n: number) => string; label: string; total?: string; /** Shorter wording for the figure in the middle of the ring. */ centerFormat?: (n: number) => string; /** Put the legend under the ring (for narrow cards). */ stack?: boolean }) {
+  const [active, setActive] = useState<number | null>(null);
+  const data = rows.filter((r) => r.value > 0);
+  const sum = data.reduce((n, r) => n + r.value, 0);
+  if (sum <= 0) return <Empty>Nothing to show for this period.</Empty>;
+  const R = 54;
+  const C = 2 * Math.PI * R;
+  let run = 0;
+  const pct = (v: number) => {
+    const p = (v / sum) * 100;
+    return p > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`;
+  };
+  return (
+    <figure aria-label={label} className={`flex flex-col ${stack ? '' : 'sm:flex-row'} items-center gap-5`}>
+      <div className="relative shrink-0" style={{ width: 150, height: 150 }}>
+        <svg viewBox="0 0 150 150" width="150" height="150" role="img" aria-label={label} onMouseLeave={() => setActive(null)}>
+          <g transform="rotate(-90 75 75)">
+            {data.map((r, i) => {
+              const len = (r.value / sum) * C;
+              const el = (
+                <circle
+                  key={r.label}
+                  cx="75" cy="75" r={R} fill="none"
+                  stroke={PIE_COLORS[i % PIE_COLORS.length]}
+                  strokeWidth={active === i ? 26 : 22}
+                  strokeDasharray={`${Math.max(0, len - (data.length > 1 ? 1.5 : 0))} ${C}`}
+                  strokeDashoffset={-run}
+                  opacity={active == null || active === i ? 1 : 0.35}
+                  onMouseEnter={() => setActive(i)}
+                  onClick={() => setActive(i)}
+                >
+                  <title>{`${r.label}: ${format(r.value)} (${pct(r.value)})`}</title>
+                </circle>
+              );
+              run += len;
+              return el;
+            })}
+          </g>
+        </svg>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center px-7">
+          <span className="text-[10px] font-bold text-[#6b6d78] leading-tight line-clamp-2">{active == null ? totalLabel : data[active].label}</span>
+          <span className="text-[13px] font-bold text-[#050a44] tabular-nums leading-tight">{(centerFormat ?? format)(active == null ? sum : data[active].value)}</span>
+          {active != null && <span className="text-[11px] font-semibold text-[#46464f]">{pct(data[active].value)}</span>}
+        </div>
+      </div>
+      <ul className="flex-1 min-w-0 w-full space-y-1.5">
+        {data.map((r, i) => (
+          <li key={r.label}>
+            <button
+              type="button"
+              onMouseEnter={() => setActive(i)}
+              onMouseLeave={() => setActive(null)}
+              onFocus={() => setActive(i)}
+              onBlur={() => setActive(null)}
+              onClick={() => setActive(i)}
+              className={`w-full flex items-center gap-2 text-left text-[13px] rounded-md px-1.5 py-0.5 ${active === i ? 'bg-[#3b82f6]/15' : ''}`}
+            >
+              <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+              <span className="flex-1 min-w-0 font-semibold text-[#050a44] break-words">{r.label}</span>
+              <span className="tabular-nums text-[#46464f] shrink-0">{format(r.value)}</span>
+              <span className="tabular-nums font-bold text-[#050a44] w-10 text-right shrink-0">{pct(r.value)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </figure>
+  );
+}
+
 /** A grid of cells shaded by a 0–100 value, e.g. how full the bus is by weekday and direction. */
 export function HeatGrid({ rows, cols, value, note, label }: { rows: string[]; cols: string[]; value: (r: number, c: number) => number | null; note?: (r: number, c: number) => string; label: string }) {
   return (

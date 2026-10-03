@@ -145,4 +145,39 @@ select 'office cash that day: ' || (select string_agg((p ->> 'name') || ' ' || c
 reset role;
 delete from notifications where title like 'Cash %' and body not like '%short by change%';
 select 'balanced days are not reported: ' || (count(*) = 1) from (select distinct body from notifications where title like 'Cash %') x;
+
+select '--- reminders to renew documents';
+delete from notifications; delete from bus_documents; update crew set license_expires = null;
+insert into bus_documents (id, bus_id, kind, number, expires_on) values
+  ('11111111-0000-0000-0000-000000000001', 'bus-1', 'insurance', 'INS-1', (now() at time zone 'Asia/Colombo')::date + 45),
+  ('11111111-0000-0000-0000-000000000002', 'bus-1', 'revenue_license', 'RL-1', (now() at time zone 'Asia/Colombo')::date + 10),
+  ('11111111-0000-0000-0000-000000000003', 'bus-1', 'emission_test', 'ET-1', (now() at time zone 'Asia/Colombo')::date - 2);
+select 'first run: ' || array_to_string(queue_renewal_reminders(), ' | ');
+select 'run again a minute later: ' || coalesce(nullif(array_to_string(queue_renewal_reminders(), ' | '), ''), 'nothing');
+update bus_documents set expires_on = expires_on - 4 where kind = 'revenue_license'; -- four days pass: 6 days left, a new stage
+select 'four days later: ' || coalesce(nullif(array_to_string(queue_renewal_reminders(), ' | '), ''), 'nothing');
+update bus_documents set expires_on = (now() at time zone 'Asia/Colombo')::date + 365 where kind = 'emission_test'; -- renewed
+update bus_documents set expires_on = (now() at time zone 'Asia/Colombo')::date + 30 where kind = 'insurance'; -- now inside the 30 days
+select 'after renewing the emission test: ' || coalesce(nullif(array_to_string(queue_renewal_reminders(), ' | '), ''), 'nothing');
+select 'told: ' || string_agg(distinct (select role::text from profiles where id = user_id), ', ') || ' · ' || count(*) || ' notifications · e.g. ' || min(title) from notifications;
+set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select pg_temp.try('staff run the reminder job by hand', $q$select queue_renewal_reminders()$q$);
+reset role;
+select 'stages: ' || string_agg(d || '→' || coalesce(public.renewal_stage(d)::text, 'none'), ', ' order by d desc) from unnest(array[45, 30, 15, 14, 8, 7, 4, 3, 2, 1, 0, -1, -3, -4, -7]) d;
+
+select '--- salary settlement';
+insert into crew (id, full_name, role, monthly_salary, per_trip_pay, bus_id) values ('22222222-0000-0000-0000-000000000001', 'Test Driver', 'driver', 60000, 1500, 'bus-1');
+set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select pg_temp.try('office staff record an advance', $q$insert into crew_pay (crew_id, month, kind, amount) values ('22222222-0000-0000-0000-000000000001', '2026-10', 'advance', 10000)$q$);
+select 'office staff see pay records: ' || count(*) from crew_pay;
+reset role;
+set role authenticated; select pg_temp.as_user('dddddddd-0000-0000-0000-000000000004');
+insert into expenses (id, spent_on, category, amount, description) values ('33333333-0000-0000-0000-000000000001', current_date, 'salary', 10000, 'Advance: Test Driver');
+select pg_temp.try('admin records an advance', $q$insert into crew_pay (crew_id, month, kind, amount, expense_id) values ('22222222-0000-0000-0000-000000000001', '2026-10', 'advance', 10000, '33333333-0000-0000-0000-000000000001')$q$);
+select pg_temp.try('admin records a deduction', $q$insert into crew_pay (crew_id, month, kind, amount, notes) values ('22222222-0000-0000-0000-000000000001', '2026-10', 'deduction', 1750, 'cash short on 3 Oct')$q$);
+select pg_temp.try('admin records a bad month', $q$insert into crew_pay (crew_id, month, kind, amount) values ('22222222-0000-0000-0000-000000000001', '2026-13', 'bonus', 500)$q$);
+select 'salary expenses before removing the advance: ' || count(*) from expenses where id = '33333333-0000-0000-0000-000000000001';
+delete from crew_pay where kind = 'advance';
+select 'after removing it: ' || count(*) || ' (its expense went too)' from expenses where id = '33333333-0000-0000-0000-000000000001';
+reset role;
 update app_settings set card_payments = true;

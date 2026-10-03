@@ -10,6 +10,24 @@ import { pushPendingNotifications } from '@/lib/server/push';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Queues the renewal reminders that are due (the database decides which:
+ * 30, 14, 7, 3, 1 days before, on the day, then every 3 days once expired)
+ * and texts the owner (OWNER_PHONE) one message listing them.
+ */
+async function remindRenewals(db: NonNullable<ReturnType<typeof adminClient>>) {
+  const { data, error } = await db.rpc('queue_renewal_reminders');
+  if (error) return { error: error.message.slice(0, 200) };
+  const lines = (data as string[] | null) ?? [];
+  if (lines.length === 0) return { reminders: 0 };
+  const owner = (process.env.OWNER_PHONE ?? '').trim();
+  if (!owner) return { reminders: lines.length, sms: 'OWNER_PHONE not set' };
+  const shown = lines.slice(0, 4).join('; ');
+  const more = lines.length > 4 ? `; and ${lines.length - 4} more` : '';
+  const sent = await sendSms(owner, `Siyan Lanka: to renew. ${shown}${more}. See Staff area, Fleet health.`);
+  return { reminders: lines.length, sms: sent.status };
+}
+
 async function handle(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -18,6 +36,9 @@ async function handle(req: Request) {
 
   await db.rpc('release_expired_holds');
   // Push first: it's quick, and a slow SMS provider shouldn't delay reminders.
+  // Documents and licences that are about to expire (or have): super admins get a
+  // notification (pushed below); the owner also gets one text listing them.
+  const renewals = await remindRenewals(db).catch((e) => ({ error: String(e).slice(0, 200) }));
   const push = await pushPendingNotifications(db).catch((e) => ({ error: String(e).slice(0, 200) }));
   const { data: batch, error } = await db.from('message_queue').select('*').eq('status', 'pending').order('created_at').limit(50);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -41,7 +62,7 @@ async function handle(req: Request) {
       .eq('id', m.id);
     results[r.status] += 1;
   }
-  return NextResponse.json({ processed: batch?.length ?? 0, ...results, push });
+  return NextResponse.json({ processed: batch?.length ?? 0, ...results, push, renewals });
 }
 
 export const GET = handle;
