@@ -176,6 +176,126 @@ export function Bars({ labels, titles, series, format, height = 190, label }: { 
   );
 }
 
+/**
+ * A line chart over time buckets: one line per series, a dot at each point.
+ * Like Bars, each bucket is a column you can hover, focus or tap to see its
+ * date and every figure underneath. The scale starts at zero (or below it
+ * when a series goes negative), with the top value marked.
+ */
+export function Lines({ labels, titles, series, format, height = 200, label, drawTo }: { labels: string[]; titles?: string[]; series: Series[]; format: (n: number) => string; height?: number; label: string; /** Draw only the first `drawTo` points: days that haven't happened yet are left blank, not drawn as zero. */ drawTo?: number }) {
+  const [active, setActive] = useState<number | null>(null);
+  const n = Math.max(1, labels.length);
+  const shown = Math.max(1, Math.min(n, drawTo ?? n));
+  const all = series.flatMap((s) => s.values.slice(0, shown));
+  const max = Math.max(1, ...all);
+  const min = Math.min(0, ...all);
+  const span = max - min;
+  const y = (v: number) => ((max - v) / span) * 100;
+  const every = Math.ceil(n / 16);
+  const name = (i: number) => titles?.[i] ?? labels[i];
+  return (
+    <figure aria-label={label}>
+      <div className="relative w-full" style={{ height }} onMouseLeave={() => setActive(null)}>
+        {/* guide lines: top value, middle, zero */}
+        {(min < 0 ? [max, 0, min] : [max, max / 2, 0]).map((v, k) => (
+          <div key={k} className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[#9ca3af]/35" style={{ top: `${y(v)}%` }} aria-hidden>
+            <span className="absolute left-0 -top-[15px] text-[10px] text-[#6b6d78] tabular-nums">{format(Math.round(v))}</span>
+          </div>
+        ))}
+        <svg className="absolute inset-0 w-full h-full overflow-visible" viewBox={`0 0 ${n} 100`} preserveAspectRatio="none" aria-hidden>
+          {series.map((s) => (
+            <polyline
+              key={s.name}
+              fill="none"
+              stroke={s.color}
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+              points={s.values.slice(0, shown).map((v, i) => `${i + 0.5},${y(v)}`).join(' ')}
+            />
+          ))}
+        </svg>
+        {/* dots (HTML, so they stay round whatever the chart's width) */}
+        {series.map((s) =>
+          s.values.slice(0, shown).map((v, i) => (
+            <span
+              key={`${s.name}-${i}`}
+              aria-hidden
+              className="pointer-events-none absolute rounded-full"
+              style={{ left: `${((i + 0.5) / n) * 100}%`, top: `${y(v)}%`, width: active === i ? 9 : n > 20 ? 4 : 6, height: active === i ? 9 : n > 20 ? 4 : 6, transform: 'translate(-50%, -50%)', background: s.color }}
+            />
+          )),
+        )}
+        {/* hover / tap columns */}
+        <div className="absolute inset-0 flex">
+          {labels.map((l, i) => (
+            <button
+              type="button"
+              key={i}
+              onMouseEnter={() => setActive(i)}
+              onFocus={() => setActive(i)}
+              onClick={() => setActive(i)}
+              aria-label={i < shown ? `${name(i)}: ${series.map((s) => `${s.name} ${format(s.values[i] ?? 0)}`).join(', ')}` : `${name(i)}: still to come`}
+              className="relative block flex-1 min-w-0 h-full p-0 m-0 border-0 outline-none cursor-default bg-transparent"
+              style={i >= shown ? { background: 'repeating-linear-gradient(135deg, rgba(127,127,127,0.07) 0 6px, transparent 6px 12px)' } : undefined}
+            >
+              {active === i && <span className="absolute inset-y-0 left-1/2 w-px bg-[#3b82f6]/60" aria-hidden />}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex mt-1.5">
+        {labels.map((l, i) => (
+          <span key={i} className={`flex-1 min-w-0 text-center text-[10px] truncate ${active === i ? 'font-bold text-[#050a44]' : 'text-[#6b6d78]'}`}>{i % every === 0 || active === i ? l : ''}</span>
+        ))}
+      </div>
+      <p aria-live="polite" className="mt-2 min-h-[20px] text-[13px] text-[#46464f] flex flex-wrap gap-x-4 gap-y-0.5">
+        {active == null ? (
+          <span className="text-[12px] text-[#6b6d78]">Hover or tap the chart to see a date and its figures.</span>
+        ) : (
+          <>
+            <b className="text-[#050a44]">{name(active)}</b>
+            {active >= shown ? (
+              <span>still to come</span>
+            ) : (
+              series.map((s) => (
+                <span key={s.name} className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} /> {s.name} <b className="tabular-nums text-[#050a44]">{format(s.values[active] ?? 0)}</b>
+                </span>
+              ))
+            )}
+          </>
+        )}
+      </p>
+      <figcaption className="flex flex-wrap gap-4 mt-2 text-[12px] text-[#46464f]">
+        {series.map((s) => (
+          <span key={s.name} className="flex items-center gap-1.5"><span className="w-4 h-[3px] rounded" style={{ background: s.color }} /> {s.name}</span>
+        ))}
+      </figcaption>
+    </figure>
+  );
+}
+
+/** Tabs for a page with several views. The active tab is kept in the address (#income), so a reload or a shared link opens the same one. */
+export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string }[]; value: T; onChange: (t: T) => void }) {
+  return (
+    <div role="tablist" aria-label="Sections" className="flex gap-1 overflow-x-auto no-scrollbar border-b border-[#c7c5d1]/60 mb-6">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          role="tab"
+          aria-selected={value === t.id}
+          onClick={() => onChange(t.id)}
+          className={`shrink-0 px-4 h-11 text-[14px] font-bold border-b-2 -mb-px transition-colors ${value === t.id ? 'border-[#feb700] text-[#050a44]' : 'border-transparent text-[#6b6d78] hover:text-[#050a44]'}`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Slice colours for pie charts: distinct on both the light and the dark theme. */
 export const PIE_COLORS = ['#3b82f6', '#feb700', '#16a34a', '#a855f7', '#f97316', '#14b8a6', '#ec4899', '#9ca3af'];
 

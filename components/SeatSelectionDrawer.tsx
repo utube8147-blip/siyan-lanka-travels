@@ -41,6 +41,8 @@ interface SeatSelectionDrawerProps {
   layout: { rows: number; backRowSeats: number; ladiesSeats: string[]; reservedSeats?: string[]; seatMap?: SeatMap | null };
   /** Free seats kept for women because the seat beside them is booked by a woman travelling alone. */
   womenOnly?: string[];
+  /** Seats another passenger is checking out with right now (a 10-minute hold). */
+  heldSeats?: string[];
   /** Seats already sold on this departure → gender of the passenger holding it. */
   taken: Map<string, Gender>;
 }
@@ -59,6 +61,7 @@ export default function SeatSelectionDrawer({
   layout,
   taken,
   womenOnly,
+  heldSeats,
 }: SeatSelectionDrawerProps) {
   const isEditingExisting = originalSeatCount !== undefined;
   const deltaCount = isEditingExisting ? selectedSeats.length - (originalSeatCount as number) : 0;
@@ -102,7 +105,7 @@ export default function SeatSelectionDrawer({
 
   // Seats the owner keeps back: shown as not available (only staff can sell them, with the owner's code).
   const RESERVED_SEATS = layout.reservedSeats ?? [];
-  const PENDING_SEATS: string[] = [];
+  const PENDING_SEATS: string[] = heldSeats ?? [];
 
   // No colour legend: each seat explains itself. Hovering (or focusing, or
   // tapping on a phone) shows what the seat's colour means, in a small bubble
@@ -125,7 +128,7 @@ export default function SeatSelectionDrawer({
         : RESERVED_SEATS.includes(seatId)
           ? 'reserved, not available online'
         : PENDING_SEATS.includes(seatId)
-          ? 'held by another passenger'
+          ? 'being booked by another passenger right now; it may come free in a few minutes'
           : selectedSeats.includes(seatId)
             ? 'selected by you (tap to remove)'
             : BESIDE_WOMAN.includes(seatId)

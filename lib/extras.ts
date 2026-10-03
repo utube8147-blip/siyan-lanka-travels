@@ -282,7 +282,8 @@ export function useLiveTrip(scheduleId?: string, date?: string) {
     };
     load();
     const ch = sb
-      .channel(`live-${scheduleId}-${date}`)
+      // unique per use: several parts of a page can follow the same trip (see lib/seatHolds.ts)
+      .channel(`live-${scheduleId}-${date}-${Math.random().toString(36).slice(2, 10)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bus_locations', filter: `schedule_id=eq.${scheduleId}` }, load)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'trip_events', filter: `schedule_id=eq.${scheduleId}` }, load)
       .subscribe();

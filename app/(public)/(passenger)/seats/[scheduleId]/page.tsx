@@ -1,6 +1,7 @@
 // app/(public)/(passenger)/seats/[scheduleId]/page.tsx
 'use client';
 
+import { holdSeats, useSeatHolds } from '@/lib/seatHolds';
 import { useBikeConfig } from '@/lib/useBikeConfig';
 import { bikeKind } from '@/lib/bikeConfig';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -78,7 +79,7 @@ function BookingPageInner() {
   const { addToast, ToastHost } = useLocalToast();
   const { user, isLoggedIn, mode: authMode } = useAuth();
 
-  const { data, ready } = useStore();
+  const { data, ready, reload } = useStore();
   const date = searchParams.get('date') || todayISO();
 
   const trip = useMemo(
@@ -188,6 +189,40 @@ function BookingPageInner() {
     const t = setTimeout(() => setOtpCooldown((s) => s - 1), 1000);
     return () => clearTimeout(t);
   }, [otpCooldown]);
+
+  // Seat colours follow the database live (bookings, staff sales, holds). As a safety net for
+  // a missed live update, the seat map is also re-read every 15 seconds while this page is open
+  // and visible, so what the passenger sees is never more than a few seconds old.
+  useEffect(() => {
+    if (authMode !== 'supabase') return;
+    const t = setInterval(() => document.visibilityState === 'visible' && reload(), 15_000);
+    return () => clearInterval(t);
+  }, [authMode, reload]);
+
+  // ---- A real hold on the chosen seats while the passenger checks out (migration 21).
+  // Other passengers see them as held and staff see them on the seat map. Seats that
+  // someone else is holding are shown as unavailable here.
+  const { holds, reload: reloadHolds } = useSeatHolds(trip?.scheduleId, date);
+  const heldByOthers = useMemo(() => holds.filter((h) => !h.mine).map((h) => h.seat), [holds]);
+  const seatsKey = selectedSeats.join(',');
+  useEffect(() => {
+    if (!trip || !isLoggedIn || authMode !== 'supabase') return;
+    const wanted = seatsKey ? seatsKey.split(',') : [];
+    const t = setTimeout(async () => {
+      const r = await holdSeats(trip.scheduleId, date, wanted);
+      if (!r.ok) {
+        // Someone got there first: say so, and drop whatever is no longer free.
+        addToast(r.reason ?? 'One of those seats is no longer free.', 'error');
+        await reloadHolds();
+        setSelectedSeats([]);
+        return;
+      }
+      if (r.expiresAt) setTimeLeft(Math.max(1, Math.round((new Date(r.expiresAt).getTime() - Date.now()) / 1000)));
+      reloadHolds();
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seatsKey, trip?.scheduleId, date, isLoggedIn, authMode]);
 
   useEffect(() => {
     if (selectedSeats.length === 0) return;
@@ -773,6 +808,7 @@ function BookingPageInner() {
         selectedSeats={selectedSeats}
         onToggleSeat={toggleSeat}
         womenOnly={[...besideWoman]}
+        heldSeats={heldByOthers}
         timeLeft={timeLeft}
         seatPrice={seatPrice}
         passengerGender={passengerGender}

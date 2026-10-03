@@ -168,3 +168,73 @@ export function incomeSource(b: Booking, roleOf: (userId: string) => string | un
 
 /** Seat ids in a sensible order: 2 before 10, 3A before 3B. */
 export const seatOrder = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+
+// ------------------------------------------------------------ distance, fuel
+/** Straight-line km between two map pins. */
+function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+/**
+ * Road length of a route in km, from the stops' map pins (Routes & timetable).
+ * Straight lines between pins come out about 12% short of the road, so they
+ * are scaled up. 0 when a stop has no pin.
+ */
+export function routeKm(route?: { stops: { lat?: number; lng?: number }[] }): number {
+  const st = route?.stops ?? [];
+  if (st.length < 2 || st.some((x) => x.lat == null || x.lng == null)) return 0;
+  let total = 0;
+  for (let i = 1; i < st.length; i++) total += haversineKm({ lat: st[i - 1].lat!, lng: st[i - 1].lng! }, { lat: st[i].lat!, lng: st[i].lng! });
+  return Math.round(total * 1.12);
+}
+
+/** The bits of an expense the fleet figures need (kept loose so this file doesn't depend on the ERP module). */
+export interface FuelLog { spentOn: string; category: string; amount: number; busId?: string | null; litres?: number | null; odometerKm?: number | null }
+export interface FleetFig {
+  busId: string;
+  trips: number;
+  /** km from the timetable: every trip run × its route length. */
+  kmPlanned: number;
+  /** km from odometer readings logged with fuel / service in the period (needs two readings). */
+  kmLogged: number | null;
+  odoStart: number | null;
+  odoEnd: number | null;
+  litres: number;
+  fuelCost: number;
+  /** From the logged fill-ups: km between the first and last fill ÷ litres put in after the first. */
+  kmPerLitre: number | null;
+  runningCost: number;
+  allCost: number;
+  income: number;
+}
+/** Per-bus usage for the period: distance, fuel, mileage and cost. */
+export function fleetFigures(data: StoreData, logs: FuelLog[], r: Range, running: string[]): FleetFig[] {
+  const routeLen = new Map(data.routes.map((x) => [x.id, routeKm(x)]));
+  return data.buses
+    .filter((b) => !r.busId || b.id === r.busId)
+    .map((b) => {
+      const runs = runsIn(data, { ...r, busId: b.id });
+      const mine = logs.filter((e) => e.busId === b.id && inRange(e.spentOn, r));
+      const odo = mine.filter((e) => e.odometerKm).map((e) => e.odometerKm!).sort((x, y) => x - y);
+      const fills = mine.filter((e) => e.category === 'fuel' && e.odometerKm && e.litres).sort((x, y) => x.odometerKm! - y.odometerKm!);
+      const fillKm = fills.length >= 2 ? fills[fills.length - 1].odometerKm! - fills[0].odometerKm! : 0;
+      const fillLitres = fills.slice(1).reduce((n, f) => n + (f.litres ?? 0), 0);
+      return {
+        busId: b.id,
+        trips: runs.length,
+        kmPlanned: runs.reduce((n, x) => n + (routeLen.get(x.routeId) ?? 0), 0),
+        kmLogged: odo.length >= 2 ? odo[odo.length - 1] - odo[0] : null,
+        odoStart: odo[0] ?? null,
+        odoEnd: odo.length ? odo[odo.length - 1] : null,
+        litres: mine.filter((e) => e.category === 'fuel').reduce((n, e) => n + (e.litres ?? 0), 0),
+        fuelCost: mine.filter((e) => e.category === 'fuel').reduce((n, e) => n + e.amount, 0),
+        kmPerLitre: fillKm > 0 && fillLitres > 0 ? fillKm / fillLitres : null,
+        runningCost: mine.filter((e) => running.includes(e.category)).reduce((n, e) => n + e.amount, 0),
+        allCost: mine.reduce((n, e) => n + e.amount, 0),
+        income: runs.reduce((n, x) => n + x.income, 0),
+      };
+    });
+}

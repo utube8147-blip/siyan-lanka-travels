@@ -3,7 +3,7 @@
 // and passenger manifest, sell seats at the counter or by phone, and mark
 // passengers as boarded / no-show on the night.
 
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useMemo, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Printer } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
@@ -27,6 +27,7 @@ import { TripTools } from '@/components/admin/TripTools';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
 import { slipOnFile, slipUrl, useSlips } from '@/lib/money';
 import { usePublicSettings } from '@/lib/extras';
+import { holdSeats, releaseSeatHolds, useSeatHolds } from '@/lib/seatHolds';
 import { busSeatMap, layoutSegments } from '@/lib/seatLayout';
 import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
@@ -106,6 +107,27 @@ function Manifest({ run }: { run: Run }) {
   const bookings = data.bookings.filter((b) => b.scheduleId === run.schedule.id && b.date === run.date);
   const live = bookings.filter((b) => b.status === 'confirmed' || b.status === 'boarded' || b.status === 'held');
   const taken = takenSeats(data.bookings, run.schedule.id, run.date);
+  // Seats a passenger is checking out with online right now (a 10-minute hold). Shown on the map;
+  // office staff can still sell them, which takes the seat from that passenger.
+  const { holds, reload: reloadHolds } = useSeatHolds(run.schedule.id, run.date);
+  // Seats other people are holding (a passenger at checkout, or another staff member mid-sale).
+  const heldUntil = new Map(holds.filter((h) => !h.mine).map((h) => [h.seat, h.expiresAt]));
+  // Seats picked here for a counter sale are held too, so passengers see them turn
+  // unavailable straight away and can't book them while the sale is being made.
+  const selectedKey = selected.join(',');
+  useEffect(() => {
+    const t = setTimeout(async () => {
+      const r = await holdSeats(run.schedule.id, run.date, selectedKey ? selectedKey.split(',') : []);
+      if (!r.ok) {
+        toast(r.reason ?? 'One of those seats is no longer free.', 'error');
+        setSelected([]);
+      }
+      reloadHolds();
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedKey, run.schedule.id, run.date]);
+  useEffect(() => () => void releaseSeatHolds(), []); // leaving the page lets the seats go
   const seatOwner = new Map<string, Booking>();
   live.forEach((b) => b.seats.forEach((s) => seatOwner.set(s, b)));
   const stopOrder = (name: string) => run.route.stops.findIndex((s) => s.name === name);
@@ -148,13 +170,19 @@ function Manifest({ run }: { run: Run }) {
           </div>
         </div>
 
-        <SeatGrid run={run} taken={taken} owner={seatOwner} selected={selected} onToggle={toggle} />
+        <SeatGrid run={run} taken={taken} owner={seatOwner} selected={selected} onToggle={toggle} heldUntil={heldUntil} />
+        {heldUntil.size > 0 && (
+          <p className="mt-2 text-[12px] font-semibold text-[#9a5b00]">
+            {heldUntil.size} seat{heldUntil.size === 1 ? ' is' : 's are'} being booked online right now ({[...heldUntil.keys()].join(', ')}). They come free again if the passenger doesn&apos;t finish in time.
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-[11px] font-medium text-[#46464f]">
           <Legend className="border border-[#c7c5d1] bg-white" label="Free" />
           <Legend className="bg-[#050a44]" label="Selected" />
           <Legend className="bg-[#dc2626]" label="Booked, paid" />
-          <Legend className="bg-[#f97316]" label="Not fully paid" />
+          <Legend className="bg-[#f97316]" label="Booked, not paid yet" />
+          <Legend className="border-2 border-dashed border-[#f59e0b] bg-[#fef3c7]" label="Being booked online (held)" />
           <Legend className="bg-[#006e1c]" label="Boarded" />
           <Legend className="border border-rose-400 bg-rose-50" label="Ladies" />
           <Legend className="border border-dashed border-[#6d28d9] bg-[#ede9fe]" label="Reserved" />
@@ -370,12 +398,15 @@ function SeatGrid({
   owner,
   selected,
   onToggle,
+  heldUntil,
 }: {
   run: Run;
   taken: Map<string, Gender>;
   owner: Map<string, Booking>;
   selected: string[];
   onToggle: (seat: string) => void;
+  /** Seats held by a passenger at checkout → when the hold runs out. */
+  heldUntil?: Map<string, string>;
 }) {
   // Drawn from the bus's own layout (Staff area → Buses → Edit): gaps stay gaps, a bench can be wider than a row.
   const seatMap = busSeatMap(run.bus);
@@ -387,6 +418,8 @@ function SeatGrid({
     // green = on board (orange ring = on board, still to pay), rose = ladies
     // only, purple stripes = reserved, plain = free.
     const due = !!o && o.paymentStatus === 'unpaid';
+    const held = !o ? heldUntil?.get(id) : undefined;
+    const heldTime = held ? new Date(held).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
     const cls = o
       ? o.status === 'boarded'
         ? `bg-[#006e1c] text-white ${due ? 'ring-2 ring-[#f97316] ring-offset-1' : ''}`
@@ -395,6 +428,8 @@ function SeatGrid({
           : 'bg-[#dc2626] text-white'
       : isSel
         ? 'bg-[#050a44] text-white border-[#050a44]'
+        : held
+          ? 'bg-[#fef3c7] border-2 border-dashed border-[#f59e0b] text-[#7c5800]'
         : (run.bus.reservedSeats ?? []).includes(id)
           ? 'bg-[repeating-linear-gradient(135deg,#ede9fe_0,#ede9fe_4px,#fff_4px,#fff_8px)] border border-dashed border-[#6d28d9] text-[#4c1d95]'
         : run.bus.ladiesSeats.includes(id)
@@ -405,8 +440,8 @@ function SeatGrid({
         key={id}
         type="button"
         onClick={() => onToggle(id)}
-        title={o ? `${id}: ${o.passenger.name} (${o.from} → ${o.to}) · ${due ? `NOT PAID, ${formatLKR(o.total)} to collect` : `paid ${formatLKR(o.total)}`}${o.status === 'boarded' ? ' · on board' : ''}` : (run.bus.reservedSeats ?? []).includes(id) ? `${id}: reserved. Needs the owner's code to sell` : run.bus.ladiesSeats.includes(id) ? `${id}: free, ladies only` : `${id}: free`}
-        aria-label={o ? `Seat ${id}, sold to ${o.passenger.name}` : `Seat ${id}, free${isSel ? ', selected' : ''}`}
+        title={o ? `${id}: ${o.passenger.name} (${o.from} → ${o.to}) · ${due ? `NOT PAID, ${formatLKR(o.total)} to collect` : `paid ${formatLKR(o.total)}`}${o.status === 'boarded' ? ' · on board' : ''}` : held ? `${id}: being booked online right now, held until ${heldTime}. Free again after that if the passenger doesn't finish.` : (run.bus.reservedSeats ?? []).includes(id) ? `${id}: reserved. Needs the owner's code to sell` : run.bus.ladiesSeats.includes(id) ? `${id}: free, ladies only` : `${id}: free`}
+        aria-label={o ? `Seat ${id}, sold to ${o.passenger.name}` : held ? `Seat ${id}, being booked online, held until ${heldTime}${isSel ? ', selected' : ''}` : `Seat ${id}, free${isSel ? ', selected' : ''}`}
         aria-pressed={isSel}
         className={`h-9 rounded-lg text-[11px] font-bold transition-colors ${cls} ${taken.has(id) ? 'cursor-pointer' : ''}`}
       >
@@ -476,6 +511,9 @@ function SellSeatsModal({
   const pubSettings = usePublicSettings();
   const besideWoman = pubSettings.ladiesAdjacent ? seatsBesideLoneWoman(storeData.bookings, run.bus, run.schedule.id, run.date) : new Set<string>();
   const besideClash = gender !== '' && gender !== 'Female' ? seats.filter((s) => besideWoman.has(s)) : [];
+  // Seats in this sale that a passenger is checking out with online right now.
+  const { holds: liveHolds } = useSeatHolds(run.schedule.id, run.date);
+  const heldPicked = seats.filter((s) => liveHolds.some((h) => h.seat === s && !h.mine)); // not this seller's own lock
   // Office staff may override the ladies-only rule for this one sale.
   const { user } = useAuth();
   const canOverride = isOfficeRole(user?.role);
@@ -604,6 +642,16 @@ function SellSeatsModal({
           ) : (
             <p className="text-[12px] text-[#46464f]">Only office staff can override this.</p>
           )}
+        </div>
+      )}
+      {heldPicked.length > 0 && (
+        <div className="rounded-xl bg-[#fef3c7] border border-[#f59e0b]/50 p-3">
+          <p className="text-[13px] font-bold text-[#7c5800]">Seat {heldPicked.join(', ')} is being booked online right now</p>
+          <p className="text-[12px] text-[#46464f]">
+            {canOverride
+              ? 'A passenger chose it and is at checkout. Selling it here takes it from them: they will be told the seat is gone. Offer another seat if you can.'
+              : 'A passenger chose it and is at checkout. Only office staff can sell over a hold; pick another seat or wait a few minutes.'}
+          </p>
         </div>
       )}
       {reservedPicked.length > 0 && (

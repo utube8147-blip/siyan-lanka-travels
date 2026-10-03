@@ -211,6 +211,40 @@ the bus's grid. Buses that were never edited keep the classic 2+2 layout
 change numbers on a bus before it has upcoming bookings, or check those
 departures afterwards.
 
+## Seats held during checkout
+When a signed-in passenger chooses seats, the seats are really held for 10
+minutes (migration 21); the "Seats are held for 9:51" countdown shows the
+time left on that hold.
+- **Other passengers** see those seats as "being booked by another passenger"
+  and can't select or book them.
+- **Staff** see them on the Departures seat map with a dashed amber outline
+  and the time the hold runs out, and a line under the map lists them.
+- **Office staff can sell over a hold** (the Sell window warns first);
+  conductors can't. The passenger is then told the seat is gone.
+- The hold becomes the booking when the passenger finishes, or lapses after
+  10 minutes. Changing the selection moves the hold; one selection per person.
+- A booking that is waiting for payment (bank transfer, pay at counter, pay on
+  the bus) is different: it is a real booking and shows orange, "Booked, not
+  paid yet".
+
+## Live seat availability
+Every open seat map follows the database as it changes, so two people can't
+end up with the same seat:
+- A booking, a counter sale, a cancellation or an expired hold changes the
+  seat's colour on every open seat picker within a second or so
+  (Supabase Realtime on `booking_seats` and `seat_holds`).
+- Seats a staff member picks for a counter sale are locked the same way as a
+  passenger's selection, so passengers see them turn unavailable while the
+  sale is being made.
+- If a live update is missed (a phone asleep, a dropped connection), the page
+  catches up when it is looked at again, and the passenger seat page also
+  re-reads the map every 15 seconds.
+- Whatever the screen shows, the database has the final say: a seat can only
+  ever belong to one live booking, and a booking for a seat someone else
+  holds is refused.
+Realtime must be enabled for the project (it is by default); `setup.sql` adds
+the tables to the `supabase_realtime` publication.
+
 ## The seat beside a woman travelling alone
 When a woman has booked one seat, the seat right beside hers (same side of
 the aisle, no gap between) is kept for women (migration 20).
@@ -300,17 +334,28 @@ over is compared up to today.
   the period); where the money went; how tickets were paid; what is still
   owed; refunds and payouts; cash that didn't match at close; profit per trip
   as a chart and a table; other income.
-- **Analytics, income** (pie charts): where the money came from (counter
-  cash, cash the conductor collected on the bus, cash paid at the counter for
-  an online booking, bank transfer, card, and other income such as charters
-  and parcels); what ticket income is made of (fares, booking fees, bike
-  fees); income by sales channel, by direction and by bus; income by weekday;
-  new and returning passengers; average income per seat and per trip.
-- **Analytics** (buses and passengers): seats sold, average fill, bookings,
-  cancellations and no-shows; seats sold vs left empty over time; how full by
-  weekday and direction; fullest and emptiest trips; how early people book;
-  where seats are sold (online, counter, phone); boarding and drop-off stops;
-  seats lost to cancellations and unpaid no-shows; bikes carried; promo use.
+- **Analytics** is organised in six tabs (the open tab is kept in the
+  address, e.g. `/admin/analytics#expenses`):
+  - **Overview:** income, expenses, profit, seats sold, average fill and
+    distance driven; income / expenses / profit and bus fill as line charts;
+    where the money came from and went; the headline facts.
+  - **Income:** income over time; by weekday; where the money came from
+    (counter cash, cash the conductor collected, bank transfer, card, other
+    income); what ticket income is made of; by channel, direction and bus;
+    income per seat, per trip and per km.
+  - **Expenses:** total, running and other costs, cost per km; the breakdown
+    by category; spending over time with the largest categories; by bus; how
+    it was paid; who you paid most; the largest single expenses.
+  - **Buses & seats:** trips run, seats sold and left empty, fill by weekday
+    and direction, fullest and emptiest trips, the seats people choose most.
+  - **Passengers:** new and returning, men and women, how they book, how
+    early, where they get on and off, cancellations and no-shows, bikes,
+    promo code.
+  - **Fleet & fuel:** kilometres driven (trips run × the route's length from
+    its stop pins) in total and per day, fuel bought, fuel / running cost and
+    income per km, and for each bus the odometer distance and mileage (km per
+    litre) from the readings logged with fuel.
+  Line charts stop at today: days still to come are shaded, not drawn as zero.
 Everything is worked out in the browser from bookings (by travel date),
 expenses, payouts and cash counts already loaded for staff. Expenses and
 other income belong to a bus, not a route, so they are left out while a route

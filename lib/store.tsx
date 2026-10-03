@@ -241,12 +241,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(t);
       t = setTimeout(refresh, 400);
     };
-    const ch = sb.channel('live-seats').on('postgres_changes', { event: '*', schema: 'public', table: 'booking_seats' }, bump);
+    // A fresh channel name each time this runs: re-using a name can hand back the previous,
+    // already-subscribed channel (it is removed asynchronously), which Supabase won't add listeners to.
+    const ch = sb.channel(`live-seats-${Math.random().toString(36).slice(2, 10)}`).on('postgres_changes', { event: '*', schema: 'public', table: 'booking_seats' }, bump);
     if (staff) ch.on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, bump);
     ch.subscribe();
+    // Live updates can be missed while a phone sleeps or the connection drops, so catch up
+    // the moment the page is looked at again or the network comes back.
+    const onVisible = () => document.visibilityState === 'visible' && bump();
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', bump);
+    window.addEventListener('focus', bump);
     return () => {
       clearTimeout(t);
       sb.removeChannel(ch);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', bump);
+      window.removeEventListener('focus', bump);
     };
   }, [mode, authLoading, staff, refresh]);
 
