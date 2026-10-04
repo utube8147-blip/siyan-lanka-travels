@@ -96,7 +96,7 @@ export default function LandingPage() {
     'w-full pl-9 md:pl-[48px] pr-2 md:pr-[16px] py-2.5 md:py-3.5 text-sm md:text-base rounded-2xl bg-white/10 border border-white/20 focus:bg-white focus:ring-2 focus:ring-[#feb700] focus:border-transparent transition-all outline-none text-white focus:text-[#191c1e] shadow-sm appearance-none';
 
   return (
-    <div className="bg-[#f8f9fb] text-[#191c1e] selection:bg-[#dfe0ff] selection:text-[#0f144c]">
+    <div className="bg-[#f8f9fb] text-[#191c1e] selection:bg-[#dfe0ff] selection:text-[#0f144c] scrollbar-none">
       <main>
         {/* Hero */}
         {/* Desktop: photo behind headline + search side by side.
