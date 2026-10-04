@@ -4,6 +4,9 @@
 // by someone qualified before relying on it, and adjust the parts marked
 // "operator policy" below (luggage, children, liability) to your own rules.
 // The refund table is generated from OPERATOR.refundPolicy.
+//
+// Layout: single column on phones/tablets; on laptops (lg+) the page is wider,
+// the Terms of service flow in two columns, and Refunds + Privacy sit side by side.
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -17,17 +20,32 @@ export const metadata: Metadata = {
 
 const UPDATED = '3 October 2026';
 
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+function Section({
+  id,
+  title,
+  columns = false,
+  children,
+}: {
+  id: string;
+  title: string;
+  columns?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <section id={id} className="scroll-mt-24 bg-white rounded-2xl border border-[#edeef0] p-5 md:p-7 space-y-4 text-[15px] leading-[1.7] text-[#46464f]">
-      <h2 className="text-[22px] font-semibold text-[#050a44]">{title}</h2>
-      {children}
+    <section id={id} className="scroll-mt-24 bg-white rounded-2xl border border-[#edeef0] p-5 md:p-7 lg:p-8 text-[15px] leading-[1.7] text-[#46464f]">
+      <h2 className="text-[22px] font-semibold text-[#050a44] mb-4">{title}</h2>
+      {columns ? (
+        // Two newspaper-style columns on laptops; each Part stays in one piece.
+        <div className="space-y-6 lg:space-y-0 lg:columns-2 lg:gap-12 lg:[&>*]:mb-6">{children}</div>
+      ) : (
+        <div className="space-y-4">{children}</div>
+      )}
     </section>
   );
 }
 function Part({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
   return (
-    <div id={id} className="scroll-mt-24 space-y-2">
+    <div id={id} className="scroll-mt-24 space-y-2 break-inside-avoid">
       <h3 className="text-[16px] font-semibold text-[#050a44]">{title}</h3>
       {children}
     </div>
@@ -39,7 +57,7 @@ export default function LegalPage() {
   const tiers = OPERATOR.refundPolicy;
   const contact = OPERATOR.contact;
   return (
-    <main className="max-w-[760px] mx-auto px-4 py-6 md:py-10 space-y-5">
+    <main className="max-w-[760px] lg:max-w-[1440px] mx-auto px-4 lg:px-8 py-6 md:py-10 space-y-5">
       <h1 className="hidden md:block text-[30px] font-semibold text-[#050a44]">Terms & policies</h1>
       <p className="text-[13px] text-[#6b6d78]">Last updated {UPDATED}. These terms apply to every booking made with {OPERATOR.name}, on this website, at our counter or by phone.</p>
       <nav aria-label="On this page" className="flex flex-wrap gap-2">
@@ -57,7 +75,7 @@ export default function LegalPage() {
         ))}
       </nav>
 
-      <Section id="terms" title="Terms of service">
+      <Section id="terms" title="Terms of service" columns>
         <Part title="1. Your booking">
           <List>
             <li>By booking you agree to these terms. If you book for someone else, you agree on their behalf and must tell them about these terms.</li>
@@ -138,71 +156,74 @@ export default function LegalPage() {
         </Part>
       </Section>
 
-      <Section id="refunds" title="Cancellations & refunds">
-        <p>Cancel from My trips. The refund depends on how long before your departure you cancel:</p>
-        <div className="overflow-hidden rounded-xl border border-[#edeef0]">
-          <table className="w-full text-[14px]">
-            <thead>
-              <tr className="bg-[#f8f9fb] text-left text-[#050a44]">
-                <th className="px-4 py-2.5 font-semibold">When you cancel</th>
-                <th className="px-4 py-2.5 font-semibold">Refund of the fare</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#edeef0]">
-              {tiers.map((t, i) => (
-                <tr key={t.hoursBefore}>
-                  <td className="px-4 py-2.5">
-                    {t.hoursBefore > 0
-                      ? `${t.hoursBefore}+ hours before${i > 0 ? ` (less than ${tiers[i - 1].hoursBefore})` : ''}`
-                      : `Less than ${tiers[i - 1]?.hoursBefore ?? 0} hours before`}
-                  </td>
-                  <td className="px-4 py-2.5 font-semibold text-[#050a44]">{t.percent}%</td>
+      {/* Refunds and Privacy side by side on laptops */}
+      <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
+        <Section id="refunds" title="Cancellations & refunds">
+          <p>Cancel from My trips. The refund depends on how long before your departure you cancel:</p>
+          <div className="overflow-hidden rounded-xl border border-[#edeef0]">
+            <table className="w-full text-[14px]">
+              <thead>
+                <tr className="bg-[#f8f9fb] text-left text-[#050a44]">
+                  <th className="px-4 py-2.5 font-semibold">When you cancel</th>
+                  <th className="px-4 py-2.5 font-semibold">Refund of the fare</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <List>
-          <li>The exact amount you will get back is shown in My trips before you confirm the cancellation.</li>
-          <li>The online booking fee is not refunded. A booking that was never paid has nothing to refund; cancelling it simply frees the seat.</li>
-          <li>If you don&apos;t travel and haven&apos;t cancelled (a no-show), no refund is due.</li>
-          <li>Refunds are paid to the bank account you give us in My trips, or in cash at our counter. We aim to pay within 7 working days of the cancellation; you are told when it has been paid.</li>
-          <li>If you change a paid booking to fewer seats, the difference is refunded in the same way.</li>
-          <li>If we cancel a departure, you get a full refund including the booking fee.</li>
-        </List>
-      </Section>
+              </thead>
+              <tbody className="divide-y divide-[#edeef0]">
+                {tiers.map((t, i) => (
+                  <tr key={t.hoursBefore}>
+                    <td className="px-4 py-2.5">
+                      {t.hoursBefore > 0
+                        ? `${t.hoursBefore}+ hours before${i > 0 ? ` (less than ${tiers[i - 1].hoursBefore})` : ''}`
+                        : `Less than ${tiers[i - 1]?.hoursBefore ?? 0} hours before`}
+                    </td>
+                    <td className="px-4 py-2.5 font-semibold text-[#050a44]">{t.percent}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <List>
+            <li>The exact amount you will get back is shown in My trips before you confirm the cancellation.</li>
+            <li>The online booking fee is not refunded. A booking that was never paid has nothing to refund; cancelling it simply frees the seat.</li>
+            <li>If you don&apos;t travel and haven&apos;t cancelled (a no-show), no refund is due.</li>
+            <li>Refunds are paid to the bank account you give us in My trips, or in cash at our counter. We aim to pay within 7 working days of the cancellation; you are told when it has been paid.</li>
+            <li>If you change a paid booking to fewer seats, the difference is refunded in the same way.</li>
+            <li>If we cancel a departure, you get a full refund including the booking fee.</li>
+          </List>
+        </Section>
 
-      <Section id="privacy" title="Privacy policy">
-        <Part title="What we collect">
-          <List>
-            <li>Your name, mobile number, email address (if you give one) and the gender you select for the passenger.</li>
-            <li>Your bookings: the trip, seats, what you paid and how.</li>
-            <li>For bank transfers, the payment slip you upload. For refunds, the bank account you ask us to pay.</li>
-            <li>For bikes, the description, number plate and photo you provide.</li>
-            <li>If you turn on notifications, a token that lets us send them to your device.</li>
-          </List>
-        </Part>
-        <Part title="How we use it">
-          <List>
-            <li>To make and manage your booking, check payments, pay refunds and let you board.</li>
-            <li>To contact you about your trip by text, WhatsApp or notification: confirmations, reminders, delays and changes.</li>
-            <li>To apply the seating rules. Other passengers choosing seats can see only whether a seat is booked by a man or a woman, and whether that passenger is travelling alone; never your name or contact details.</li>
-            <li>To keep the accounts and records a transport business is required to keep.</li>
-          </List>
-        </Part>
-        <Part title="Who sees it">
-          <List>
-            <li>Our office staff, and the conductor of your bus for the passengers on that trip.</li>
-            <li>Service providers who run parts of the system for us: hosting and database, text and WhatsApp delivery, and, when card payments are offered, the payment provider. Card details go to the payment provider directly and are not stored by us.</li>
-            <li>We don&apos;t sell your data or use it for other companies&apos; advertising.</li>
-          </List>
-        </Part>
-        <Part title="Your choices">
-          <p>
-            To see, correct or delete your data, email <a className="text-[#050a44] font-semibold underline" href={`mailto:${contact.email}`}>{contact.email}</a>. We may need to keep booking and payment records for as long as the law requires. You can turn notifications off at any time in your device or browser settings.
-          </p>
-        </Part>
-      </Section>
+        <Section id="privacy" title="Privacy policy">
+          <Part title="What we collect">
+            <List>
+              <li>Your name, mobile number, email address (if you give one) and the gender you select for the passenger.</li>
+              <li>Your bookings: the trip, seats, what you paid and how.</li>
+              <li>For bank transfers, the payment slip you upload. For refunds, the bank account you ask us to pay.</li>
+              <li>For bikes, the description, number plate and photo you provide.</li>
+              <li>If you turn on notifications, a token that lets us send them to your device.</li>
+            </List>
+          </Part>
+          <Part title="How we use it">
+            <List>
+              <li>To make and manage your booking, check payments, pay refunds and let you board.</li>
+              <li>To contact you about your trip by text, WhatsApp or notification: confirmations, reminders, delays and changes.</li>
+              <li>To apply the seating rules. Other passengers choosing seats can see only whether a seat is booked by a man or a woman, and whether that passenger is travelling alone; never your name or contact details.</li>
+              <li>To keep the accounts and records a transport business is required to keep.</li>
+            </List>
+          </Part>
+          <Part title="Who sees it">
+            <List>
+              <li>Our office staff, and the conductor of your bus for the passengers on that trip.</li>
+              <li>Service providers who run parts of the system for us: hosting and database, text and WhatsApp delivery, and, when card payments are offered, the payment provider. Card details go to the payment provider directly and are not stored by us.</li>
+              <li>We don&apos;t sell your data or use it for other companies&apos; advertising.</li>
+            </List>
+          </Part>
+          <Part title="Your choices">
+            <p>
+              To see, correct or delete your data, email <a className="text-[#050a44] font-semibold underline" href={`mailto:${contact.email}`}>{contact.email}</a>. We may need to keep booking and payment records for as long as the law requires. You can turn notifications off at any time in your device or browser settings.
+            </p>
+          </Part>
+        </Section>
+      </div>
 
       <p className="text-[12px] text-[#6b6d78] text-center">
         {OPERATOR.name} · {contact.address} · <Link href="/search" className="underline">Book a seat</Link>
