@@ -1,7 +1,8 @@
 'use client';
 // The conductor's printable trip sheet (A4 PDF), two parts:
 //   1. The bus drawn as its seat layout: every seat is a box in its real
-//      place with the passenger, where they get on and off, what they owe and
+//      place with the passenger, their stops if they are not riding the whole
+//      route, what they owe and
 //      a box to tick when they board. Free seats have room to write a walk-on.
 //   2. The sheet filled in on the road, in the same order as "Close this trip"
 //      in the app (components/staff/TripSheet.tsx): odometer at the start and
@@ -123,9 +124,21 @@ export function downloadManifestPdf(
     // Name
     doc.setFont('helvetica', 'bold').setFontSize(small ? 8 : 9);
     doc.text(fit(`${b.passenger.name}${b.passenger.gender === 'Female' ? ' (F)' : ''}`, inner), bx + pad, by + (small ? 9 : 10));
-    // Where they get on and off
-    doc.setFont('helvetica', 'normal').setFontSize(7.2).setTextColor(60);
-    doc.text(fit(`${b.from} to ${b.to}`, inner), bx + pad, by + (small ? 12.3 : 14));
+    // Where they get on and off: only when it is NOT the whole route (the route is in the heading).
+    // Someone joining at Kadawatha or getting off at Kalmunai is what the conductor needs to see.
+    const stops = [b.from !== first ? `from ${b.from}` : '', b.to !== last ? `to ${b.to}` : ''].filter(Boolean).join(' ');
+    if (stops) {
+      doc.setFont('helvetica', 'normal').setTextColor(60);
+      if (small) {
+        // Tight rows: beside the seat number, so it never runs into the bottom line.
+        doc.setFont('helvetica', 'bold').setFontSize(11);
+        const idW = doc.getTextWidth(id);
+        doc.setFont('helvetica', 'normal').setFontSize(6.5);
+        doc.text(fit(stops, bw - 2 * pad - idW - 2 - 15), bx + pad + idW + 2, by + 4.8);
+      } else {
+        doc.setFontSize(7.2).text(fit(stops, inner), bx + pad, by + 14);
+      }
+    }
     // Bottom line.
     const payY = by + bh - 2;
     const phone = `${b.passenger.phone || b.contact.phone || ''}${b.bikes?.length && firstSeat ? ' + bike' : ''}`;
