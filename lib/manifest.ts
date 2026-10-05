@@ -85,32 +85,26 @@ export async function scanTicket(text: string, bookings: Booking[], act: Actions
     };
   if (b.status === 'boarded') return { ok: true, msg: `Already on board: ${who}`, detail: where };
   if (b.status === 'cancelled') return { ok: false, msg: 'Cancelled ticket', detail: `${who}. Don't board.` };
-  if (b.status === 'held')
+  if (b.status === 'held') {
+    // Not paid yet. Conductors collect fares on the way, so the scan boards the
+    // passenger straight away and the money stays on the "to collect" list.
+    // If they do pay at the door, one tap records it.
+    const r = await act.board(b);
+    if (!r.ok) return { ok: false, msg: r.reason ?? 'Could not board' };
+    const amount = `LKR ${b.total.toLocaleString('en-LK')}`;
     return {
-      ok: false,
-      msg: `Not paid: collect LKR ${b.total.toLocaleString('en-LK')}`,
-      detail: `${who} · ${where}`,
+      ok: true,
+      msg: `✓ ${who}`,
+      detail: `${where} · ${amount} to collect on the way`,
       action: {
-        label: `Cash received · board ${b.passenger.name.split(' ')[0]}`,
+        label: `Paid now: ${amount} received`,
         run: async () => {
           const p = await act.takeCash(b);
-          if (!p.ok) return { ok: false, msg: p.reason ?? 'Could not record payment' };
-          const r = await act.board(b);
-          return r.ok ? { ok: true, msg: `✓ Paid & boarded: ${who}`, detail: where } : { ok: false, msg: r.reason ?? 'Could not board' };
+          return p.ok ? { ok: true, msg: `✓ Paid & on board: ${who}`, detail: where } : { ok: false, msg: p.reason ?? 'Could not record payment' };
         },
       },
-      // Pay-on-the-bus passengers may board first and pay during the trip.
-      later:
-        b.paymentMethod === 'bus'
-          ? {
-              label: 'Board now, collect later',
-              run: async () => {
-                const r = await act.board(b);
-                return r.ok ? { ok: true, msg: `✓ On board, LKR ${b.total.toLocaleString('en-LK')} still to collect: ${who}`, detail: where } : { ok: false, msg: r.reason ?? 'Could not board' };
-              },
-            }
-          : undefined,
     };
+  }
   const r = await act.board(b);
   return r.ok ? { ok: true, msg: `✓ ${who}`, detail: where } : { ok: false, msg: r.reason ?? 'Could not board' };
 }

@@ -1,13 +1,26 @@
 'use client';
-// Printable passenger list (A4 PDF) with tick boxes, grouped by boarding stop.
+// The conductor's printable trip sheet (A4 PDF), two parts:
+//   1. The bus drawn as its seat layout: every seat is a box in its real
+//      place with the passenger, where they get on and off, what they owe and
+//      a box to tick when they board. Free seats have room to write a walk-on.
+//   2. The sheet filled in on the road, in the same order as "Close this trip"
+//      in the app (components/staff/TripSheet.tsx): odometer at the start and
+//      end, fuel, tolls and other costs, cash to collect, seats sold on the bus.
+// Standard PDF fonts only cover Latin letters, so arrows and symbols are
+// written as words.
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { OPERATOR } from '@/config/operator';
-import type { StoreData } from './types';
+import type { Booking, StoreData } from './types';
 import { isDue, manifestFor } from './manifest';
+import { busSeatMap, layoutSegments, type SeatCell } from './seatLayout';
 import { formatDateLabel, formatTime12, getTrip } from './trips';
 
-const seatCount = (list: { seats: string[] }[]) => list.reduce((n, b) => n + b.seats.length, 0);
+const NAVY: [number, number, number] = [5, 10, 68];
+const GREY: [number, number, number] = [110, 110, 120];
+const LINE: [number, number, number] = [170, 170, 180];
+const DUE_FILL: [number, number, number] = [255, 243, 205];
+const money = (n: number) => n.toLocaleString('en-LK');
 
 export function downloadManifestPdf(data: StoreData, scheduleId: string, date: string) {
   const schedule = data.schedules.find((s) => s.id === scheduleId)!;
@@ -16,96 +29,210 @@ export function downloadManifestPdf(data: StoreData, scheduleId: string, date: s
   const first = route.stops[0].name;
   const last = route.stops[route.stops.length - 1].name;
   const trip = getTrip(data, scheduleId, date, first, last);
-  const { groups, totals } = manifestFor(data, scheduleId, date);
+  const { list, groups, totals } = manifestFor(data, scheduleId, date);
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
-  doc.setFont('helvetica', 'bold').setFontSize(16).text(`${OPERATOR.name} · Passenger list`, 14, 16);
-  doc.setFont('helvetica', 'normal').setFontSize(10.5);
-  doc.text(`${first} to ${last}   ·   ${formatDateLabel(date)}   ·   departs ${formatTime12(schedule.departure)}${trip ? `, arrives ${formatTime12(trip.arrival)}${trip.arrivalDayOffset ? ' (+1)' : ''}` : ''}`, 14, 23);
-  doc.text(`Bus ${bus.name} · ${bus.regNo}   ·   ${totals.seats} seats sold${totals.bikes ? ` · ${totals.bikes} bike(s)` : ''}${totals.unpaid ? ` · LKR ${totals.unpaid.toLocaleString('en-LK')} to collect from ${totals.unpaidCount} passenger${totals.unpaidCount === 1 ? '' : 's'}` : ''}`, 14, 29);
-  doc.setFontSize(8.5).setTextColor(110).text(`Printed ${new Date().toLocaleString('en-GB')}`, W - 14, 16, { align: 'right' }).setTextColor(0);
-
-  let y = 35;
-  for (const g of groups) {
-    autoTable(doc, {
-      startY: y,
-      head: [[{ content: `Boarding at ${g.stop}  (${seatCount(g.bookings)} seat${seatCount(g.bookings) === 1 ? '' : 's'})`, colSpan: 7, styles: { fillColor: [5, 10, 68], textColor: 255, fontStyle: 'bold' } }],
-        ['', 'Seat', 'Passenger', 'Phone', 'To', 'Pay', 'Ref / notes']],
-      body: g.bookings.map((b) => [
-        '',
-        b.seats.join(', '),
-        `${b.passenger.name}${b.passenger.gender === 'Female' ? ' (F)' : ''}`,
-        b.passenger.phone || b.contact.phone || '',
-        b.to,
-        isDue(b)
-          ? `COLLECT ${b.total.toLocaleString('en-LK')}${b.paymentMethod === 'bus' ? '\n(on bus)' : b.paymentMethod === 'counter' ? '\n(counter)' : b.paymentMethod === 'bank' ? '\n(bank)' : ''}`
-          : b.paymentMethod === 'cash' ? 'paid cash' : b.paymentMethod === 'bank' ? 'paid (bank)' : b.channel === 'online' ? 'paid online' : `paid (${b.channel})`,
-        [b.ref, b.bikes?.length ? `Bike: ${b.bikes.map((k) => `${k.kind} ${k.regNo || k.description}`).join('; ')}` : ''].filter(Boolean).join('\n'),
-      ]),
-      theme: 'grid',
-      styles: { fontSize: 9, cellPadding: 1.8, valign: 'middle', lineColor: [200, 200, 205] },
-      headStyles: { fillColor: [242, 244, 246], textColor: [5, 10, 68], fontStyle: 'bold' },
-      columnStyles: { 0: { cellWidth: 9 }, 1: { cellWidth: 16, fontStyle: 'bold' }, 2: { cellWidth: 42 }, 3: { cellWidth: 28 }, 4: { cellWidth: 24 }, 5: { cellWidth: 28 }, 6: { cellWidth: 'auto', fontSize: 8 } },
-      // Money still to collect stands out on paper.
-      didParseCell: (c) => {
-        if (c.section === 'body' && c.column.index === 5 && isDue(g.bookings[c.row.index])) {
-          c.cell.styles.fontStyle = 'bold';
-          c.cell.styles.fillColor = [255, 243, 205];
-        }
-      },
-      didDrawCell: (c) => {
-        // Tick box (pre-ticked for passengers already on board).
-        if (c.section === 'body' && c.column.index === 0) {
-          const s = 4.2;
-          const x = c.cell.x + (c.cell.width - s) / 2;
-          const yy = c.cell.y + (c.cell.height - s) / 2;
-          doc.setDrawColor(5, 10, 68).setLineWidth(0.35).rect(x, yy, s, s);
-          if (g.bookings[c.row.index]?.status === 'boarded') {
-            doc.setLineWidth(0.6).line(x + 0.8, yy + 2.2, x + 1.8, yy + 3.3).line(x + 1.8, yy + 3.3, x + 3.6, yy + 0.9);
-          }
-        }
-      },
-      margin: { left: 14, right: 14 },
-    });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
-  }
-  if (!groups.length) doc.setFontSize(11).text('No passengers booked on this departure yet.', 14, y + 4);
-
   const H = doc.internal.pageSize.getHeight();
-  if (y > H - 30) {
-    doc.addPage();
-    y = 20;
+  const M = 10;
+  const tripLine = `${first} to ${last}   |   ${formatDateLabel(date)}   |   departs ${formatTime12(schedule.departure)}${trip ? `, arrives ${formatTime12(trip.arrival)}${trip.arrivalDayOffset ? ' (+1)' : ''}` : ''}   |   ${bus.name} ${bus.regNo}`;
+
+  const header = (title: string) => {
+    doc.setTextColor(0).setFont('helvetica', 'bold').setFontSize(15).text(`${OPERATOR.name}: ${title}`, M, 14);
+    doc.setFont('helvetica', 'normal').setFontSize(9.5).text(tripLine, M, 20);
+    doc.setFontSize(8).setTextColor(...GREY).text(`Printed ${new Date().toLocaleString('en-GB')}`, W - M, 14, { align: 'right' }).setTextColor(0);
+  };
+  /** Shortens text with "..." so it fits a width at the current font size. */
+  const fit = (text: string, width: number) => {
+    if (doc.getTextWidth(text) <= width) return text;
+    let t = text;
+    while (t.length > 1 && doc.getTextWidth(`${t}...`) > width) t = t.slice(0, -1);
+    return `${t.trimEnd()}...`;
+  };
+  const tickBox = (x: number, y: number, s: number, ticked: boolean) => {
+    doc.setDrawColor(...NAVY).setLineWidth(0.35).setFillColor(255, 255, 255).rect(x, y, s, s, 'FD');
+    if (ticked) doc.setLineWidth(0.6).line(x + s * 0.2, y + s * 0.55, x + s * 0.42, y + s * 0.8).line(x + s * 0.42, y + s * 0.8, x + s * 0.85, y + s * 0.2);
+  };
+
+  // ------------------------------------------------------- 1. the seat map ---
+  header('Seat plan');
+  doc.setFontSize(9.5).text(
+    `${totals.seats} seats sold${totals.bikes ? `, ${totals.bikes} bike(s) to load` : ''}${totals.unpaid ? `. LKR ${money(totals.unpaid)} to collect from ${totals.unpaidCount} passenger${totals.unpaidCount === 1 ? '' : 's'} (shaded).` : '. Everyone has paid.'} Tick the box when the passenger boards.`,
+    M, 26,
+  );
+
+  // Who is in each seat. A booking with several seats shows the money once.
+  const bySeat = new Map<string, Booking>();
+  for (const b of list) if (b.status !== 'no-show') for (const s of b.seats) bySeat.set(s, b);
+
+  const map = busSeatMap(bus);
+  const segments = layoutSegments(map);
+  const rowCount = segments.reduce((n, sg) => n + (sg.kind === 'row' ? 1 : Math.max(sg.left.length, sg.right.length)), 0) || 1;
+  const top = 34;
+  const aisle = 9;
+  const usableW = W - 2 * M;
+  const rowH = Math.min(25, (H - top - 12) / rowCount);
+  const sideUnits = map.left + map.right;
+  const seatW = (usableW - aisle) / Math.max(1, sideUnits);
+  const gap = 1.2;
+
+  doc.setFontSize(8).setTextColor(...GREY).text('Front of the bus (driver)', W / 2, top - 2.5, { align: 'center' }).setTextColor(0);
+
+  const drawSeat = (id: SeatCell, x: number, y: number, w: number, h: number) => {
+    if (!id) return;
+    const b = bySeat.get(id);
+    const due = !!b && isDue(b);
+    const bx = x + gap / 2;
+    const by = y + gap / 2;
+    const bw = w - gap;
+    const bh = h - gap;
+    const pad = 1.6;
+    const inner = bw - 2 * pad;
+    doc.setDrawColor(...(b ? NAVY : LINE)).setLineWidth(b ? 0.35 : 0.2);
+    if (due) doc.setFillColor(...DUE_FILL).roundedRect(bx, by, bw, bh, 1.2, 1.2, 'FD');
+    else doc.roundedRect(bx, by, bw, bh, 1.2, 1.2, 'S');
+
+    // Seat number, always.
+    doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...(b ? NAVY : GREY)).text(id, bx + pad, by + 5);
+    const small = bh < 17; // tight rows: fewer lines
+    if (!b) {
+      // Free: room to write in someone who pays on the bus.
+      doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(...GREY).text('free', bx + bw - pad, by + 4.6, { align: 'right' });
+      if (!small) {
+        doc.setDrawColor(...LINE).setLineWidth(0.15);
+        doc.text('Name', bx + pad, by + bh - 8.2).line(bx + pad + 8, by + bh - 8, bx + bw - pad, by + bh - 8);
+        doc.text('To', bx + pad, by + bh - 3.2).line(bx + pad + 5, by + bh - 3, bx + bw * 0.55, by + bh - 3);
+        doc.text('LKR', bx + bw * 0.58, by + bh - 3.2).line(bx + bw * 0.58 + 6, by + bh - 3, bx + bw - pad, by + bh - 3);
+      }
+      doc.setTextColor(0);
+      return;
+    }
+    tickBox(bx + bw - pad - 4.2, by + 1.6, 4.2, b.status === 'boarded');
+    doc.setTextColor(0);
+    const firstSeat = b.seats[0] === id;
+    // Name
+    doc.setFont('helvetica', 'bold').setFontSize(small ? 8 : 9);
+    doc.text(fit(`${b.passenger.name}${b.passenger.gender === 'Female' ? ' (F)' : ''}`, inner), bx + pad, by + (small ? 9 : 10));
+    // Where they get on and off
+    doc.setFont('helvetica', 'normal').setFontSize(7.2).setTextColor(60);
+    doc.text(fit(`${b.from} to ${b.to}`, inner), bx + pad, by + (small ? 12.3 : 14));
+    // Bottom line: what they owe on the right, the phone on the left in whatever room is left.
+    const payY = by + bh - 2;
+    const pay = !firstSeat
+      ? `with seat ${b.seats[0]}`
+      : due
+        ? `COLLECT ${money(b.total)}${b.seats.length > 1 ? ` (${b.seats.length} seats)` : ''}`
+        : 'paid';
+    doc.setFont('helvetica', due && firstSeat ? 'bold' : 'normal').setFontSize(due && firstSeat ? 8 : 7.2).setTextColor(...(due && firstSeat ? ([60, 45, 0] as [number, number, number]) : GREY));
+    const payText = fit(pay, inner);
+    const payW = doc.getTextWidth(payText);
+    doc.text(payText, bx + bw - pad, payY, { align: 'right' });
+    const phone = `${b.passenger.phone || b.contact.phone || ''}${b.bikes?.length && firstSeat ? ' + bike' : ''}`;
+    doc.setFont('helvetica', 'normal').setFontSize(7.2).setTextColor(...GREY);
+    // No room beside a long amount: the phone is left out here (it is on the cash list overleaf).
+    if (phone && doc.getTextWidth(phone) <= inner - payW - 2) doc.text(phone, bx + pad, payY);
+    doc.setTextColor(0);
+  };
+
+  let y = top;
+  for (const sg of segments) {
+    if (sg.kind === 'row') {
+      const cells = sg.cells;
+      const normal = cells.length === map.left + 1 + map.right && cells[map.left] === null;
+      if (normal) {
+        cells.slice(0, map.left).forEach((c, i) => drawSeat(c, M + i * seatW, y, seatW, rowH));
+        cells.slice(map.left + 1).forEach((c, i) => drawSeat(c, M + map.left * seatW + aisle + i * seatW, y, seatW, rowH));
+      } else {
+        // A row that runs across the aisle (the back bench): spread over the full width.
+        const w = usableW / cells.length;
+        cells.forEach((c, i) => drawSeat(c, M + i * w, y, w, rowH));
+      }
+      y += rowH;
+    } else {
+      // The two sides don't line up: each side's rows share the same length of bus.
+      const rows = Math.max(sg.left.length, sg.right.length);
+      const blockH = rows * rowH;
+      const lh = sg.left.length ? blockH / sg.left.length : 0;
+      const rh = sg.right.length ? blockH / sg.right.length : 0;
+      sg.left.forEach((r, ri) => r.forEach((c, i) => drawSeat(c, M + i * seatW, y + ri * lh, seatW, lh)));
+      sg.right.forEach((r, ri) => r.forEach((c, i) => drawSeat(c, M + map.left * seatW + aisle + i * seatW, y + ri * rh, seatW, rh)));
+      y += blockH;
+    }
   }
-  doc.setFontSize(9.5).setTextColor(60);
-  // Cash to collect on this departure, one line per passenger, with a box to tick when paid.
+  // Booked on a seat that isn't on this bus's layout (the bus was changed): never lose them.
+  const drawn = new Set(map.cells.flat().filter(Boolean) as string[]);
+  const stray = [...bySeat.entries()].filter(([s]) => !drawn.has(s));
+  if (stray.length) {
+    doc.setFontSize(8.5).setTextColor(150, 0, 0).text(fit(`Not on this layout: ${stray.map(([s, b]) => `${s} ${b.passenger.name}`).join('; ')}`, usableW), M, Math.min(H - 6, y + 4)).setTextColor(0);
+  }
+  const noShows = list.filter((b) => b.status === 'no-show');
+  if (noShows.length) doc.setFontSize(8).setTextColor(...GREY).text(fit(`No-show: ${noShows.map((b) => `${b.seats.join(', ')} ${b.passenger.name}`).join('; ')}`, usableW), M, H - 5).setTextColor(0);
+
+  // --------------------------------------------- 2. the sheet for the road ---
+  doc.addPage();
+  header('Trip sheet');
+  doc.setFontSize(9.5).text('Conductor: fill this in on the road and hand it to the booking centre with the cash. They enter it and close the trip.', M, 26);
+  let py = 33;
+  const lastY = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+  const room = (need: number) => {
+    if (py + need > H - 7) {
+      doc.addPage();
+      py = 16;
+    }
+  };
+  const section = (title: string) => {
+    room(16);
+    doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(...NAVY).text(title, M, py);
+    doc.setFont('helvetica', 'normal').setTextColor(0);
+    py += 3;
+  };
+  const blank = (cols: number, rows: number) => Array.from({ length: rows }, () => Array.from({ length: cols }, () => ''));
+  const table = { theme: 'grid' as const, styles: { fontSize: 9, cellPadding: 1.8, minCellHeight: 8, valign: 'middle' as const, lineColor: [150, 150, 160] as [number, number, number], lineWidth: 0.2 }, headStyles: { fillColor: [242, 244, 246] as [number, number, number], textColor: NAVY, fontStyle: 'bold' as const }, margin: { left: M, right: M } };
+  /** A small empty box in the last column of a write-in row ("paid from the trip cash"). */
+  const boxInLast = (col: number) => (c: { section: string; column: { index: number }; cell: { x: number; y: number; width: number; height: number } }) => {
+    if (c.section === 'body' && c.column.index === col) tickBox(c.cell.x + (c.cell.width - 4.2) / 2, c.cell.y + (c.cell.height - 4.2) / 2, 4.2, false);
+  };
+
+  section('1. Odometer');
+  autoTable(doc, { ...table, startY: py, head: [['At the start (km)', 'At the end (km)', 'Distance (km)']], body: blank(3, 1), styles: { ...table.styles, minCellHeight: 10 } });
+  py = lastY() + 6;
+
+  section('2. Fuel put in on this trip');
+  autoTable(doc, { ...table, startY: py, head: [['Litres', 'Paid (LKR)', 'Filling station', 'Odometer at the pump', 'From trip cash']], body: blank(5, 2), columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 30 }, 3: { cellWidth: 40 }, 4: { cellWidth: 26, halign: 'center' } }, didDrawCell: boxInLast(4) });
+  py = lastY() + 6;
+
+  section('3. Tolls and other costs');
+  autoTable(doc, { ...table, startY: py, head: [['What for (toll, parking, cleaning, other)', 'Note', 'Paid (LKR)', 'From trip cash']], body: blank(4, 4), columnStyles: { 0: { cellWidth: 62 }, 2: { cellWidth: 30 }, 3: { cellWidth: 26, halign: 'center' } }, didDrawCell: boxInLast(3) });
+  py = lastY() + 6;
+
+  section('4. Cash');
   const due = groups.flatMap((g) => g.bookings).filter(isDue);
   if (due.length) {
     autoTable(doc, {
-      startY: y + 2,
-      head: [[{ content: `Cash to collect: LKR ${totals.unpaid.toLocaleString('en-LK')} from ${due.length} passenger${due.length === 1 ? '' : 's'}`, colSpan: 5, styles: { fillColor: [124, 88, 0], textColor: 255, fontStyle: 'bold' } }],
-        ['Paid', 'Seat', 'Passenger', 'Boards at', 'Amount (LKR)']],
-      body: due.map((b) => ['', b.seats.join(', '), `${b.passenger.name}  ${b.passenger.phone || b.contact.phone || ''}`, b.from, b.total.toLocaleString('en-LK')]),
-      theme: 'grid',
-      styles: { fontSize: 9, cellPadding: 1.8, valign: 'middle', lineColor: [200, 200, 205] },
-      headStyles: { fillColor: [255, 243, 205], textColor: [60, 45, 0], fontStyle: 'bold' },
-      columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 16, fontStyle: 'bold' }, 3: { cellWidth: 36 }, 4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' } },
+      ...table,
+      startY: py,
+      styles: { ...table.styles, minCellHeight: 7 },
+      head: [[{ content: `To collect: LKR ${money(totals.unpaid)} from ${due.length} passenger${due.length === 1 ? '' : 's'}`, colSpan: 5, styles: { fillColor: [124, 88, 0] as [number, number, number], textColor: 255 } }], ['Paid', 'Seat', 'Passenger', 'Boards at', 'Amount (LKR)']],
+      body: due.map((b) => ['', b.seats.join(', '), `${b.passenger.name}  ${b.passenger.phone || b.contact.phone || ''}`, b.from, money(b.total)]),
+      columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 18, fontStyle: 'bold' }, 3: { cellWidth: 36 }, 4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' } },
       didDrawCell: (c) => {
-        if (c.section === 'body' && c.column.index === 0) {
-          const s = 4.2;
-          doc.setDrawColor(60, 45, 0).setLineWidth(0.35).rect(c.cell.x + (c.cell.width - s) / 2, c.cell.y + (c.cell.height - s) / 2, s, s);
-        }
+        if (c.section === 'body' && c.column.index === 0) tickBox(c.cell.x + (c.cell.width - 4.2) / 2, c.cell.y + (c.cell.height - 4.2) / 2, 4.2, false);
       },
-      margin: { left: 14, right: 14 },
     });
-    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 5;
-    if (y > H - 30) {
-      doc.addPage();
-      y = 20;
-    }
+    py = lastY() + 6;
+  } else {
+    doc.setFontSize(9.5).text('Nobody on the list owes money for this trip.', M, py + 3);
+    py += 9;
   }
-  doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(60);
-  doc.text(`Boarded: ______ / ${totals.seats}      Cash collected: LKR __________${totals.unpaid ? ` of ${totals.unpaid.toLocaleString('en-LK')}` : ''}`, 14, Math.max(y + 8, H - 24));
-  doc.text('Conductor: ____________________   Driver: ____________________   Signed: ______________', 14, Math.max(y + 16, H - 16));
-  doc.save(`passengers-${bus.regNo}-${date}-${schedule.departure.replace(':', '')}.pdf`);
+  room(50);
+  autoTable(doc, { ...table, startY: py, head: [[{ content: 'Seats sold on the bus (not on the seat plan)', colSpan: 6 }], ['Seat', 'Name', 'Phone', 'From', 'To', 'Paid (LKR)']], body: blank(6, 4), columnStyles: { 0: { cellWidth: 16 }, 2: { cellWidth: 32 }, 3: { cellWidth: 28 }, 4: { cellWidth: 28 }, 5: { cellWidth: 26 } } });
+  py = lastY() + 7;
+
+  room(19);
+  doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(0);
+  doc.text('Cash collected  LKR ____________   less paid out from it  LKR ____________   =  cash to hand in  LKR ____________', M, py + 1);
+  doc.text(`On board: ______ / ${totals.seats} seats sold            Cash counted: LKR ____________`, M, py + 9);
+  doc.text('Conductor: ______________________   Driver: ______________________   Received by: ______________________', M, py + 18);
+
+  doc.save(`trip-sheet-${bus.regNo}-${date}-${schedule.departure.replace(':', '')}.pdf`);
 }

@@ -559,6 +559,45 @@ in `lib/i18n.tsx`; anything untranslated shows in English. **Have a native
 speaker review the Tamil and Sinhala before launch.**
 
 ## Conductor page & passenger list
+**Boarding and money are two separate jobs** (two tabs on the conductor page):
+- **Boarding**: scan the ticket or tap **Board**. Nobody is asked for money
+  at the door: an unpaid passenger is simply on board and stays on the
+  to-collect list. (If they do pay at the door, the scan result has a
+  "Paid now" button.)
+- **Collect cash**: only the passengers who still owe, seat by seat from the
+  front, with the total left and the cash taken so far. Tap the amount, tap
+  again to confirm (two taps so a bump can't record a payment).
+
+**Bus location comes only from the phone on the bus.** The conductor page
+shares its GPS; Departures in the office no longer has a share button (it put
+the bus at the back office). It shows whether the conductor is sharing: live,
+stopped at a time, or not yet. Office staff who open the conductor page are
+asked to confirm before their device is used as the bus.
+
+**Trip sheet PDF** (conductor page and Departures → Download PDF), two pages:
+1. the bus as its real seat layout: each seat a box with the passenger, where
+   they get on and off, what they owe (shaded), a tick box, and room on free
+   seats to write a walk-on;
+2. the sheet filled in on the road: odometer at the start and end, fuel,
+   tolls and other costs, cash to collect, seats sold on the bus, totals and
+   signatures.
+
+**The booking centre closes the trip, not the conductor** (migration 28). The
+conductor fills in the paper sheet and hands it in with the cash. Office
+staff open Close the day → "Trips to close from the conductor's sheet", pick
+the trip and the conductor, and type the sheet in for them; the count is
+recorded as the conductor's, with who typed it. The conductor's phone has no
+closing form: it shows "Cash you should have for this trip" (what they took,
+less refunds), and /conductor/cash is read-only for them.
+
+**Close this trip** asks for the same things in the same order (migration
+27): odometer at the start and end, fuel put in, tolls and other costs, then
+the cash. Each cost is saved as a normal expense tied to the trip, so the
+office sees it in Expenses & fuel and the reports. A cost ticked "paid from
+the cash I collected" comes off the cash to hand in, so the trip closes
+balanced. Costs can't be added to a trip its conductor has already closed;
+the office adds those.
+
 - **`/conductor`**, a phone-first page for the bus. Sign in at `/staff/login`
   with a **Conductor** account (set in Accounts & roles); conductors land
   here and can't open the rest of the staff area. Office staff and super

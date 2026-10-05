@@ -10,15 +10,28 @@
 // offers it for each bus. It is checked against the last reading as it is
 // typed, so a slipped digit is caught before anything is saved. The Odometer
 // page keeps the history and is where office staff correct a reading.
+//
+// Closing a TRIP is the conductor's whole trip sheet (migration 27), in the
+// order of the paper sheet printed with the passenger list: odometer at the
+// start and end, fuel put in, tolls and other costs, then the cash. Costs paid
+// from the cash collected come off the cash to hand in.
+//
+// Who closes what (migration 28): the conductor does NOT fill this in. They
+// write the paper trip sheet on the road and hand it in with the cash; the
+// booking centre opens the trip here, picks the conductor and types the sheet
+// in for them. A conductor who opens this page only sees how much cash they
+// should be holding.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
-import { useCashCounts, useCashOverview, useCashSummary, useCashUnclosed, type CashPerson } from '@/lib/extras';
+import { useCashCounts, useCashOverview, useCashSummary, useCashUnclosed, useTripCashPeople, type CashPerson } from '@/lib/extras';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import { checkReading, useOdometer } from '@/lib/odometer';
 import Link from 'next/link';
-import { formatDateLabel, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
+import { costProblems, emptySheet, pendingFromCash, useTripSheet, ROAD_COST_LABEL, type TripSheetDraft } from '@/lib/tripSheet';
+import { SavedCosts, TripSheet, odometerState } from '@/components/staff/TripSheet';
+import { addDays, formatDateLabel, formatLKR, formatTime12, listRuns, routeLabel, todayISO } from '@/lib/trips';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 
 /** "Balanced" / "Short by LKR 500" / "Over by LKR 200" with its colour. */
@@ -54,11 +67,15 @@ function PersonRow({ p }: { p: CashPerson }) {
 
 export default function CashPage() {
   const { user } = useAuth();
-  const { data } = useStore();
+  const { data, ready } = useStore();
   const { counts, save } = useCashCounts();
   const odometer = useOdometer();
   const [readings, setReadings] = useState<Record<string, number | ''>>({});
   const [savingOdo, setSavingOdo] = useState(false);
+  const [sheet, setSheet] = useState<TripSheetDraft>(emptySheet);
+  // Readings already saved in this sitting (a retry after a refused cost must not log them again).
+  const startSaved = useRef<number | null>(null);
+  const endSaved = useRef<number | null>(null);
   const { toast, Toast } = useToast();
   const today = todayISO();
   // What is being closed. From the conductor screen: the departure chosen there
@@ -77,10 +94,27 @@ export default function CashPage() {
   const [counted, setCounted] = useState<number | ''>('');
   const [notes, setNotes] = useState('');
   const isAdmin = user?.role === 'admin';
+  // Conductors hand in the paper sheet; office staff close the trip for them.
+  const isConductor = user?.role === 'conductor';
+  // Only once we know who is signed in and the timetable has loaded (never on the server's first paint).
+  const canClose = !!user && ready && !isConductor;
+  /** Trip mode, office: whose cash is being closed (a conductor). null = your own. */
+  const [person, setPerson] = useState<string | null>(null);
 
   // Database: this person's own takings and refunds. Re-read whenever a payment is recorded.
   const paidCount = data.bookings.filter((b) => b.paymentStatus === 'paid').length;
-  const summaryState = useCashSummary(date, scheduleId, paidCount);
+  const tripBus = schedule ? data.buses.find((b) => b.id === schedule.busId) : undefined;
+  const tripSheet = useTripSheet(scheduleId, date, tripBus?.id ?? null);
+  const cashPeople = useTripCashPeople(scheduleId, date, canClose, `${paidCount}-${counts.length}-${tripSheet.saved.length}`);
+  // Start on whoever took cash and isn't closed yet (the list comes in that order).
+  useEffect(() => {
+    if (!scheduleId || person || !cashPeople.people?.length) return;
+    setPerson((cashPeople.people.find((p) => !p.closed) ?? cashPeople.people[0]).id);
+  }, [scheduleId, person, cashPeople.people]);
+  const forUser = scheduleId && canClose && person && person !== user?.id ? person : null;
+  const whose = forUser ? cashPeople.people?.find((p) => p.id === forUser)?.name ?? 'the conductor' : null;
+  // …and whenever a trip cost is saved, because that changes the cash to hand in.
+  const summaryState = useCashSummary(date, scheduleId, `${paidCount}-${tripSheet.saved.length}`, forUser);
   const summaryError = summaryState === 'error';
   const summary = summaryState === 'error' ? null : summaryState;
   // Earlier days / trips where this person took cash and never closed; and, for the super admin, the whole day bus by bus.
@@ -95,6 +129,10 @@ export default function CashPage() {
     setCounted('');
     setNotes('');
     setReadings({});
+    setSheet(emptySheet());
+    setPerson(null);
+    startSaved.current = null;
+    endSaved.current = null;
   }, [date, scheduleId]);
 
   // Demo mode (no database): cash sales made today.
@@ -111,10 +149,22 @@ export default function CashPage() {
   const refunds = summary?.refunds ?? [];
   const takenTotal = taken.reduce((n, t) => n + t.amount, 0);
   const refundTotal = refunds.reduce((n, r) => n + r.amount, 0);
-  const expected = isSupabaseConfigured ? summary?.expected ?? 0 : takenTotal;
+  // From the database this is already less the refunds and the costs saved so far; in demo mode it is worked out here.
+  const expectedSaved = isSupabaseConfigured ? summary?.expected ?? 0 : takenTotal;
   const loading = isSupabaseConfigured && !summary && !summaryError;
+  // The trip sheet (trips only). Costs typed but not saved yet already count
+  // against the cash to hand in, so the figure doesn't jump when closing.
+  const useSheet = !!scheduleId && !!tripBus && !odometer.error;
+  const costsAvailable = useSheet && !tripSheet.unavailable;
+  const paidOut = isSupabaseConfigured ? summary?.paid_out ?? [] : tripSheet.saved.filter((x) => x.fromTakings).map((x) => ({ id: x.id, category: x.category, amount: x.amount, litres: x.litres, detail: `${x.vendor} ${x.description}`.trim() }));
+  const paidOutSaved = paidOut.reduce((n, x) => n + x.amount, 0);
+  const paidOutTyped = costsAvailable ? pendingFromCash(sheet) : 0;
+  const sheetOdo = useSheet && tripBus ? odometerState(odometer.logs, tripBus.id, date, today, sheet) : null;
+  const sheetProblems = costsAvailable ? costProblems(sheet) : [];
 
-  const closedToday = counts.find((c) => c.date === date && (c.scheduleId ?? null) === scheduleId && c.mine !== false);
+  const expected = isSupabaseConfigured ? expectedSaved - paidOutTyped : expectedSaved - paidOutSaved - paidOutTyped;
+
+  const closedToday = counts.find((c) => c.date === date && (c.scheduleId ?? null) === scheduleId && (forUser ? c.personId === forUser : c.mine !== false));
   const diff = typeof counted === 'number' ? counted - expected : 0;
   const needsNote = typeof counted === 'number' && diff !== 0;
   // Odometer: a trip is closed next to its bus, so its reading is asked for
@@ -132,6 +182,38 @@ export default function CashPage() {
       const res = await odometer.add(r.bus.id, odoDate, r.value as number, scheduleId ? `Closing trip ${tripLabel ?? ''}`.trim() : 'Closing the day');
       if (!res.ok) return { ok: false as const, reason: `${r.bus.regNo}: ${res.reason ?? 'the reading could not be saved'}` };
       setReadings((p) => ({ ...p, [r.bus.id]: '' }));
+    }
+    return { ok: true as const };
+  };
+  /** Trip sheet: start reading, each cost, then the end reading. Whatever is saved is removed from the form straight away. */
+  const saveTripSheet = async () => {
+    if (!tripBus) return { ok: true as const };
+    const note = `Trip ${tripLabel ?? ''}`.trim();
+    let d = sheet;
+    const keep = (next: TripSheetDraft) => {
+      d = next;
+      setSheet(next);
+    };
+    const endKm = d.end;
+    if (typeof d.start === 'number' && startSaved.current !== d.start) {
+      const r = await odometer.add(tripBus.id, date, d.start, `${note}: start`);
+      if (!r.ok) return { ok: false as const, reason: `Odometer at the start: ${r.reason ?? 'could not be saved'}` };
+      startSaved.current = d.start;
+    }
+    for (const f of d.fuels) {
+      const r = await tripSheet.add({ category: 'fuel', amount: f.amount as number, litres: f.litres as number, odometerKm: typeof f.odometerKm === 'number' ? f.odometerKm : null, vendor: f.station.trim(), fromCash: f.fromCash, takingsOf: forUser });
+      if (!r.ok) return { ok: false as const, reason: `Fuel: ${r.reason}` };
+      keep({ ...d, fuels: d.fuels.filter((x) => x.key !== f.key) });
+    }
+    for (const c of d.costs) {
+      const r = await tripSheet.add({ category: c.kind, amount: c.amount as number, description: c.note.trim(), fromCash: c.fromCash, takingsOf: forUser });
+      if (!r.ok) return { ok: false as const, reason: `${ROAD_COST_LABEL[c.kind]}: ${r.reason}` };
+      keep({ ...d, costs: d.costs.filter((x) => x.key !== c.key) });
+    }
+    if (typeof endKm === 'number' && endSaved.current !== endKm) {
+      const r = await odometer.add(tripBus.id, today, endKm, `${note}: end`);
+      if (!r.ok) return { ok: false as const, reason: `Odometer at the end: ${r.reason ?? 'could not be saved'}` };
+      endSaved.current = endKm;
     }
     return { ok: true as const };
   };
@@ -173,20 +255,23 @@ export default function CashPage() {
       </fieldset>
     );
 
+  // Office: the departures that leave on the chosen day or left the evening before (a night bus arrives the next morning).
+  const tripsToClose = useMemo(() => (canClose ? listRuns(data, addDays(date, -1), 2).filter((r) => r.date <= today) : []), [canClose, data, date, today]);
+
   const whereLabel: Record<string, string> = { counter: 'counter sale', phone: 'phone sale', collected: 'collected for an online booking' };
 
   return (
     <>
       <PageHeader
-        title={scheduleId ? 'Close this trip' : 'Close the day'}
-        description={`Cash count and odometer for ${formatDateLabel(date)}${tripLabel ? ` · ${tripLabel}` : ''}${user ? ` · ${user.user_metadata.full_name}` : ''}.`}
+        title={isConductor ? 'Your cash' : scheduleId ? 'Close this trip' : 'Close the day'}
+        description={`${isConductor ? 'The cash you should be holding' : scheduleId ? 'Type in the conductor\'s trip sheet and the cash handed in' : 'Cash count and odometer'} for ${formatDateLabel(date)}${tripLabel ? ` · ${tripLabel}` : ''}${user ? ` · ${user.user_metadata.full_name}` : ''}.`}
       />
       {summaryError && (
         <p role="alert" className="mb-4 rounded-xl bg-[#ba1a1a]/10 border border-[#ba1a1a]/25 text-[#93000a] text-[14px] font-semibold px-4 py-3">
           The cash figures couldn&apos;t be loaded. The database is missing the latest update: run supabase/setup.sql in the Supabase SQL Editor, then reload this page.
         </p>
       )}
-      {unclosed.length > 0 && (
+      {unclosed.length > 0 && canClose && (
         <div role="alert" className="mb-4 rounded-xl bg-[#feb700]/15 border border-[#feb700]/50 px-4 py-3">
           <p className="text-[14px] font-bold text-[#050a44]">
             You have {unclosed.length} unfinished cash count{unclosed.length === 1 ? '' : 's'}
@@ -214,7 +299,7 @@ export default function CashPage() {
           </div>
         </div>
       )}
-      {scheduleId && isAdmin && (
+      {scheduleId && canClose && (
         <div className="mb-4">
           <Button size="sm" variant="secondary" onClick={() => setScheduleId(null)}>← Back to the whole day</Button>
         </div>
@@ -227,28 +312,83 @@ export default function CashPage() {
           <span className="text-[12px] text-[#6b6d78]">Pick the day you want to count. It shows the cash you personally took that day.</span>
         </Card>
       )}
+      {!scheduleId && canClose && tripsToClose.length > 0 && (
+        <Card className="mb-4 overflow-hidden">
+          <div className="px-4 py-3 border-b border-[#edeef0]">
+            <h2 className="text-[15px] font-semibold text-[#050a44]">Trips to close from the conductor&apos;s sheet</h2>
+            <p className="text-[12px] text-[#6b6d78] mt-0.5">When the conductor hands in the paper trip sheet and the cash, open the trip and type it in.</p>
+          </div>
+          <ul className="divide-y divide-[#edeef0]">
+            {tripsToClose.map((r) => {
+              const done = counts.some((c) => c.scheduleId === r.schedule.id && c.date === r.date);
+              return (
+                <li key={`${r.schedule.id}|${r.date}`} className="px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-[14px] text-[#050a44]">
+                    <b className="font-semibold">{formatDateLabel(r.date, false)}, {formatTime12(r.schedule.departure)}</b> {routeLabel(r.route)}
+                    <span className="text-[#6b6d78]"> {r.bus.regNo}</span>
+                  </span>
+                  <span className="flex items-center gap-3">
+                    {done && <span className="text-[12px] font-bold text-[#006e1c]">Closed</span>}
+                    <Button size="sm" variant={done ? 'secondary' : 'primary'} onClick={() => { setDate(r.date); setScheduleId(r.schedule.id); }}>{done ? 'Open' : 'Enter the trip sheet'}</Button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+      {scheduleId && canClose && (cashPeople.people?.length ?? 0) > 0 && (
+        <Card className="p-4 mb-4">
+          <p className="text-[13px] font-bold text-[#050a44] mb-2">Whose trip sheet and cash is this?</p>
+          <div className="flex flex-wrap gap-2">
+            {cashPeople.people!.map((p) => (
+              <button key={p.id} onClick={() => setPerson(p.id)} aria-pressed={person === p.id}
+                className={`px-3 py-2 rounded-lg text-[13px] font-bold border text-left ${person === p.id ? 'bg-[#050a44] text-white border-[#050a44]' : 'bg-white text-[#050a44] border-[#c7c5d1]'}`}>
+                {p.name}
+                <span className="block text-[12px] font-semibold opacity-80">
+                  {p.closed ? 'Closed' : p.took_cash ? `should hand in ${formatLKR(p.expected)}` : 'took no cash'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
+      {scheduleId && canClose && cashPeople.unavailable && (
+        <p role="alert" className="mb-4 rounded-xl bg-[#feb700]/15 border border-[#feb700]/50 text-[13px] font-semibold text-[#050a44] px-4 py-3">
+          To close a trip for the conductor, run migration 28 (supabase/migrations/20261028000000_office_closes_trips.sql) in the Supabase SQL Editor. Until then this page closes only your own cash.
+        </p>
+      )}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr] gap-6">
         <Card className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-[12px] font-bold text-[#46464f]">Cash you should have</p>
+              <p className="text-[12px] font-bold text-[#46464f]">{whose ? `Cash ${whose} should hand in` : 'Cash you should have'}</p>
               <p className="text-[26px] font-semibold text-[#050a44] tabular-nums">{loading ? '…' : formatLKR(expected)}</p>
               <p className="text-[12px] text-[#6b6d78]">
-                {taken.length} cash payment{taken.length === 1 ? '' : 's'} you took {scheduleId ? 'for this trip' : date === today ? 'today' : 'that day'}
-                {refundTotal > 0 && <>, less {formatLKR(refundTotal)} you refunded in cash</>}
+                {taken.length} cash payment{taken.length === 1 ? '' : 's'} {whose ? 'taken' : 'you took'} {scheduleId ? 'for this trip' : date === today ? 'today' : 'that day'}
+                {refundTotal > 0 && <>, less {formatLKR(refundTotal)} refunded in cash</>}
+                {paidOutSaved + paidOutTyped > 0 && <>, less {formatLKR(paidOutSaved + paidOutTyped)} paid out of it for the trip</>}
               </p>
             </div>
             {closedToday && (
               <div>
-                <p className="text-[12px] font-bold text-[#46464f]">You counted</p>
+                <p className="text-[12px] font-bold text-[#46464f]">{whose ? 'Handed in' : 'You counted'}</p>
                 <p className="text-[26px] font-semibold text-[#050a44] tabular-nums">{formatLKR(closedToday.counted)}</p>
                 <Difference expected={closedToday.expected} counted={closedToday.counted} className="text-[12px]" />
               </div>
             )}
           </div>
-          {!closedToday ? (
+          {!closedToday && isConductor ? (
+            <p className="text-[14px] text-[#46464f]">
+              Hand this cash in with your paper trip sheet. If you paid for fuel, tolls or anything else out of it, write that on the sheet: the booking centre takes it off and closes the trip.
+            </p>
+          ) : !closedToday ? (
             <>
-              <Field label="Cash you counted (LKR)" hint={`Count the notes and coins you are holding from ${scheduleId ? 'this trip' : date === today ? "today's sales" : "that day's sales"}, then enter the total.`}>
+              {useSheet && tripBus && (
+                <TripSheet draft={sheet} onChange={setSheet} logs={odometer.logs} busId={tripBus.id} busLabel={tripBus.regNo} tripDate={date} today={today} saved={tripSheet.saved} costsAvailable={costsAvailable} forSomeone={!!whose} />
+              )}
+              {useSheet && <p className="text-[12px] font-bold text-[#46464f] px-1 -mb-2">{costsAvailable ? '4' : '2'}. Cash</p>}
+              <Field label={whose ? 'Cash handed in (LKR)' : 'Cash you counted (LKR)'} hint={whose ? `Count the cash ${whose} handed in with the trip sheet, then enter the total.` : `Count the notes and coins you are holding from ${scheduleId ? 'this trip' : date === today ? "today's sales" : "that day's sales"}, then enter the total.`}>
                 <input type="number" min={0} inputMode="numeric" className={inputClass} value={counted} onChange={(e) => setCounted(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))} />
               </Field>
               {typeof counted === 'number' && (
@@ -274,7 +414,7 @@ export default function CashPage() {
                   )}
                 </div>
               )}
-              {odoSection}
+              {useSheet && tripBus ? null : odoSection}
               <Field label={needsNote ? 'What happened? (needed to close the day)' : 'Notes'}>
                 <textarea
                   className={`${inputClass} min-h-[72px] py-2`}
@@ -284,14 +424,22 @@ export default function CashPage() {
                 />
               </Field>
               {needsNote && notes.trim().length < 3 && <p className="text-[12px] font-semibold text-[#ba1a1a]">Write a note to close a day that is {diff < 0 ? 'short' : 'over'}.</p>}
-              {odoMissing && counted !== '' && <p className="text-[12px] font-semibold text-[#ba1a1a]">Enter the odometer reading to close this trip.</p>}
-              <Button variant="gold" disabled={loading || savingOdo || counted === '' || (needsNote && notes.trim().length < 3) || odoProblem || odoMissing} onClick={async () => {
-                // The reading first: if it is refused nothing is closed, and the number can be fixed.
+              {!useSheet && odoMissing && counted !== '' && <p className="text-[12px] font-semibold text-[#ba1a1a]">Enter the odometer reading to close this trip.</p>}
+              {useSheet && sheetOdo?.missing && counted !== '' && <p className="text-[12px] font-semibold text-[#ba1a1a]">Enter the odometer at the start and at the end to close this trip.</p>}
+              {sheetProblems.length > 0 && (
+                <ul className="text-[12px] font-semibold text-[#ba1a1a] space-y-0.5" role="alert">
+                  {sheetProblems.map((p) => <li key={p}>{p}</li>)}
+                </ul>
+              )}
+              <Button variant="gold" disabled={loading || savingOdo || counted === '' || (needsNote && notes.trim().length < 3) || (useSheet ? !sheetOdo || sheetOdo.missing || sheetOdo.problem || sheetProblems.length > 0 || !tripSheet.ready : odoProblem || odoMissing)} onClick={async () => {
+                // Readings and costs first, the cash last: if anything is refused nothing is closed and the number can be fixed.
+                // Each part is cleared from the form once saved, so pressing Close again never saves it twice.
                 setSavingOdo(true);
-                const odo = await saveReadings();
+                const odo = useSheet && tripBus ? await saveTripSheet() : await saveReadings();
                 setSavingOdo(false);
                 if (!odo.ok) return toast(odo.reason, 'error');
-                const r = await save({ date, scheduleId, expected, counted: Number(counted), notes: notes.trim() });
+                const r = await save({ date, scheduleId, expected, counted: Number(counted), notes: notes.trim() }, forUser);
+                if (r.ok) setCounted('');
                 toast(r.ok ? (diff === 0 ? 'Closed. Balanced.' : `Closed: ${diff < 0 ? 'short' : 'over'} by ${formatLKR(Math.abs(diff))}. The super admin has been told.`) : r.reason ?? 'Could not save', r.ok ? 'ok' : 'error');
               }}>
                 {scheduleId ? 'Close this trip' : 'Close the day'}
@@ -299,10 +447,11 @@ export default function CashPage() {
             </>
           ) : (
             <>
-              <p className="text-[14px] text-[#46464f]">You have closed this {scheduleId ? 'trip' : 'day'}{closedToday.notes ? `. Note: ${closedToday.notes}` : '.'}</p>
+              <p className="text-[14px] text-[#46464f]">{isConductor ? 'The booking centre has closed this trip' : whose ? `This trip is closed for ${whose}` : `You have closed this ${scheduleId ? 'trip' : 'day'}`}{closedToday.notes ? `. Note: ${closedToday.notes}` : '.'}</p>
+              {useSheet && tripSheet.saved.length > 0 && <SavedCosts saved={tripSheet.saved} />}
               {/* Closed before the reading was taken: it can still be added here. */}
-              {odoSection}
-              {odoRows.some((r) => !r.logged) && !odometer.error && (
+              {canClose && odoSection}
+              {canClose && odoRows.some((r) => !r.logged) && !odometer.error && (
                 <Button variant="secondary" disabled={savingOdo || odoProblem || odoTyped.length === 0} onClick={async () => {
                   setSavingOdo(true);
                   const odo = await saveReadings();
@@ -314,7 +463,7 @@ export default function CashPage() {
               )}
             </>
           )}
-          {!odometer.error && (
+          {!odometer.error && canClose && (
             <p className="text-[12px] text-[#6b6d78]">
               Typed a wrong reading? <Link href={user?.role === 'conductor' ? '/conductor/odometer' : '/admin/odometer'} className="font-semibold text-[#050a44] underline">Odometer</Link> has the history; office staff can remove a reading there.
             </p>
@@ -323,7 +472,7 @@ export default function CashPage() {
 
         <Card className="overflow-hidden">
           <div className="px-5 py-4 border-b border-[#edeef0] flex items-baseline justify-between gap-3">
-            <h2 className="text-[16px] font-semibold text-[#050a44]">Cash you took {scheduleId ? 'for this trip' : date === today ? 'today' : 'that day'}</h2>
+            <h2 className="text-[16px] font-semibold text-[#050a44]">{whose ? `Cash ${whose} took` : 'Cash you took'} {scheduleId ? 'for this trip' : date === today ? 'today' : 'that day'}</h2>
             <span className="text-[14px] font-bold text-[#050a44] tabular-nums">{formatLKR(takenTotal)}</span>
           </div>
           {taken.length === 0 ? <p className="p-5 text-[14px] text-[#46464f]">None yet.</p> : (
@@ -338,6 +487,22 @@ export default function CashPage() {
                 </li>
               ))}
             </ul>
+          )}
+          {paidOut.length > 0 && (
+            <>
+              <div className="px-5 py-3 border-t border-[#edeef0] flex items-baseline justify-between gap-3 bg-[#f8f9fb]">
+                <h3 className="text-[13px] font-bold text-[#050a44]">Paid out of this cash for the trip</h3>
+                <span className="text-[13px] font-bold text-[#ba1a1a] tabular-nums">− {formatLKR(paidOutSaved)}</span>
+              </div>
+              <ul className="divide-y divide-[#edeef0]">
+                {paidOut.map((x) => (
+                  <li key={x.id} className="px-5 py-2.5 flex justify-between gap-3 text-[13px]">
+                    <span className="text-[#46464f]">{ROAD_COST_LABEL[x.category as keyof typeof ROAD_COST_LABEL] ?? x.category}{x.litres ? `, ${x.litres} L` : ''}{x.detail ? `, ${x.detail}` : ''}</span>
+                    <span className="tabular-nums shrink-0">− {formatLKR(x.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
           {refunds.length > 0 && (
             <>

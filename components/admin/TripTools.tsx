@@ -1,7 +1,10 @@
 'use client';
-// Conductor tools for one departure: share the bus location, post updates
-// that passengers see (and get by SMS/WhatsApp), and scan QR tickets to mark
-// passengers boarded.
+// Tools for one departure. useLocationSharing() is the conductor's: it shares
+// the phone's GPS from the conductor page, because that phone is on the bus.
+// TripTools is the office version (Departures): it never shares this
+// computer's position, which would put the bus at the back office. It shows
+// whether the conductor is sharing, and lets the office post updates and scan
+// tickets.
 
 import { useEffect, useRef, useState } from 'react';
 import { MapPin, Megaphone, QrCode, Radio } from 'lucide-react';
@@ -159,7 +162,6 @@ export function TripTools({ run, bookings }: { run: Run; bookings: Booking[] }) 
   const { updateBooking } = useStore();
   const { toast, Toast } = useToast();
   const { location, events } = useLiveTrip(run.schedule.id, run.date);
-  const { sharing, toggle: toggleSharing } = useLocationSharing(run.schedule.id, run.date, toast);
   const { confirmPayment } = useStore();
   const [posting, setPosting] = useState<TripEvent['kind'] | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -171,20 +173,44 @@ export function TripTools({ run, bookings }: { run: Run; bookings: Booking[] }) 
       takeCash: (b) => confirmPayment(b.id, 'cash'),
     });
 
+  // Where the bus is comes only from the conductor's phone. Checked again every 20 s so "live" turns to "stopped" by itself.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 20_000);
+    return () => clearInterval(id);
+  }, []);
+  const ageMin = location ? Math.max(0, Math.round((now - new Date(location.updatedAt).getTime()) / 60_000)) : null;
+  const live = ageMin !== null && ageMin <= 3;
+  const at = location ? new Date(location.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+
   return (
     <Card className="p-4 space-y-3">
       <div className="flex flex-wrap gap-2">
-        <Button variant={sharing ? 'primary' : 'secondary'} onClick={toggleSharing}>
-          <Radio className={`w-4 h-4 ${sharing ? 'animate-pulse' : ''}`} /> {sharing ? 'Sharing location…' : 'Share bus location'}
-        </Button>
         <Button variant="secondary" onClick={() => setScanning(true)}><QrCode className="w-4 h-4" /> Scan tickets</Button>
         <Button variant="secondary" onClick={() => setPosting('departed')}><Megaphone className="w-4 h-4" /> Update passengers</Button>
       </div>
-      <p className="text-[12px] text-[#6b6d78] flex items-center gap-1.5">
-        <MapPin className="w-3.5 h-3.5" />
-        {location ? `Passengers see the bus at ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)} · ${new Date(location.updatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : 'Location not shared yet for this departure.'}
-        {events[0] && ` · Last update: ${events[0].kind}${events[0].stop ? ` (${events[0].stop})` : ''}`}
-      </p>
+      <div role="status" className={`rounded-xl px-3 py-2.5 text-[13px] ${live ? 'bg-[#e8f6ea]' : location ? 'bg-[#feb700]/15' : 'bg-[#f2f4f6]'}`}>
+        <p className="flex items-center gap-2 font-bold text-[#050a44]">
+          {live ? <Radio className="w-4 h-4 text-[#006e1c] animate-pulse" /> : <MapPin className="w-4 h-4" />}
+          {live
+            ? `Bus location: live from the conductor's phone (${ageMin === 0 ? 'just now' : `${ageMin} min ago`})`
+            : location
+              ? `Bus location: the conductor's phone stopped sharing at ${at} (${ageMin! < 90 ? `${ageMin} min` : `${Math.round(ageMin! / 60)} h`} ago)`
+              : 'Bus location: the conductor is not sharing it yet'}
+        </p>
+        <p className="text-[12px] text-[#46464f] mt-0.5">
+          {location ? (
+            <>
+              {live ? 'Passengers see the bus on their ticket. ' : 'Passengers see this last position. '}
+              <a href={`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`} target="_blank" rel="noopener" className="font-semibold text-[#050a44] underline">Open on the map</a>
+              {live ? '' : '. Ask the conductor to open the conductor app and turn on Share location.'}
+            </>
+          ) : (
+            'It is shared from the phone on the bus: conductor app, Share location. This computer is never used as the bus position.'
+          )}
+          {events[0] && ` Last update to passengers: ${events[0].kind}${events[0].stop ? ` (${events[0].stop})` : ''}.`}
+        </p>
+      </div>
 
       {posting && <UpdateModal stops={stops} initial={posting} onClose={() => setPosting(null)} onSend={async (ev) => {
         const r = await postTripEvent(run.schedule.id, run.date, ev);

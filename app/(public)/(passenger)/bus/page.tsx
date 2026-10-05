@@ -22,7 +22,7 @@ export default async function RoutesIndex() {
     { title: 'Between towns', items: pages.filter((p) => p.from !== 'Colombo' && p.to !== 'Colombo') },
   ];
   return (
-    <main className="max-w-[1400px] mx-auto px-4 md:px-[48px] py-[32px]">
+    <main className="max-w-[1100px] mx-auto px-4 md:px-[48px] py-[32px]">
       <h1 className="text-[32px] md:text-[34px] font-extrabold tracking-tight text-[#050a44]">Bus routes</h1>
       <p className="text-[16px] text-[#46464f] mt-2 max-w-2xl">
         Route 48 overnight luxury coach between Colombo and the Eastern Province. Pick a journey for its timetable, fare and stops.

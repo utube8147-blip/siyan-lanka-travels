@@ -389,13 +389,15 @@ export function useServiceRequests() {
 }
 
 // --------------------------------------------------------------- cash count ---
-export interface CashCount { id: string; date: string; expected: number; counted: number; notes: string; createdAt: string; /** Who closed it (shown to the super admin). */ by?: string; mine?: boolean; /** Set when a conductor closed one departure and not a whole day. */ scheduleId?: string | null }
+export interface CashCount { /** Whose cash it is (differs from the signed-in person when the office closed it for a conductor). */ personId?: string; /** Name of the office staff member who typed it in for them. */ enteredBy?: string; id: string; date: string; expected: number; counted: number; notes: string; createdAt: string; /** Who closed it (shown to the super admin). */ by?: string; mine?: boolean; /** Set when a conductor closed one departure and not a whole day. */ scheduleId?: string | null }
 
 /** What one staff member should be holding for a day: cash they took, less cash refunds they paid out. Worked out by the database. */
 export interface CashSummary {
   expected: number;
   taken: { ref: string; name: string; seats: string[]; from: string; to: string; amount: number; at: string; where: string }[];
   refunds: { ref: string; name: string; amount: number; at: string }[];
+  /** Costs this person paid out of that cash (trip sheet, migration 27). Missing on an older database. */
+  paid_out?: { id: string; category: string; amount: number; litres: number | null; detail: string }[];
 }
 /** An earlier day or trip where this person took cash and never closed. */
 export interface UnclosedCash { kind: 'day' | 'trip'; date: string; schedule_id: string | null; amount: number; payments: number }
@@ -436,20 +438,48 @@ export function useCashOverview(date: string, enabled: boolean, refreshKey: unkn
 }
 
 /** `scheduleId` given: the cash for that departure (travel date `date`). Otherwise: cash taken on `date`. */
-export function useCashSummary(date: string, scheduleId: string | null, refreshKey: unknown) {
+/** `forUserId` (office staff only, migration 28): that person's cash instead of your own. */
+export function useCashSummary(date: string, scheduleId: string | null, refreshKey: unknown, forUserId?: string | null) {
   const [summary, setSummary] = useState<CashSummary | null | 'error'>(null);
   useEffect(() => {
     if (!DB) return;
     let live = true;
+    setSummary(null);
     supabase()
-      .rpc('cash_summary', { p_date: date, p_schedule: scheduleId })
+      .rpc('cash_summary', forUserId ? { p_date: date, p_schedule: scheduleId, p_user: forUserId } : { p_date: date, p_schedule: scheduleId })
       // 'error' = the database doesn't have this yet (setup.sql not run) or refused: the page says so, not an endless "…".
       .then(({ data, error }) => live && setSummary(error ? 'error' : ((data as CashSummary) ?? null)));
     return () => {
       live = false;
     };
-  }, [date, scheduleId, refreshKey]);
+  }, [date, scheduleId, refreshKey, forUserId]);
   return summary;
+}
+
+/** Someone the office can close a trip for (migration 28). */
+export interface TripCashPerson { id: string; name: string; role: string; took_cash: boolean; expected: number; closed: boolean }
+/** Everyone who took cash on a trip, then the conductors. Office staff only; `unavailable` on a database without migration 28. */
+export function useTripCashPeople(scheduleId: string | null, date: string, enabled: boolean, refreshKey: unknown) {
+  const [people, setPeople] = useState<TripCashPerson[] | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  useEffect(() => {
+    if (!DB || !enabled || !scheduleId) {
+      setPeople(null);
+      return;
+    }
+    let live = true;
+    supabase()
+      .rpc('trip_cash_people', { p_schedule: scheduleId, p_date: date })
+      .then(({ data, error }) => {
+        if (!live) return;
+        setUnavailable(!!error);
+        setPeople(error ? [] : ((data as TripCashPerson[]) ?? []));
+      });
+    return () => {
+      live = false;
+    };
+  }, [scheduleId, date, enabled, refreshKey]);
+  return { people, unavailable };
 }
 const CC_KEY = 'demo-cash-counts';
 export function useCashCounts() {
@@ -460,19 +490,20 @@ export function useCashCounts() {
     const { data: me } = await supabase().auth.getSession();
     const { data } = await supabase().from('cash_counts').select('*, profiles(full_name)').order('count_date', { ascending: false }).order('created_at', { ascending: false }).limit(120);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setRemote(((data as any[]) ?? []).map((c) => ({ id: c.id, date: c.count_date, expected: c.expected, counted: c.counted, notes: c.notes, createdAt: c.created_at, by: c.profiles?.full_name || 'Staff', mine: c.created_by === me.session?.user.id, scheduleId: c.schedule_id ?? null })));
+    setRemote(((data as any[]) ?? []).map((c) => ({ id: c.id, date: c.count_date, expected: c.expected, counted: c.counted, notes: c.notes, createdAt: c.created_at, personId: c.created_by, by: c.profiles?.full_name || 'Staff', mine: c.created_by === me.session?.user.id, scheduleId: c.schedule_id ?? null })));
   }, []);
   useEffect(() => {
     load();
   }, [load]);
-  const save = async (c: Omit<CashCount, 'id' | 'createdAt'>): Promise<Result> => {
+  /** `forUserId`: office staff closing for that person (the database checks they may). */
+  const save = async (c: Omit<CashCount, 'id' | 'createdAt'>, forUserId?: string | null): Promise<Result> => {
     if (!DB) {
       if (local.some((x) => x.date === c.date && (x.scheduleId ?? null) === (c.scheduleId ?? null))) return { ok: false, reason: 'You already closed this.' };
       setLocal([{ ...c, id: genId('cc'), createdAt: new Date().toISOString() }, ...local]);
       return { ok: true };
     }
-    const { error } = await supabase().from('cash_counts').insert({ count_date: c.date, schedule_id: c.scheduleId ?? null, expected: c.expected, counted: c.counted, notes: c.notes });
-    if (error) return { ok: false, reason: /duplicate|unique/.test(error.message) ? 'You already closed this.' : friendlyError(error) };
+    const { error } = await supabase().from('cash_counts').insert({ count_date: c.date, schedule_id: c.scheduleId ?? null, expected: c.expected, counted: c.counted, notes: c.notes, ...(forUserId ? { created_by: forUserId } : {}) });
+    if (error) return { ok: false, reason: /duplicate|unique/.test(error.message) ? 'This is already closed.' : friendlyError(error) };
     await load();
     return { ok: true };
   };

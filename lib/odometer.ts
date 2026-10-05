@@ -45,7 +45,14 @@ export function useOdometer() {
     if (!DB) {
       const earlier = logs.filter((l) => l.busId === busId && l.date < date).reduce((m, l) => Math.max(m, l.km), 0);
       if (earlier && km < earlier) return { ok: false, reason: `The reading can't be lower than an earlier one (${earlier.toLocaleString('en-LK')} km).` };
-      const next = [{ id: uuid(), busId, date, km, notes, source: 'log' as const }, ...logs];
+      // Read what is stored, not this render's copy: two readings saved one after the other (start and end of a trip) must both be kept.
+      let stored: OdoLog[] = logs;
+      try {
+        stored = JSON.parse(localStorage.getItem(KEY) ?? 'null') ?? logs;
+      } catch {
+        /* keep this render's copy */
+      }
+      const next = [{ id: uuid(), busId, date, km, notes, source: 'log' as const }, ...stored];
       setLogs(next);
       try {
         localStorage.setItem(KEY, JSON.stringify(next));
