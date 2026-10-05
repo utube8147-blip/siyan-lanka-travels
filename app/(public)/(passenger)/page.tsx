@@ -6,14 +6,14 @@ import { useBikeConfig } from '@/lib/useBikeConfig';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ArrowLeftRight, Calendar, MapPin, Navigation, Phone, MessageCircle, Wind, Armchair, Usb, Wifi, ShieldCheck, Lightbulb, Mail } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowLeftRight, Calendar, MapPin, Navigation, Phone, MessageCircle, Wind, Armchair, Usb, Wifi, ShieldCheck, Lightbulb, Mail } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
 import BlurText from '@/components/motion/BlurText';
 import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { useStore } from '@/lib/store';
 import { addDays, allStopNames, busCapacity, findTrips, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
-import type { Route } from '@/lib/types';
+import type { Route, Trip } from '@/lib/types';
 import { useT } from '@/lib/i18n';
 
 const HERO_IMAGE = '/brand/bus.png';
@@ -73,8 +73,29 @@ export default function LandingPage() {
     window.addEventListener('resize', calc);
     return () => window.removeEventListener('resize', calc);
   }, []);
-  const stopRows = firstRoute
-    ? Array.from({ length: Math.ceil(firstRoute.stops.length / stopCols) }, (_, r) => firstRoute.stops.slice(r * stopCols, r * stopCols + stopCols))
+  // One bus, out one night and back the next: the stop line shows one
+  // direction at a time. Starts on the way the bus goes next.
+  const [stopDir, setStopDir] = useState<string | null>(null);
+  const nextRouteId = useMemo(() => {
+    if (!ready) return null;
+    for (let i = 0; i < 14; i++) {
+      const d = addDays(todayISO(), i);
+      for (const r of data.routes) {
+        if (!r.active) continue;
+        if (findTrips(data, r.stops[0].name, r.stops[r.stops.length - 1].name, d).some((x) => x.routeId === r.id && x.date === d && !x.closed)) return r.id;
+      }
+    }
+    return null;
+  }, [ready, data]);
+  const stopRoute = activeRoutes.find((r) => r.id === (stopDir ?? nextRouteId)) ?? firstRoute;
+  // Clock time at each stop, when this direction always leaves at the same time.
+  const stopStart = (() => {
+    if (!stopRoute) return null;
+    const times = [...new Set(data.schedules.filter((s) => s.active && s.routeId === stopRoute.id).map((s) => s.departure))];
+    return times.length === 1 ? times[0] : null;
+  })();
+  const stopRows = stopRoute
+    ? Array.from({ length: Math.ceil(stopRoute.stops.length / stopCols) }, (_, r) => stopRoute.stops.slice(r * stopCols, r * stopCols + stopCols))
     : [];
 
   const bikeCfg = useBikeConfig(); // categories and prices from Staff area → Settings → Bikes
@@ -199,7 +220,7 @@ export default function LandingPage() {
         </section>
 
         {/* Timetable — the operator's real departures, with live seats left today */}
-        <section id="timetable" className="py-[56px] bg-white border-b border-[#edeef0] scroll-mt-20">
+        <section id="timetable" className="py-[56px] bg-white border-b border-[#edeef0] scroll-mt-20 overflow-hidden">
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-3 mb-8">
               <div>
@@ -213,11 +234,7 @@ export default function LandingPage() {
             {!ready ? (
               <div className="h-48 rounded-2xl bg-[#f2f4f6] animate-pulse" />
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {activeRoutes.map((route) => (
-                  <TimetableCard key={route.id} route={route} />
-                ))}
-              </div>
+              <NightStrip routes={activeRoutes} />
             )}
           </div>
         </section>
@@ -226,13 +243,35 @@ export default function LandingPage() {
             Below xl: a snake. Row 1 runs left to right, drops down at the edge,
             row 2 runs right to left, and so on.
             xl and up: one horizontal line. */}
-        {firstRoute && (
+        {stopRoute && (
           <section className="py-[56px] bg-[#fcfcfd]">
             <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto">
-              <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-2">{t('Where we stop')}</h2>
-              <p className="text-[15px] text-[#46464f] mb-10 max-w-xl">
-                {t('Get on or off at any of these. Fares shown from {from}; you only pay for the part you ride.', { from: firstRoute.stops[0].name })}
-              </p>
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-5 mb-10">
+                <div>
+                  <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-2">{t('Where we stop')}</h2>
+                  <p className="text-[15px] text-[#46464f] max-w-xl">
+                    {t('Get on or off at any of these. Fares shown from {from}; you only pay for the part you ride.', { from: stopRoute.stops[0].name })}
+                  </p>
+                </div>
+                {activeRoutes.length > 1 && (
+                  <div role="group" aria-label={t('Direction')} className="inline-flex self-start md:self-auto p-1 rounded-xl bg-[#f2f4f6] border border-[#edeef0]">
+                    {activeRoutes.map((r) => {
+                      const on = r.id === stopRoute.id;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setStopDir(r.id)}
+                          className={`px-4 h-10 rounded-lg text-[14px] font-semibold whitespace-nowrap transition-colors ${on ? 'bg-white text-[#050a44] shadow-sm' : 'text-[#46464f]'}`}
+                        >
+                          {t('From {from}', { from: r.stops[0].name })}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               {/* Snake (phones, tablets, small laptops) */}
               <div className="xl:hidden">
@@ -261,7 +300,7 @@ export default function LandingPage() {
                       )}
                       {row.map((stop, j) => {
                         const i = r * stopCols + j;
-                        const ends = i === 0 || i === firstRoute.stops.length - 1;
+                        const ends = i === 0 || i === stopRoute.stops.length - 1;
                         return (
                           <li key={stop.name} className="relative flex flex-col items-center text-center" style={{ width: `${cell}%` }}>
                             <span
@@ -269,7 +308,7 @@ export default function LandingPage() {
                               aria-hidden
                             />
                             <span className="mt-3 text-[13px] sm:text-[14px] font-bold text-[#050a44] leading-tight px-1">{stop.name}</span>
-                            <span className="text-[11px] sm:text-[12px] font-medium text-[#46464f]">{i === 0 ? t('Start') : formatDuration(stop.offsetMin)}</span>
+                            <span className="text-[11px] sm:text-[12px] font-medium text-[#46464f]">{stopStart ? formatTime12(addMinutes(stopStart, stop.offsetMin)) : i === 0 ? t('Start') : formatDuration(stop.offsetMin)}</span>
                             {i > 0 && <span className="mt-1 text-[11px] sm:text-[12px] font-bold text-[#7c5800]">{formatLKR(stop.fareFromStart)}</span>}
                           </li>
                         );
@@ -281,10 +320,10 @@ export default function LandingPage() {
 
               {/* Horizontal (wide screens) */}
               <div className="hidden xl:block overflow-x-auto no-scrollbar -mx-4 px-4">
-                <ol ref={stopsRef} className="relative flex min-w-[1080px]">
+                <ol ref={stopsRef} key={stopRoute.id} className="relative flex min-w-[1080px]">
                   <div className="absolute left-3 right-3 top-[11px] h-[3px] bg-[#9a99a8]/60 rounded-full" aria-hidden />
-                  {firstRoute.stops.map((stop, i) => {
-                    const ends = i === 0 || i === firstRoute.stops.length - 1;
+                  {stopRoute.stops.map((stop, i) => {
+                    const ends = i === 0 || i === stopRoute.stops.length - 1;
                     return (
                       <li key={stop.name} className="relative flex-1 flex flex-col items-center text-center">
                         <span
@@ -292,7 +331,7 @@ export default function LandingPage() {
                           aria-hidden
                         />
                         <span className="mt-3 text-[14px] font-bold text-[#050a44]">{stop.name}</span>
-                        <span className="text-[12px] font-medium text-[#46464f]">{i === 0 ? t('Start') : formatDuration(stop.offsetMin)}</span>
+                        <span className="text-[12px] font-medium text-[#46464f]">{stopStart ? formatTime12(addMinutes(stopStart, stop.offsetMin)) : i === 0 ? t('Start') : formatDuration(stop.offsetMin)}</span>
                         {i > 0 && <span className="mt-1 text-[12px] font-bold text-[#7c5800]">{formatLKR(stop.fareFromStart)}</span>}
                       </li>
                     );
@@ -490,50 +529,104 @@ export default function LandingPage() {
   );
 }
 
-function TimetableCard({ route }: { route: Route }) {
+/** "21:00" + 150 minutes → "23:30" (wraps past midnight). */
+function addMinutes(hhmm: string, mins: number) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = (((h * 60 + m + mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/**
+ * The next 14 nights, one tile each. With one coach that goes out one night
+ * and comes back the next, this is the whole timetable: which way the bus
+ * leaves tonight, tomorrow, and so on. Gold bar = the first route (out),
+ * navy bar = the way back. A strip you swipe on phones, two weeks stacked on
+ * a laptop.
+ */
+function NightStrip({ routes }: { routes: Route[] }) {
   const { t: tr } = useT();
   const { data } = useStore();
-  const from = route.stops[0].name;
-  const to = route.stops[route.stops.length - 1].name;
   const today = todayISO();
-  const trips: ReturnType<typeof findTrips> = [];
-  for (let i = 0; i < 21 && trips.length < 3; i++) {
-    const d = addDays(today, i);
-    trips.push(...findTrips(data, from, to, d).filter((t) => t.routeId === route.id && !t.closed));
-  }
-  const shown = trips.slice(0, 3);
-  const listRef = useStaggerIn<HTMLUListElement>(shown.length > 0);
+  const nights: { date: string; trip?: Trip; dir?: number }[] = Array.from({ length: 14 }, (_, i) => {
+    const date = addDays(today, i);
+    const found = routes.flatMap((route, dir) =>
+      findTrips(data, route.stops[0].name, route.stops[route.stops.length - 1].name, date)
+        .filter((x) => x.routeId === route.id && x.date === date)
+        .map((trip) => ({ trip, dir })),
+    );
+    return { date, ...(found.find((f) => !f.trip.closed) ?? found[0]) };
+  });
+  const bar = (dir: number) => (dir === 0 ? 'bg-[#feb700]' : 'bg-[#050a44]');
+
   return (
-    <div className="rounded-2xl border border-[#c7c5d1] overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 bg-[#f2f4f6]">
-        <h3 className="text-[17px] font-bold text-[#050a44]">{routeLabel(route)}</h3>
-        <span className="text-[13px] font-semibold text-[#46464f]">{formatLKR(route.stops[route.stops.length - 1].fareFromStart)}</span>
-      </div>
-      {shown.length === 0 ? (
-        <p className="px-5 py-6 text-[14px] text-[#46464f]">No departures in the next three weeks.</p>
-      ) : (
-        <ul ref={listRef} className="divide-y divide-[#edeef0]">
-          {shown.map((t) => {
-            const href = `/seats/${t.scheduleId}?${new URLSearchParams({ from, to, date: t.date }).toString()}`;
+    <div>
+      {/* What the two colours mean, with the time and the price said once */}
+      <ul className="flex flex-col sm:flex-row sm:flex-wrap gap-x-8 gap-y-2 mb-5">
+        {routes.map((route, dir) => {
+          const times = [...new Set(data.schedules.filter((s) => s.active && s.routeId === route.id).map((s) => s.departure))];
+          return (
+            <li key={route.id} className="flex items-center gap-2.5 text-[14px] text-[#46464f]">
+              <span className={`w-5 h-1.5 rounded-full shrink-0 ${bar(dir)}`} aria-hidden />
+              <span>
+                <b className="font-bold text-[#050a44]">{routeLabel(route)}</b>
+                {times.length === 1 ? `, ${formatTime12(times[0])}` : ''}, {formatLKR(route.stops[route.stops.length - 1].fareFromStart)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <ol className="grid grid-flow-col auto-cols-[164px] gap-3 overflow-x-auto no-scrollbar snap-x -mx-4 px-4 pb-1 lg:mx-0 lg:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-7 lg:overflow-visible">
+        {nights.map(({ date, trip, dir }, i) => {
+          const day = (
+            <span className="flex items-center justify-between gap-2">
+              <span className="text-[13px] font-semibold text-[#46464f] whitespace-nowrap">{formatDateLabel(date, false)}</span>
+              {i === 0 && <span className="text-[11px] font-bold text-[#7c5800] bg-[#feb700]/15 rounded-full px-2 py-0.5">{tr('Today')}</span>}
+            </span>
+          );
+          if (!trip || dir === undefined) {
             return (
-              <li key={`${t.scheduleId}-${t.date}`}>
-                <Link href={href} className="grid grid-cols-[1fr_auto] sm:grid-cols-[150px_1fr_auto] items-center gap-x-4 gap-y-1 px-5 py-4 hover:bg-[#f8f9fb]">
-                  <span>
-                    <span className="block text-[13px] font-semibold text-[#46464f]">{formatDateLabel(t.boardingDate, false)}</span>
-                    <span className="block text-[20px] font-extrabold text-[#050a44] tabular-nums">{formatTime12(t.departure)}</span>
-                  </span>
-                  <span className="hidden sm:block text-[13px] text-[#46464f]">
-                    {tr('Arrives')} {formatTime12(t.arrival)}{t.arrivalDayOffset ? ` ${tr('next morning')}` : ''} · {formatDuration(t.durationMin)}
-                  </span>
-                  <span className={`text-[13px] font-bold whitespace-nowrap ${t.seatsLeft <= 5 ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>
-                    {t.seatsLeft === 0 ? tr('Full') : <><AnimatedNumber value={t.seatsLeft} /> {tr('seats left')}</>}
-                  </span>
-                </Link>
+              <li key={date} className="snap-start rounded-2xl border border-dashed border-[#c7c5d1] p-4 min-h-[168px] flex flex-col">
+                {day}
+                <span className="mt-auto text-[13px] text-[#6b6d78]">{tr('No bus this night')}</span>
               </li>
             );
-          })}
-        </ul>
-      )}
+          }
+          const from = trip.from;
+          const to = trip.to;
+          const body = (
+            <>
+              <span className={`absolute inset-x-0 top-0 h-1.5 ${bar(dir)}`} aria-hidden />
+              {day}
+              <span className="block mt-3 text-[22px] leading-none font-extrabold text-[#050a44] tabular-nums">{formatTime12(trip.departure)}</span>
+              <span className="block mt-3 text-[14px] font-bold text-[#050a44] leading-tight">{from}</span>
+              <span className="flex items-center gap-1 text-[14px] font-bold text-[#050a44] leading-tight">
+                {dir === 0 ? <ArrowRight className="w-3.5 h-3.5 shrink-0 text-[#46464f]" aria-hidden /> : <ArrowLeft className="w-3.5 h-3.5 shrink-0 text-[#46464f]" aria-hidden />}
+                <span className="sr-only">{tr('to')}</span>
+                {to}
+              </span>
+              <span className={`block mt-auto pt-3 text-[13px] font-bold ${trip.closed ? 'text-[#6b6d78]' : trip.seatsLeft <= 5 ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>
+                {trip.closed ? tr('Booking closed') : trip.seatsLeft === 0 ? tr('Full') : <><AnimatedNumber value={trip.seatsLeft} /> {tr('seats left')}</>}
+              </span>
+            </>
+          );
+          const shell = 'relative overflow-hidden rounded-2xl border border-[#c7c5d1] bg-white p-4 pt-5 min-h-[168px] flex flex-col h-full';
+          return (
+            <li key={date} className="snap-start">
+              {trip.closed || trip.seatsLeft === 0 ? (
+                <div className={`${shell} opacity-60`}>{body}</div>
+              ) : (
+                <Link
+                  href={`/seats/${trip.scheduleId}?${new URLSearchParams({ from, to, date: trip.date }).toString()}`}
+                  className={`${shell} hover:border-[#050a44] hover:bg-[#f8f9fb] transition-colors`}
+                >
+                  {body}
+                </Link>
+              )}
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
