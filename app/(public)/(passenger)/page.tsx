@@ -509,18 +509,18 @@ export default function LandingPage() {
                   Get in touch and we&apos;ll hold seats for you. You can also buy tickets from our conductor at {OPERATOR.contact.address.split(',')[0]}.
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap lg:justify-end gap-3 w-full lg:w-auto">
                 {OPERATOR.contact.phone ? (
-                  <a href={OPERATOR.contact.phoneHref} className="flex items-center justify-center gap-2 px-7 py-4 bg-[#050a44] text-white rounded-2xl text-[16px] font-semibold hover:opacity-90">
+                  <a href={OPERATOR.contact.phoneHref} className="flex items-center justify-center gap-2 px-7 py-4 bg-[#050a44] text-white rounded-2xl text-[16px] font-semibold hover:opacity-90 whitespace-nowrap shrink-0">
                     <Phone className="w-5 h-5" /> {OPERATOR.contact.phone}
                   </a>
                 ) : null}
                 {OPERATOR.contact.whatsappHref ? (
-                  <a href={OPERATOR.contact.whatsappHref} className="flex items-center justify-center gap-2 px-7 py-4 bg-white border border-[#c7c5d1] text-[#050a44] rounded-2xl text-[16px] font-semibold hover:bg-[#edeef0]">
+                  <a href={OPERATOR.contact.whatsappHref} className="flex items-center justify-center gap-2 px-7 py-4 bg-white border border-[#c7c5d1] text-[#050a44] rounded-2xl text-[16px] font-semibold hover:bg-[#edeef0] whitespace-nowrap shrink-0">
                     <MessageCircle className="w-5 h-5" /> WhatsApp
                   </a>
                 ) : null}
-                <a href={`mailto:${OPERATOR.contact.email}`} className="flex items-center justify-center gap-2 px-7 py-4 bg-white border border-[#c7c5d1] text-[#050a44] rounded-2xl text-[16px] font-semibold hover:bg-[#edeef0]">
+                <a href={`mailto:${OPERATOR.contact.email}`} className="flex items-center justify-center gap-2 px-7 py-4 bg-white border border-[#c7c5d1] text-[#050a44] rounded-2xl text-[16px] font-semibold hover:bg-[#edeef0] whitespace-nowrap shrink-0">
                   <Mail className="w-5 h-5" /> {OPERATOR.contact.email}
                 </a>
               </div>
