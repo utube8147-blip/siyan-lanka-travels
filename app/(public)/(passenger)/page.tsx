@@ -18,6 +18,9 @@ import { useT } from '@/lib/i18n';
 
 const HERO_IMAGE = '/brand/bus.png';
 
+/** How many nights the departures strip shows, counting today. */
+const NIGHTS_AHEAD = 8;
+
 const INTERIOR_CARDS = [
   { image: '/brand/interior.png', title: 'Reclining leather seats', subtitle: 'Room to sleep on the overnight run east' },
   { image: '/brand/poster.png', title: 'ND 2323, Siyan Lanka Travels', subtitle: 'Your coach, every trip' },
@@ -78,7 +81,7 @@ export default function LandingPage() {
   const [stopDir, setStopDir] = useState<string | null>(null);
   const nextRouteId = useMemo(() => {
     if (!ready) return null;
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < NIGHTS_AHEAD; i++) {
       const d = addDays(todayISO(), i);
       for (const r of data.routes) {
         if (!r.active) continue;
@@ -537,17 +540,17 @@ function addMinutes(hhmm: string, mins: number) {
 }
 
 /**
- * The next 14 nights, one tile each. With one coach that goes out one night
- * and comes back the next, this is the whole timetable: which way the bus
- * leaves tonight, tomorrow, and so on. Gold bar = the first route (out),
- * navy bar = the way back. A strip you swipe on phones, two weeks stacked on
- * a laptop.
+ * The next 8 nights (today plus the following 7), one tile each. With one
+ * coach that goes out one night and comes back the next, this is the whole
+ * timetable: which way the bus leaves tonight, tomorrow, and so on. Gold bar =
+ * the first route (out), navy bar = the way back. A strip you swipe on phones,
+ * two rows of four on a laptop.
  */
 function NightStrip({ routes }: { routes: Route[] }) {
   const { t: tr } = useT();
   const { data } = useStore();
   const today = todayISO();
-  const nights: { date: string; trip?: Trip; dir?: number }[] = Array.from({ length: 14 }, (_, i) => {
+  const nights: { date: string; trip?: Trip; dir?: number }[] = Array.from({ length: NIGHTS_AHEAD }, (_, i) => {
     const date = addDays(today, i);
     const found = routes.flatMap((route, dir) =>
       findTrips(data, route.stops[0].name, route.stops[route.stops.length - 1].name, date)
@@ -576,7 +579,7 @@ function NightStrip({ routes }: { routes: Route[] }) {
         })}
       </ul>
 
-      <ol className="grid grid-flow-col auto-cols-[164px] gap-3 overflow-x-auto no-scrollbar snap-x -mx-4 px-4 pb-1 lg:mx-0 lg:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-7 lg:overflow-visible">
+      <ol className="grid grid-flow-col auto-cols-[164px] gap-3 overflow-x-auto no-scrollbar snap-x -mx-4 px-4 pb-1 lg:mx-0 lg:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-4 lg:overflow-visible">
         {nights.map(({ date, trip, dir }, i) => {
           const day = (
             <span className="flex items-center justify-between gap-2">
@@ -599,11 +602,14 @@ function NightStrip({ routes }: { routes: Route[] }) {
               <span className={`absolute inset-x-0 top-0 h-1.5 ${bar(dir)}`} aria-hidden />
               {day}
               <span className="block mt-3 text-[22px] leading-none font-extrabold text-[#050a44] tabular-nums">{formatTime12(trip.departure)}</span>
-              <span className="block mt-3 text-[14px] font-bold text-[#050a44] leading-tight">{from}</span>
-              <span className="flex items-center gap-1 text-[14px] font-bold text-[#050a44] leading-tight">
-                {dir === 0 ? <ArrowRight className="w-3.5 h-3.5 shrink-0 text-[#46464f]" aria-hidden /> : <ArrowLeft className="w-3.5 h-3.5 shrink-0 text-[#46464f]" aria-hidden />}
-                <span className="sr-only">{tr('to')}</span>
-                {to}
+              {/* Two lines in the narrow swipe strip, one line once the tiles are wide (lg+) */}
+              <span className="mt-3 flex flex-col lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-1.5 text-[14px] font-bold text-[#050a44] leading-tight">
+                <span>{from}</span>
+                <span className="flex items-center gap-1">
+                  {dir === 0 ? <ArrowRight className="w-3.5 h-3.5 shrink-0 text-[#46464f]" aria-hidden /> : <ArrowLeft className="w-3.5 h-3.5 shrink-0 text-[#46464f]" aria-hidden />}
+                  <span className="sr-only">{tr('to')}</span>
+                  {to}
+                </span>
               </span>
               <span className={`block mt-auto pt-3 text-[13px] font-bold ${trip.closed ? 'text-[#6b6d78]' : trip.seatsLeft <= 5 ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>
                 {trip.closed ? tr('Booking closed') : trip.seatsLeft === 0 ? tr('Full') : <><AnimatedNumber value={trip.seatsLeft} /> {tr('seats left')}</>}
