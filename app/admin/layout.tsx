@@ -25,7 +25,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: '/admin/bookings', label: 'Bookings', icon: Ticket },
       { href: '/admin/payouts', label: 'Refunds & payouts', icon: HandCoins },
       { href: '/admin/expenses', label: 'Expenses & fuel', icon: Receipt },
-      { href: '/admin/requests', label: 'Parcels & hire', icon: Package },
+      // { href: '/admin/requests', label: 'Parcels & hire', icon: Package },
       { href: '/admin/cash', label: 'Close the day', icon: Banknote },
       { href: '/admin/odometer', label: 'Odometer', icon: Gauge },
       { href: '/admin/fleet', label: 'Buses', icon: Bus },
