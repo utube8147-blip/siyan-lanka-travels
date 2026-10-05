@@ -476,10 +476,27 @@ free". Switches are in `lib/features.ts` (`WALLET_ENABLED`,
 directly. The wallet and points screens were sample data only and still need
 building before they are switched on.
 
-## Messages (SMS / WhatsApp)
+## Messages (SMS / WhatsApp / email)
 The database queues a message when a booking is confirmed, a seat is held,
 a booking is cancelled, a waitlisted seat frees up, or the crew posts a trip
-update. `/api/messages/dispatch` sends them (Notify.lk SMS; WhatsApp Cloud
+update.
+
+**The booking message.** When a booking is done (paid, or the seat is kept
+for pay on the bus) the passenger's mobile gets ONE text with everything:
+route, date and time, seats, bus, what was paid, and three links: the ticket
+(`/my-bookings?ref=…`, opens the ticket with its QR code), live tracking
+(`/track?ref=…`) and My trips. It is never sent twice for a booking; a later
+"payment received" is a short receipt. A bank or counter hold gets the
+"how to pay" text first and the full one when the payment is recorded.
+It is about 320 plain characters, which is 3 SMS parts.
+
+**The ticket by email.** If the booking has an email address (or the account
+has one) the same details go there as a ticket email with the three links as
+buttons. Set `RESEND_API_KEY` and `EMAIL_FROM` (see `.env.example`); without
+them emails show as "skipped" in Settings → Recent messages. Turn it off in
+Settings → Messages → "Email the ticket". The sender is one function,
+`lib/server/email.ts`.
+ `/api/messages/dispatch` sends them (Notify.lk SMS; WhatsApp Cloud
 API if configured) and logs the result (Settings → Recent messages).
 Run it every minute with `Authorization: Bearer $CRON_SECRET`, e.g. with
 Supabase pg_cron + pg_net:
@@ -630,9 +647,14 @@ you can test installing locally.
 - Passengers turn on **Trip reminders** from My trips or the booking
   confirmation screen. Chrome only allows asking after a tap, so there's no
   automatic pop-up.
-- They get a "Booking confirmed" notification after paying, and a reminder
-  3 hours before departure while the site/app is open
-  (`components/TripReminders.tsx`).
+- They get a "Booking confirmed" notification, then four reminders, each
+  once: **1 day**, **3 hours** and **1 hour** before their own boarding time,
+  and **when the trip starts** (at boarding time, or the moment the conductor
+  marks the bus as left). A reminder is skipped if the seat was booked after
+  its moment: someone who books 2 hours before gets only the 1-hour one.
+  Conductor updates (late, arriving, arrived) are pushed too.
+  `components/TripReminders.tsx` shows the same reminders while the site is
+  open.
 - If notifications are blocked, the card explains how to re-allow them in
   Chrome's site settings. On iPhone, notifications only work after adding the
   app to the Home Screen (iOS 16.4+).
@@ -645,8 +667,9 @@ you can test installing locally.
   3. Keep the every-minute cron on `/api/messages/dispatch` running (see
      Messages); it also needs `SUPABASE_SECRET_KEY`.
   When a passenger turns reminders on, their browser is saved to their
-  account (`push_subscriptions`). Three hours before their own boarding time
-  they get "Your bus leaves at …". The same channel delivers waitlist offers,
+  account (`push_subscriptions`). The database works out which reminder is
+  due each minute (`queue_trip_reminders`) and `booking_notices` records what
+  each booking has had. The same channel delivers waitlist offers,
   "refund paid", "seat sold" and "slip sent back". Signing out unlinks that
   browser. On iPhone this needs the app on the Home Screen (iOS 16.4+).
   Without the VAPID keys nothing is pushed and the in-page reminder still

@@ -89,7 +89,7 @@ export interface Settings {
   holdMinutesCounter: number;
   holdMinutesBank: number;
   rewardEvery: number;
-  messaging: { sms: boolean; whatsapp: boolean };
+  messaging: { sms: boolean; whatsapp: boolean; email?: boolean };
   siteUrl: string;
 }
 export interface ErpData {

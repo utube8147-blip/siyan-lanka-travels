@@ -29,7 +29,9 @@ export default function SignupPage() {
   nameRef.current = name;
   const emailRef = useRef(email);
   emailRef.current = email;
-  const done = () => router.push(nextPath('/my-bookings'));
+  // Always to the account page, unless they were sent here from a page that
+  // needs sign-in (checkout, a ticket or tracking link): then back to that.
+  const done = () => router.push(nextPath('/dashboard'));
 
   const nameField = (
     <label className="block">

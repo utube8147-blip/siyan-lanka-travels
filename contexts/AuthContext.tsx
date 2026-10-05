@@ -155,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase().auth.signUp({
       email: email.trim(),
       password,
-      options: { data: { full_name: fullName, phone: phone ?? '' }, emailRedirectTo: `${window.location.origin}/my-bookings` },
+      options: { data: { full_name: fullName, phone: phone ?? '' }, emailRedirectTo: `${window.location.origin}/dashboard` },
     });
     if (error) return { ok: false, reason: friendlyError(error) };
     // With "Confirm email" on (Supabase default) there's no session until they click the link.

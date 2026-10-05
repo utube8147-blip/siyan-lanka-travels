@@ -1,12 +1,15 @@
-// Sends queued SMS / WhatsApp messages (booking confirmed, seat held, trip
-// updates, waitlist offers…) and push notifications (trip reminders 3 hours
-// before boarding, refund paid, seat sold…). Call every minute from a cron with
+// Sends queued SMS / WhatsApp messages (booking confirmed with the ticket and
+// tracking links, seat held, trip updates, waitlist offers…), the ticket by
+// email, and push notifications (trip reminders 1 day, 3 hours and 1 hour
+// before boarding and when the trip starts, refund paid, seat sold…).
+// Call every minute from a cron with
 //   Authorization: Bearer <CRON_SECRET>
 // (Vercel Cron, or Supabase pg_cron + pg_net — see README → Messages).
 import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/server/admin';
 import { sendSms, sendWhatsApp } from '@/lib/server/messaging';
 import { pushPendingNotifications } from '@/lib/server/push';
+import { sendEmail, ticketEmailHtml, type TicketData } from '@/lib/server/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +48,12 @@ async function handle(req: Request) {
 
   const results = { sent: 0, failed: 0, skipped: 0 };
   for (const m of batch ?? []) {
-    let r = m.channel === 'whatsapp' ? await sendWhatsApp(m.to_phone, m.body) : await sendSms(m.to_phone, m.body);
+    let r =
+      m.channel === 'email'
+        ? await sendEmail(m.to_email ?? '', m.subject || 'Siyan Lanka Travels', m.body, m.data ? ticketEmailHtml(m.data as TicketData) : undefined)
+        : m.channel === 'whatsapp'
+          ? await sendWhatsApp(m.to_phone, m.body)
+          : await sendSms(m.to_phone, m.body);
     let channel: string = m.channel;
     // "WhatsApp if they have it, otherwise a text": when WhatsApp isn't set up
     // or can't deliver to this number, the same message goes out as SMS.

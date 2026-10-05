@@ -156,7 +156,7 @@ export function TopNav() {
             </div>
           ) : (
             <Link
-              href={`/auth/login?next=${encodeURIComponent(pathname || '/')}`}
+              href="/auth/login"
               className="px-5 py-2.5 bg-[#feb700] text-[#050a44] rounded-xl text-[14px] font-bold hover:brightness-105 transition-all"
             >
               {t('Sign in')}

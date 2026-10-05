@@ -61,7 +61,7 @@ function Bar() {
           <ThemeToggle />
           {isHome && !isLoggedIn && (
             <Link
-              href={`/auth/login?next=${encodeURIComponent(pathname)}`}
+              href="/auth/login"
               className="ml-1 px-3 py-1.5 bg-[#feb700] text-[#050a44] rounded-xl text-[12px] font-bold hover:brightness-105 active:scale-95 transition-all whitespace-nowrap"
             >
               {t('Sign in')}

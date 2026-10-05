@@ -593,6 +593,18 @@ export default function MyBookingsPage() {
   const [rescheduleTarget, setRescheduleTarget] = useState<Booking | null>(null);
   const [seatChangeTarget, setSeatChangeTarget] = useState<Booking | null>(null);
   const [ticketTarget, setTicketTarget] = useState<Booking | null>(null);
+  // Links in the booking text, email and notifications are
+  // /my-bookings?ref=SLT-XXXXXX: open that ticket straight away (once).
+  const [linkedRef, setLinkedRef] = useState<string | null>(null);
+  useEffect(() => {
+    setLinkedRef((new URLSearchParams(window.location.search).get('ref') ?? '').toUpperCase() || null);
+  }, []);
+  useEffect(() => {
+    if (!linkedRef || !ready) return;
+    const hit = bookings.find((b) => b.bookingRef.toUpperCase() === linkedRef);
+    if (hit) setTicketTarget(hit);
+    setLinkedRef(null);
+  }, [linkedRef, ready, bookings]);
   const [draftSeats, setDraftSeats] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const pub = usePublicSettings();

@@ -48,7 +48,7 @@ export async function proxy(request: NextRequest) {
   // Signed in already? Skip the sign-in / sign-up pages.
   if (user && (path === '/auth/login' || path === '/auth/signup')) {
     const next = request.nextUrl.searchParams.get('next');
-    return to(next && next.startsWith('/') && !next.startsWith('//') ? next : '/my-bookings');
+    return to(next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard');
   }
 
   if (path === '/staff/login') return response;

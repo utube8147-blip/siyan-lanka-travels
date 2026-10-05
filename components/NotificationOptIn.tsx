@@ -18,7 +18,7 @@ export function NotificationOptIn({ compact = false }: { compact?: boolean }) {
     setBusy(true);
     const r = await request();
     setBusy(false);
-    if (r === 'granted') notify('Trip reminders are on', { body: "We'll remind you 3 hours before your bus leaves.", tag: 'reminders-on' });
+    if (r === 'granted') notify('Trip reminders are on', { body: "We'll remind you the day before, 3 hours and 1 hour before your bus leaves, and when it sets off.", tag: 'reminders-on' });
   };
 
   const wrap = compact ? 'rounded-xl bg-[#f2f4f6] border border-[#e1e2e4] p-4' : 'bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1]';
@@ -41,7 +41,7 @@ export function NotificationOptIn({ compact = false }: { compact?: boolean }) {
 
           {state === 'default' && (
             <>
-              <p className="text-[12px] text-[#46464f] mt-1">Get a notification when your booking is confirmed and 3 hours before your bus leaves.</p>
+              <p className="text-[12px] text-[#46464f] mt-1">Get a notification when your booking is confirmed, the day before, 3 hours and 1 hour before your bus leaves, and when the trip starts.</p>
               <button
                 onClick={turnOn}
                 disabled={busy}
