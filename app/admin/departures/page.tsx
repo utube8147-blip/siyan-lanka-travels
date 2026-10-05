@@ -25,6 +25,7 @@ import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, stackTable, 
 import { BikeLoadingList } from '@/components/admin/BikeList';
 import { TripTools } from '@/components/admin/TripTools';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
+import { lastReading, useOdometer } from '@/lib/odometer';
 import { slipOnFile, slipUrl, useSlips } from '@/lib/money';
 import { usePublicSettings } from '@/lib/extras';
 import { holdSeats, releaseSeatHolds, useSeatHolds } from '@/lib/seatHolds';
@@ -97,6 +98,8 @@ function Departures() {
 
 function Manifest({ run }: { run: Run }) {
   const { data, createBooking, updateBooking, confirmPayment } = useStore();
+  // For the printed trip sheet: the bus's last odometer reading goes in as the start.
+  const odometer = useOdometer();
   const { toast, Toast } = useToast();
   const [selected, setSelected] = useState<string[]>([]);
   const [selling, setSelling] = useState(false);
@@ -203,7 +206,7 @@ function Manifest({ run }: { run: Run }) {
               {boarded} of {run.sold} seats boarded · {formatLKR(run.revenue)} collected
             </p>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => downloadManifestPdf(data, run.schedule.id, run.date)} className="print:hidden">
+          <Button variant="secondary" size="sm" onClick={() => downloadManifestPdf(data, run.schedule.id, run.date, { lastOdometer: lastReading(odometer.logs, run.bus.id) })} className="print:hidden">
             <FileDown className="w-4 h-4" /> Download PDF
           </Button>
           <Button variant="secondary" size="sm" onClick={() => window.print()} className="print:hidden">

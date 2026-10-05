@@ -7,9 +7,9 @@
 // (Vercel Cron, or Supabase pg_cron + pg_net — see README → Messages).
 import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/server/admin';
-import { sendSms, sendWhatsApp } from '@/lib/server/messaging';
+import { sendSms } from '@/lib/server/messaging';
+import { deliverQueued } from '@/lib/server/dispatch';
 import { pushPendingNotifications } from '@/lib/server/push';
-import { sendEmail, ticketEmailHtml, type TicketData } from '@/lib/server/email';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,30 +46,7 @@ async function handle(req: Request) {
   const { data: batch, error } = await db.from('message_queue').select('*').eq('status', 'pending').order('created_at').limit(50);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const results = { sent: 0, failed: 0, skipped: 0 };
-  for (const m of batch ?? []) {
-    let r =
-      m.channel === 'email'
-        ? await sendEmail(m.to_email ?? '', m.subject || 'Siyan Lanka Travels', m.body, m.data ? ticketEmailHtml(m.data as TicketData) : undefined)
-        : m.channel === 'whatsapp'
-          ? await sendWhatsApp(m.to_phone, m.body)
-          : await sendSms(m.to_phone, m.body);
-    let channel: string = m.channel;
-    // "WhatsApp if they have it, otherwise a text": when WhatsApp isn't set up
-    // or can't deliver to this number, the same message goes out as SMS.
-    if (m.channel === 'whatsapp' && m.fallback_sms && r.status !== 'sent') {
-      const viaWhatsApp = r.error;
-      r = await sendSms(m.to_phone, m.body);
-      channel = 'sms';
-      if (r.status !== 'sent') r = { ...r, error: `WhatsApp: ${viaWhatsApp ?? 'not sent'}; SMS: ${r.error ?? 'not sent'}` };
-    }
-    const retry = r.status === 'failed' && m.attempts < 2;
-    await db
-      .from('message_queue')
-      .update({ channel: retry ? m.channel : channel, status: retry ? 'pending' : r.status, attempts: m.attempts + 1, error: r.error ?? null, sent_at: r.status === 'sent' ? new Date().toISOString() : null })
-      .eq('id', m.id);
-    results[r.status] += 1;
-  }
+  const results = await deliverQueued(db, batch ?? []);
   return NextResponse.json({ processed: batch?.length ?? 0, ...results, push, renewals });
 }
 

@@ -15,6 +15,7 @@ import { startPayhere } from '@/lib/payhere-client';
 import type { Booking } from '@/lib/types';
 import { useT } from '@/lib/i18n';
 import { counterPlaces, useBranches } from '@/lib/branches';
+import { TripBell } from '@/components/trip/TripBell';
 
 const ago = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -102,7 +103,8 @@ export function NextTripPanel() {
             {formatDateLabel(trip.boardingDate)} · {formatTime12(trip.departure)} · seat {booking.seats.join(', ')} · {booking.ref}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-start gap-2">
+          <TripBell bookingId={booking.id} />
           {contact && (
             <a href={`tel:${contact.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold">
               <Phone className="w-4 h-4" /> Call {contact.role}

@@ -37,7 +37,8 @@ export function TripReminders() {
       if (Notification.permission !== 'granted') return;
       const now = Date.now();
       for (const b of data.bookings) {
-        if (b.userId !== user.id || b.status !== 'confirmed') continue;
+        // Not for a trip whose bell the passenger turned off (My trips).
+        if (b.userId !== user.id || b.status !== 'confirmed' || b.notify === false) continue;
         const trip = getTrip(data, b.scheduleId, b.date, b.from, b.to);
         if (!trip) continue;
         const leaves = departureDate(trip.boardingDate, trip.departure).getTime();

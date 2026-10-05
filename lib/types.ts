@@ -140,6 +140,8 @@ export interface Booking {
   refund?: { amount: number; at: string };
   /** Staff member who recorded the payment (cash taken at the counter or on the bus). */
   paidBy?: string | null;
+  /** Push reminders for this trip (the bell in My trips). Missing = on. */
+  notify?: boolean;
   /** Bank-transfer slip the passenger uploaded for a held booking. */
   slip?: { path: string; reference: string; uploadedAt: string } | null;
   /** Why staff sent the last slip back (cleared when a new one is uploaded). */

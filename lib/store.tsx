@@ -179,6 +179,15 @@ async function uploadBikePhoto(userId: string, dataUrl: string) {
   return path;
 }
 
+/**
+ * Sends this booking's queued messages now (the booking text and email, a
+ * payment receipt) so they don't wait for the every-minute cron. Not awaited
+ * and never an error for the passenger: the cron sends anything this misses.
+ */
+function sendBookingMessages(bookingId: string) {
+  fetch('/api/messages/send-booking', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId }), keepalive: true }).catch(() => {});
+}
+
 // ================================================================ provider ===
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const mode: 'supabase' | 'demo' = isSupabaseConfigured ? 'supabase' : 'demo';
@@ -375,6 +384,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           });
           if (err) return { ok: false, reason: friendlyError(err) };
           await refresh();
+          sendBookingMessages((row as any).id);
           const saved = dataRef.current.bookings.find((b) => b.id === (row as any).id) ?? bookingFromRow(row);
           return { ok: true, booking: saved };
         } catch (e) {
@@ -451,6 +461,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (mode === 'supabase') {
         const { error: err } = await supabase().rpc('confirm_payment', { p_id: id, p_method: method, p_ref: ref ?? null });
         if (err) return { ok: false, reason: friendlyError(err) };
+        sendBookingMessages(id);
         await refresh();
         return { ok: true };
       }

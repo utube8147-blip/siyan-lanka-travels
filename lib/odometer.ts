@@ -147,3 +147,8 @@ export function checkReading(readings: OdoLog[], busId: string, date: string, va
   const distance = typeof value === 'number' && !problem && floor ? value - floor.km : null;
   return { before, logged, problem, warning, distance };
 }
+
+/** The latest reading for a bus (by day, then the higher number), or null. Printed as the start on the trip sheet. */
+export function lastReading(readings: OdoLog[], busId: string): OdoLog | null {
+  return readings.filter((r) => r.busId === busId).sort((a, b) => b.date.localeCompare(a.date) || b.km - a.km)[0] ?? null;
+}

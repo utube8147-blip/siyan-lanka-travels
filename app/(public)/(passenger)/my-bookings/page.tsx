@@ -11,6 +11,7 @@ import { NotificationOptIn } from '@/components/NotificationOptIn';
 import { useQrDataUrl } from '@/lib/qr';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { NextTripPanel } from '@/components/trip/NextTripPanel';
+import { TripBell } from '@/components/trip/TripBell';
 import { LoyaltyCard, PastTripsCard, WaitlistCard } from '@/components/trip/SidebarCards';
 import { PaymentSlipCard } from '@/components/trip/PaymentSlipCard';
 import { PayoutsCard } from '@/components/trip/PayoutsCard';
@@ -914,17 +915,20 @@ export default function MyBookingsPage() {
                           </div>
                         </div>
 
-                        <div className="mt-[16px] flex justify-between items-center gap-[12px]">
-                          <div className="flex items-center gap-2 min-w-0">
+                        {/* The trip details keep a readable width; when the buttons don't fit beside them they drop to their own row. */}
+                        <div className="mt-[16px] flex flex-wrap justify-between items-center gap-x-[12px] gap-y-[12px]">
+                          <div className="flex items-center gap-2 min-w-[200px] flex-1">
                             <OperatorBadge operator={booking.operator} />
                             <div className="min-w-0">
-                              <p className="text-[12px] text-[#46464f] font-medium">
+                              <p className="text-[12px] text-[#46464f] font-medium whitespace-nowrap">
                                 {booking.date} · Seat{booking.seats.length > 1 ? 's' : ''} {booking.seats.join(', ')}
                               </p>
                               <p className="text-[12px] text-[#050a44] font-bold truncate">{booking.travelClass}</p>
                             </div>
                           </div>
 
+                          {/* Phones: the three buttons share one row, equal widths. Wider: their natural size, on the right. */}
+                          <div className="flex items-start gap-2 w-full sm:w-auto">
                           {isPending ? (
                             <button
                               disabled
@@ -941,22 +945,24 @@ export default function MyBookingsPage() {
                             </button>
                           ) : (
                             <>
+                            <TripBell bookingId={booking.id} size="sm" className="flex-1 sm:flex-none" />
                             <a
                               href={`/track?ref=${booking.bookingRef}`}
-                              className="bg-[#feb700] text-[#14120a] px-3 py-2.5 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
+                              className="flex-1 sm:flex-none h-[38px] justify-center bg-[#feb700] text-[#14120a] px-2 sm:px-3 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
                             >
                               <span className="material-symbols-outlined text-[14px]">my_location</span>
                               Track
                             </a>
                             <button
                               onClick={() => setTicketTarget(booking)}
-                              className="bg-[#050a44] text-white px-4 py-2.5 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                              className="flex-1 sm:flex-none h-[38px] justify-center bg-[#050a44] text-white px-2 sm:px-4 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
                             >
                               View Ticket
                               <span className="material-symbols-outlined text-[14px]">confirmation_number</span>
                             </button>
                             </>
                           )}
+                          </div>
                         </div>
                       </div>
 

@@ -5,7 +5,9 @@
 //      a box to tick when they board. Free seats have room to write a walk-on.
 //   2. The sheet filled in on the road, in the same order as "Close this trip"
 //      in the app (components/staff/TripSheet.tsx): odometer at the start and
-//      end, fuel, tolls and other costs, cash to collect, seats sold on the bus.
+//      end (the start is printed from the last reading), fuel, tolls and other
+//      costs, seats sold on the bus and the cash totals. Who owes what is on
+//      the seat plan only, so it is not repeated here.
 // Standard PDF fonts only cover Latin letters, so arrows and symbols are
 // written as words.
 import { jsPDF } from 'jspdf';
@@ -22,14 +24,20 @@ const LINE: [number, number, number] = [170, 170, 180];
 const DUE_FILL: [number, number, number] = [255, 243, 205];
 const money = (n: number) => n.toLocaleString('en-LK');
 
-export function downloadManifestPdf(data: StoreData, scheduleId: string, date: string) {
+export function downloadManifestPdf(
+  data: StoreData,
+  scheduleId: string,
+  date: string,
+  /** The bus's last odometer reading, printed as the start so only the end is written by hand. */
+  opts: { lastOdometer?: { km: number; date: string } | null } = {},
+) {
   const schedule = data.schedules.find((s) => s.id === scheduleId)!;
   const route = data.routes.find((r) => r.id === schedule.routeId)!;
   const bus = data.buses.find((b) => b.id === schedule.busId)!;
   const first = route.stops[0].name;
   const last = route.stops[route.stops.length - 1].name;
   const trip = getTrip(data, scheduleId, date, first, last);
-  const { list, groups, totals } = manifestFor(data, scheduleId, date);
+  const { list, totals } = manifestFor(data, scheduleId, date);
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = doc.internal.pageSize.getWidth();
@@ -56,8 +64,8 @@ export function downloadManifestPdf(data: StoreData, scheduleId: string, date: s
 
   // ------------------------------------------------------- 1. the seat map ---
   header('Seat plan');
-  doc.setFontSize(9.5).text(
-    `${totals.seats} seats sold${totals.bikes ? `, ${totals.bikes} bike(s) to load` : ''}${totals.unpaid ? `. LKR ${money(totals.unpaid)} to collect from ${totals.unpaidCount} passenger${totals.unpaidCount === 1 ? '' : 's'} (shaded).` : '. Everyone has paid.'} Tick the box when the passenger boards.`,
+  doc.setFontSize(9).text(
+    `${totals.seats} seats sold${totals.bikes ? `, ${totals.bikes} bike(s)` : ''}. ${totals.unpaid ? `Collect LKR ${money(totals.unpaid)} from ${totals.unpaidCount} (shaded seats). ` : 'Everyone has paid. '}Tick Boarded when they get on${totals.unpaid ? ', Paid when they pay' : ''}.`,
     M, 26,
   );
 
@@ -107,7 +115,9 @@ export function downloadManifestPdf(data: StoreData, scheduleId: string, date: s
       doc.setTextColor(0);
       return;
     }
+    // Two different ticks, each with its name: on the bus, and (shaded seats only) money collected.
     tickBox(bx + bw - pad - 4.2, by + 1.6, 4.2, b.status === 'boarded');
+    doc.setFont('helvetica', 'normal').setFontSize(6).setTextColor(...GREY).text('Boarded', bx + bw - pad - 5.2, by + 4.6, { align: 'right' });
     doc.setTextColor(0);
     const firstSeat = b.seats[0] === id;
     // Name
@@ -116,21 +126,23 @@ export function downloadManifestPdf(data: StoreData, scheduleId: string, date: s
     // Where they get on and off
     doc.setFont('helvetica', 'normal').setFontSize(7.2).setTextColor(60);
     doc.text(fit(`${b.from} to ${b.to}`, inner), bx + pad, by + (small ? 12.3 : 14));
-    // Bottom line: what they owe on the right, the phone on the left in whatever room is left.
+    // Bottom line.
     const payY = by + bh - 2;
-    const pay = !firstSeat
-      ? `with seat ${b.seats[0]}`
-      : due
-        ? `COLLECT ${money(b.total)}${b.seats.length > 1 ? ` (${b.seats.length} seats)` : ''}`
-        : 'paid';
-    doc.setFont('helvetica', due && firstSeat ? 'bold' : 'normal').setFontSize(due && firstSeat ? 8 : 7.2).setTextColor(...(due && firstSeat ? ([60, 45, 0] as [number, number, number]) : GREY));
-    const payText = fit(pay, inner);
-    const payW = doc.getTextWidth(payText);
-    doc.text(payText, bx + bw - pad, payY, { align: 'right' });
     const phone = `${b.passenger.phone || b.contact.phone || ''}${b.bikes?.length && firstSeat ? ' + bike' : ''}`;
-    doc.setFont('helvetica', 'normal').setFontSize(7.2).setTextColor(...GREY);
-    // No room beside a long amount: the phone is left out here (it is on the cash list overleaf).
-    if (phone && doc.getTextWidth(phone) <= inner - payW - 2) doc.text(phone, bx + pad, payY);
+    if (due && firstSeat) {
+      // Owes money: the amount on the left, and its own "Paid" box on the right to tick when collected.
+      tickBox(bx + bw - pad - 4.2, by + bh - 5.6, 4.2, false);
+      doc.setFont('helvetica', 'normal').setFontSize(6).setTextColor(...GREY).text('Paid', bx + bw - pad - 5.2, payY - 0.6, { align: 'right' });
+      doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(60, 45, 0);
+      doc.text(fit(`COLLECT ${money(b.total)}${b.seats.length > 1 ? ` for ${b.seats.length}` : ''}`, inner - 11), bx + pad, payY);
+    } else {
+      // Paid already (or covered by the booking's first seat): say so on the right, phone on the left if it fits.
+      const pay = firstSeat ? 'paid' : `${due ? 'pays' : 'paid'} with seat ${b.seats[0]}`;
+      doc.setFont('helvetica', 'normal').setFontSize(7.2).setTextColor(...GREY);
+      const payText = fit(pay, inner);
+      doc.text(payText, bx + bw - pad, payY, { align: 'right' });
+      if (phone && doc.getTextWidth(phone) <= inner - doc.getTextWidth(payText) - 2) doc.text(phone, bx + pad, payY);
+    }
     doc.setTextColor(0);
   };
 
@@ -194,8 +206,20 @@ export function downloadManifestPdf(data: StoreData, scheduleId: string, date: s
   };
 
   section('1. Odometer');
-  autoTable(doc, { ...table, startY: py, head: [['At the start (km)', 'At the end (km)', 'Distance (km)']], body: blank(3, 1), styles: { ...table.styles, minCellHeight: 10 } });
-  py = lastY() + 6;
+  const lastOdo = opts.lastOdometer ?? null;
+  autoTable(doc, {
+    ...table,
+    startY: py,
+    head: [['At the start (km)', 'At the end (km)', 'Distance (km)']],
+    body: [[lastOdo ? lastOdo.km.toLocaleString('en-LK') : '', '', '']],
+    styles: { ...table.styles, minCellHeight: 10, fontSize: 12, fontStyle: 'bold' },
+    headStyles: { ...table.headStyles, fontSize: 9 },
+  });
+  py = lastY() + 4;
+  doc.setFontSize(8.5).setTextColor(...GREY);
+  doc.text(lastOdo ? `The start is the last reading on record (${formatDateLabel(lastOdo.date, false)}). If the dashboard shows a different number before setting off, cross it out and write the right one.` : 'No reading on record for this bus yet: write the number on the dashboard before setting off.', M, py);
+  doc.setTextColor(0);
+  py += 6;
 
   section('2. Fuel put in on this trip');
   autoTable(doc, { ...table, startY: py, head: [['Litres', 'Paid (LKR)', 'Filling station', 'Odometer at the pump', 'From trip cash']], body: blank(5, 2), columnStyles: { 0: { cellWidth: 24 }, 1: { cellWidth: 30 }, 3: { cellWidth: 40 }, 4: { cellWidth: 26, halign: 'center' } }, didDrawCell: boxInLast(4) });
@@ -206,26 +230,12 @@ export function downloadManifestPdf(data: StoreData, scheduleId: string, date: s
   py = lastY() + 6;
 
   section('4. Cash');
-  const due = groups.flatMap((g) => g.bookings).filter(isDue);
-  if (due.length) {
-    autoTable(doc, {
-      ...table,
-      startY: py,
-      styles: { ...table.styles, minCellHeight: 7 },
-      head: [[{ content: `To collect: LKR ${money(totals.unpaid)} from ${due.length} passenger${due.length === 1 ? '' : 's'}`, colSpan: 5, styles: { fillColor: [124, 88, 0] as [number, number, number], textColor: 255 } }], ['Paid', 'Seat', 'Passenger', 'Boards at', 'Amount (LKR)']],
-      body: due.map((b) => ['', b.seats.join(', '), `${b.passenger.name}  ${b.passenger.phone || b.contact.phone || ''}`, b.from, money(b.total)]),
-      columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 18, fontStyle: 'bold' }, 3: { cellWidth: 36 }, 4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' } },
-      didDrawCell: (c) => {
-        if (c.section === 'body' && c.column.index === 0) tickBox(c.cell.x + (c.cell.width - 4.2) / 2, c.cell.y + (c.cell.height - 4.2) / 2, 4.2, false);
-      },
-    });
-    py = lastY() + 6;
-  } else {
-    doc.setFontSize(9.5).text('Nobody on the list owes money for this trip.', M, py + 3);
-    py += 9;
-  }
+  // Who owes what is on the seat plan (shaded seats). Only the total is repeated here.
+  doc.setFontSize(9.5);
+  doc.text(totals.unpaid ? `To collect on this trip: LKR ${money(totals.unpaid)} from ${totals.unpaidCount} passenger${totals.unpaidCount === 1 ? '' : 's'}. They are the shaded seats on the seat plan: tick each one there when paid.` : 'Nobody on the seat plan owes money for this trip.', M, py + 3);
+  py += 8;
   room(50);
-  autoTable(doc, { ...table, startY: py, head: [[{ content: 'Seats sold on the bus (not on the seat plan)', colSpan: 6 }], ['Seat', 'Name', 'Phone', 'From', 'To', 'Paid (LKR)']], body: blank(6, 4), columnStyles: { 0: { cellWidth: 16 }, 2: { cellWidth: 32 }, 3: { cellWidth: 28 }, 4: { cellWidth: 28 }, 5: { cellWidth: 26 } } });
+  autoTable(doc, { ...table, startY: py, head: [[{ content: 'Seats sold on the bus (not on the seat plan)', colSpan: 6 }], ['Seat', 'Name', 'Phone', 'From', 'To', 'Paid (LKR)']], body: blank(6, 6), columnStyles: { 0: { cellWidth: 16 }, 2: { cellWidth: 32 }, 3: { cellWidth: 28 }, 4: { cellWidth: 28 }, 5: { cellWidth: 26 } } });
   py = lastY() + 7;
 
   room(19);

@@ -21,6 +21,7 @@ import { PageSkeleton, useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatLKR, formatTime12, listRuns, routeLabel, todayISO, departureDate } from '@/lib/trips';
 import { isDue, manifestFor, scanTicket } from '@/lib/manifest';
 import { downloadManifestPdf } from '@/lib/manifestPdf';
+import { lastReading, useOdometer } from '@/lib/odometer';
 import { postTripEvent, useCashSummary, type TripEvent } from '@/lib/extras';
 import { QrScanner } from '@/components/staff/QrScanner';
 import { UpdateModal, useLocationSharing, type SharingStatus } from '@/components/admin/TripTools';
@@ -68,6 +69,8 @@ export default function ConductorPage() {
   // The cash this conductor should be holding for the chosen trip, worked out by the database:
   // what they took, less refunds they paid. Re-read whenever a payment is recorded.
   const myCash = useCashSummary(run?.date ?? todayISO(), run?.schedule.id ?? null, data.bookings.filter((b) => b.paymentStatus === 'paid').length);
+  // For the printed trip sheet: the bus's last odometer reading goes in as the start.
+  const odometer = useOdometer();
   const sharingCtl = useLocationSharing(run?.schedule.id ?? '', run?.date ?? '', toast);
   // The bus position is this device's GPS. A conductor's phone is on the bus; anyone else is asked first,
   // so an office computer is not turned into the bus by mistake.
@@ -219,7 +222,7 @@ export default function ConductorPage() {
               <button onClick={() => setPosting('departed')} className="h-[72px] rounded-xl bg-white/5 border border-white/15 text-[12px] font-semibold flex flex-col items-center justify-center gap-1">
                 <Megaphone className="w-5 h-5" /> Update passengers
               </button>
-              <button onClick={() => { downloadManifestPdf(data, run.schedule.id, run.date); toast('Trip sheet downloaded'); }} className="h-[72px] rounded-xl bg-white/5 border border-white/15 text-[12px] font-semibold flex flex-col items-center justify-center gap-1">
+              <button onClick={() => { downloadManifestPdf(data, run.schedule.id, run.date, { lastOdometer: lastReading(odometer.logs, run.bus.id) }); toast('Trip sheet downloaded'); }} className="h-[72px] rounded-xl bg-white/5 border border-white/15 text-[12px] font-semibold flex flex-col items-center justify-center gap-1">
                 <FileDown className="w-5 h-5" /> Trip sheet PDF
               </button>
             </div>

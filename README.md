@@ -501,6 +501,15 @@ route, date and time, seats, bus, what was paid, and three links: the ticket
 "how to pay" text first and the full one when the payment is recorded.
 It is about 320 plain characters, which is 3 SMS parts.
 
+**Sent straight away.** Right after a booking is made or paid, the app asks
+`/api/messages/send-booking` to send that booking's queued messages, so the
+text arrives in seconds and still goes out where no cron is running (for
+example on your own computer). The cron sends everything else and anything
+that was missed; a message is never sent twice. If a text does not arrive,
+Settings → Messages → Recent messages shows why: *pending* (not sent yet),
+*skipped* (Notify.lk keys missing or "Send SMS messages" off), or *failed*
+with Notify.lk's reason (often the sender ID or no credit).
+
 **The ticket by email.** If the booking has an email address (or the account
 has one) the same details go there as a ticket email with the three links as
 buttons. Set `RESEND_API_KEY` and `EMAIL_FROM` (see `.env.example`); without
@@ -578,9 +587,10 @@ asked to confirm before their device is used as the bus.
 1. the bus as its real seat layout: each seat a box with the passenger, where
    they get on and off, what they owe (shaded), a tick box, and room on free
    seats to write a walk-on;
-2. the sheet filled in on the road: odometer at the start and end, fuel,
-   tolls and other costs, cash to collect, seats sold on the bus, totals and
-   signatures.
+2. the sheet filled in on the road: odometer (the start is printed from the
+   bus's last reading), fuel, tolls and other costs, seats sold on the bus,
+   totals and signatures. Who owes what is only on the seat plan, so a full
+   bus still prints on two pages.
 
 **The booking centre closes the trip, not the conductor** (migration 28). The
 conductor fills in the paper sheet and hands it in with the cash. Office
@@ -735,6 +745,11 @@ you can test installing locally.
   Conductor updates (late, arriving, arrived) are pushed too.
   `components/TripReminders.tsx` shows the same reminders while the site is
   open.
+- Each trip in My trips has its own bell (**Remind me** / **Reminders on**).
+  The first tap asks the browser for permission; after that it switches the
+  reminders for that one trip on or off (migration 29). Off stops the push
+  reminders and pushed conductor updates for that booking only; texts still
+  arrive.
 - If notifications are blocked, the card explains how to re-allow them in
   Chrome's site settings. On iPhone, notifications only work after adding the
   app to the Home Screen (iOS 16.4+).
