@@ -9,7 +9,7 @@ import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
-import { addDays, allStopNames, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, todayISO } from '@/lib/trips';
+import { addDays, allStopNames, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
 import { useT } from '@/lib/i18n';
 import {
@@ -371,6 +371,7 @@ function SearchPageInner() {
                   <input
                     value={date}
                     min={todayISO()}
+                    max={lastBookableDate(data)}
                     onChange={(e) => setDate(e.target.value)}
                     className={`${inputClass} pl-12 pr-4 py-3.5 text-sm`}
                     type="date"
@@ -655,7 +656,7 @@ function SearchPageInner() {
                       <div className="flex items-center gap-[16px] ml-auto">
                         <p className="text-[22px] font-extrabold text-[#050a44]">{formatLKR(s.fare)}</p>
                         {s.closed ? (
-                          <span className="bg-[#e1e2e4] text-[#46464f] rounded-xl px-6 py-2.5 text-[13px] font-bold whitespace-nowrap">{t('Booking closed')}</span>
+                          <span className="bg-[#e1e2e4] text-[#46464f] rounded-xl px-6 py-2.5 text-[13px] font-bold whitespace-nowrap">{s.trip.opensOn ? `${t('Booking opens')} ${formatDateLabel(s.trip.opensOn, false)}` : t('Booking closed')}</span>
                         ) : s.seatsRemaining === 0 ? (
                           <WaitlistButton scheduleId={s.id} date={s.trip.date} from={s.trip.from} to={s.trip.to} />
                         ) : (

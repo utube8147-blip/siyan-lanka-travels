@@ -412,6 +412,17 @@ conductor enters the reading on each bus's odometer.
   estimate beside them for comparison.
 
 ## Closing the day (cash)
+**The odometer is part of closing.** Closing a trip asks for that bus's
+reading and won't close without it (unless one is already logged today);
+closing an office day offers a reading for each active bus and can be left
+empty. As the number is typed it is compared with the last reading: lower
+than before, or more than 3,000 km on, is refused; more than 1,500 km on
+gets a "check it" warning; otherwise it shows the distance since last time.
+The reading is saved first, so a refused number never leaves a half-closed
+trip. The fuel and service forms (Expenses & fuel) run the same
+check on their odometer box, against every reading the bus has: daily ones
+and those typed with earlier fuel or service entries. Staff area → Odometer still holds the history and corrections.
+
 Staff area → **Close the day** (conductors reach it from the conductor app).
 Each person closes their own cash (migration 15):
 - **Cash you should have** is worked out by the database for the signed-in
@@ -587,6 +598,36 @@ speaker review the Tamil and Sinhala before launch.**
     promo, refund tiers, bike fees, resale switch).
 - The server (`proxy.ts`) and the database rules both enforce this: staff can't
   open Business pages or read salaries, passengers can't read any of it.
+
+## How far ahead passengers can book
+Passengers can book up to **7 days ahead** (Staff area → Settings → "Passengers
+can book up to (days ahead)"; 0 = no limit). Fewer tickets are then caught out
+when the timetable changes. Later dates are not offered: the home page shows
+only the bookable nights, the date pickers stop at the last one, and a search
+for a later date says when booking opens. The database refuses anything
+further ahead as well (migration 26). Staff can book any date at the counter,
+and tickets sold before the limit stay valid and can still be changed or
+cancelled.
+
+## Branches (more than one booking place)
+Sell the same bus from as many places as you like: the database refuses a
+second booking for a seat, so two counters can never sell it twice.
+- **Staff area → Branches** (super admin): add each counter, office or agent.
+  Tick "Passengers can pay held seats here" for the ones that take payments;
+  those are named in the pay-at-the-counter text and on the payment page.
+  Closing a branch keeps its past sales.
+- **Accounts & roles**: give every staff member and conductor their branch.
+  One account per person.
+- Every booking records the branch that made it (`branch_id`) and the branch
+  that took the money (`paid_branch_id`) at that moment, so moving a person
+  later doesn't rewrite old figures.
+- **Sales and cash by branch** (same page): for today, yesterday, 7 days, the
+  month or any dates. Sold = bookings the branch made; cash and other
+  payments = what its people recorded as paid (this includes seats booked
+  online and paid at that counter); cash to hand in = cash taken less cash
+  refunds. Tap a branch to see each person. "Online" is passengers booking
+  themselves; "No branch set" means a staff account still needs a branch.
+- Migration 25. The first branch, Bastian Mawatha, is created for you.
 
 ## Seat resale
 Runs on the database (`resale_listings`, `list_for_resale`, `buy_resale`,

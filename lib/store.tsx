@@ -10,6 +10,7 @@
 // swap each body for an API call — pages only talk to useStore().
 // ---------------------------------------------------------------------------
 
+import { OPERATOR } from '@/config/operator';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActionResult, Booking, BookingResult, Bus, NewBooking, Route, Schedule, StoreData } from './types';
 import { createSeedData, SEED_BUSES, SEED_ROUTES, SEED_SCHEDULES, STORE_VERSION } from './seed';
@@ -132,6 +133,9 @@ async function fetchRemote(userId: string | null, staff: boolean): Promise<Store
     seatRows('schedule_id, travel_date, seat, gender, solo'),
     sb.rpc('get_bike_usage', { p_from: from, p_to: to }),
   ]);
+  // How far ahead passengers can book. The whole row, so a database one update behind still loads.
+  const settings = await sb.from('app_settings').select('*').maybeSingle();
+  const windowDays = Number(settings.data?.booking_window_days ?? OPERATOR.bookingWindowDays);
   // A database that hasn't had the latest setup.sql has no "solo" column: seats must still load.
   const seats = seatsFirst.error ? await seatRows('schedule_id, travel_date, seat, gender') : seatsFirst;
   const firstError = buses.error || routes.error || schedules.error || seats.error || bikes.error;
@@ -162,6 +166,8 @@ async function fetchRemote(userId: string | null, staff: boolean): Promise<Store
     schedules: (schedules.data ?? []).map(scheduleFromRow),
     // Staff already see every booking; passengers get anonymous availability.
     bookings: staff ? visible : [...visible, ...availabilityBookings(seats.data ?? [], bikes.data ?? [], visible)],
+    // Staff can book any date at the counter.
+    bookingWindowDays: staff ? 0 : Number.isFinite(windowDays) ? windowDays : OPERATOR.bookingWindowDays,
   };
 }
 

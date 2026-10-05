@@ -74,6 +74,9 @@ export const OPERATOR = {
   seatHoldMinutes: 10,
   /** Online booking closes this many minutes before departure. */
   bookingCutoffMinutes: 30,
+  /** Passengers can book this many days ahead (0 = no limit). The live value is
+   *  Staff area → Settings; this is the fallback and the demo-mode value. */
+  bookingWindowDays: 7,
 
   /** Cancellation policy used for refunds (hours before departure → % back). */
   refundPolicy: [

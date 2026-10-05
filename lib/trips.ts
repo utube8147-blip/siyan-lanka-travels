@@ -40,6 +40,16 @@ export function todayISO() {
   return toISODate(new Date());
 }
 
+/** Days ahead passengers can book (0 = no limit). */
+export function bookingWindowDays(data: Pick<StoreData, 'bookingWindowDays'>) {
+  return Math.max(0, data.bookingWindowDays ?? OPERATOR.bookingWindowDays);
+}
+/** The last travel date open for booking today (far in the future when there is no limit). */
+export function lastBookableDate(data: Pick<StoreData, 'bookingWindowDays'>) {
+  const days = bookingWindowDays(data);
+  return days > 0 ? addDays(todayISO(), days) : '9999-12-31';
+}
+
 let DATE_LOCALE = 'en-GB';
 /** Set by the language switcher (en-GB / ta-LK / si-LK). */
 export function setDateLocale(locale: string) {
@@ -232,7 +242,9 @@ function buildTrip(
   const usedSpaces = bikeSpacesUsed(data.bookings, schedule.id, date);
   const fullFare = route.stops[route.stops.length - 1].fareFromStart || 1;
   const leaves = departureDate(date, schedule.departure, from.offsetMin);
-  const closed = leaves.getTime() - OPERATOR.bookingCutoffMinutes * 60_000 < now.getTime();
+  // Further ahead than passengers can book: shown as "opens on …", not bookable.
+  const opensOn = date > lastBookableDate(data) ? addDays(date, -bookingWindowDays(data)) : null;
+  const closed = !!opensOn || leaves.getTime() - OPERATOR.bookingCutoffMinutes * 60_000 < now.getTime();
   return {
     scheduleId: schedule.id,
     routeId: route.id,
@@ -255,6 +267,7 @@ function buildTrip(
     bikeSpacesLeft: Math.max(0, (bus.bikeSpaces ?? 0) - usedSpaces),
     routeShare: Math.min(1, Math.max(0, segmentFare(route, fromIdx, toIdx) / fullFare)),
     closed,
+    opensOn,
   };
 }
 

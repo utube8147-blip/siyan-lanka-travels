@@ -102,3 +102,41 @@ export function dailyDistance(readings: OdoLog[], busId: string): Map<string, nu
   }
   return out;
 }
+
+const kmText = (n: number) => `${n.toLocaleString('en-LK')} km`;
+const sourceText = (r: OdoLog) => (r.source === 'fuel' ? 'the fuel log' : r.source === 'service' ? 'a service entry' : 'the reading');
+/** A jump this big between two readings is almost always a typing mistake. */
+export const ODO_WARN_KM = 1500;
+/** More than this is refused (the database refuses it for daily readings too). */
+export const ODO_MAX_JUMP_KM = 3000;
+
+/**
+ * What a typed reading means against the bus's other readings: the distance
+ * since the last one, a warning, or what is wrong with it. An odometer only
+ * goes up, so the number can't be lower than any earlier day's reading or
+ * higher than any later day's. Used when closing a trip or day and on the
+ * fuel / service form, so a slipped digit is caught before it is saved.
+ * `dayText` turns a date into words for the messages.
+ */
+export function checkReading(readings: OdoLog[], busId: string, date: string, value: number | '' | null | undefined, dayText: (iso: string) => string = (d) => d) {
+  const mine = readings.filter((l) => l.busId === busId);
+  const byLatest = (a: OdoLog, b: OdoLog) => b.date.localeCompare(a.date) || b.km - a.km;
+  /** The latest reading on or before the day (what the hint shows). */
+  const before = mine.filter((l) => l.date <= date).sort(byLatest)[0] ?? null;
+  /** The highest reading from an earlier day, and the lowest from a later day. */
+  const floor = mine.filter((l) => l.date < date).sort((a, b) => b.km - a.km)[0] ?? null;
+  const ceiling = mine.filter((l) => l.date > date).sort((a, b) => a.km - b.km)[0] ?? null;
+  /** Already entered for that day. */
+  const logged = mine.filter((l) => l.date === date).sort((a, b) => b.km - a.km)[0] ?? null;
+  let problem: string | null = null;
+  let warning: string | null = null;
+  if (typeof value === 'number') {
+    if (!(value > 0)) problem = 'Enter the number on the odometer.';
+    else if (floor && value < floor.km) problem = `Lower than ${sourceText(floor)} on ${dayText(floor.date)} (${kmText(floor.km)}). An odometer only goes up: check the number.`;
+    else if (ceiling && value > ceiling.km) problem = `Higher than ${sourceText(ceiling)} on ${dayText(ceiling.date)} (${kmText(ceiling.km)}). Check the number or the date.`;
+    else if (floor && value - floor.km > ODO_MAX_JUMP_KM) problem = `That is ${kmText(value - floor.km)} more than the last reading (${kmText(floor.km)}). Check the number.`;
+    else if (floor && value - floor.km > ODO_WARN_KM) warning = `That is ${kmText(value - floor.km)} since the last reading (${kmText(floor.km)}). Check it before you save.`;
+  }
+  const distance = typeof value === 'number' && !problem && floor ? value - floor.km : null;
+  return { before, logged, problem, warning, distance };
+}

@@ -281,13 +281,13 @@ export default function ConductorPage() {
               })
             )}
 
-            {/* The day's odometer reading for this bus: the distance driven is worked out from it. */}
+            {/* A reading at any other time (for example before setting off). The end-of-trip reading is taken when closing the trip. */}
             <Link href={`/conductor/odometer?bus=${encodeURIComponent(run.bus.id)}`} className="flex items-center justify-center gap-2 h-12 rounded-xl bg-white/5 border border-white/15 text-[14px] font-semibold mb-2">
               <Gauge className="w-4 h-4" /> Log odometer reading
             </Link>
             {/* Closes the cash for the departure chosen at the top of this screen (not just "today"). */}
             <Link href={`/conductor/cash?date=${run.date}&schedule=${encodeURIComponent(run.schedule.id)}`} className="flex items-center justify-center gap-2 h-12 rounded-xl bg-white/5 border border-white/15 text-[14px] font-semibold">
-              <Wallet className="w-4 h-4" /> Close this trip
+              <Wallet className="w-4 h-4" /> Close this trip: cash and odometer
             </Link>
           </>
         )}

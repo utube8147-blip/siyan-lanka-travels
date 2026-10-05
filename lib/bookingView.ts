@@ -42,7 +42,8 @@ export function toBookingView(b: Booking, data: StoreData, now = new Date()): Bo
   if (b.status === 'cancelled') status = 'cancelled';
   else if (b.status === 'boarded' || b.status === 'no-show' || inPast) status = 'completed';
   else status = 'confirmed';
-  const changeable = status === 'confirmed' && !!trip && !trip.closed;
+  // A ticket bought before the booking window was shortened can still be changed or cancelled.
+  const changeable = status === 'confirmed' && !!trip && (!trip.closed || !!trip.opensOn);
   return {
     id: b.id,
     bookingRef: b.ref,

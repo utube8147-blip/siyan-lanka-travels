@@ -55,6 +55,7 @@ function SettingsForm() {
             <Field label="Max seats per booking"><input type="number" className={inputClass} value={s.maxSeats} onChange={(e) => setS({ ...s, maxSeats: Math.max(1, n(e.target.value)) })} /></Field>
           </div>
           <Field label="Online booking closes (minutes before departure)"><input type="number" className={inputClass} value={s.cutoffMinutes} onChange={(e) => setS({ ...s, cutoffMinutes: n(e.target.value) })} /></Field>
+          <Field label="Passengers can book up to (days ahead)" hint="Later dates aren't offered on the website. 0 means no limit. Staff can always book any date."><input type="number" min={0} max={365} className={inputClass} value={s.bookingWindowDays ?? 7} onChange={(e) => setS({ ...s, bookingWindowDays: Math.min(365, Math.max(0, n(e.target.value))) })} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Promo code" hint="Leave empty for none"><input className={inputClass} value={s.promoCode} onChange={(e) => setS({ ...s, promoCode: e.target.value.toUpperCase().replace(/\s/g, '') })} /></Field>
             <Field label="Promo discount (%)"><input type="number" className={inputClass} value={s.promoPercent} onChange={(e) => setS({ ...s, promoPercent: Math.min(100, n(e.target.value)) })} /></Field>

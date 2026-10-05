@@ -5,7 +5,9 @@
 import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
 import { useErp, type AccountRole } from '@/lib/erp';
+import { useBranches } from '@/lib/branches';
 import { formatDateLabel } from '@/lib/trips';
 import { AdminOnly } from '@/components/admin/AdminOnly';
 import { Card, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
@@ -24,6 +26,7 @@ function Accounts() {
   const { user } = useAuth();
   const erp = useErp({ admin: true });
   const { toast, Toast } = useToast();
+  const { branches } = useBranches();
   const [q, setQ] = useState('');
   const [role, setRole] = useState<'all' | AccountRole>('all');
   const rows = useMemo(
@@ -34,7 +37,7 @@ function Accounts() {
 
   return (
     <>
-      <PageHeader title="Accounts & roles" description="Conductors use the phone conductor page (boarding, cash, trip updates). Staff run departures, bookings, buses and the timetable. Super admins also see finance, crew, accounts and settings." />
+      <PageHeader title="Accounts & roles" description="Conductors use the phone conductor page (boarding, cash, trip updates). Staff run departures, bookings, buses and the timetable. Super admins also see finance, crew, accounts and settings. Give each staff member their branch so their sales and cash are counted for the right place." />
       <div className="flex flex-wrap gap-2 mb-4">
         {(['all', 'admin', 'staff', 'conductor', 'passenger'] as const).map((r) => (
           <button
@@ -63,6 +66,7 @@ function Accounts() {
                   <th className="px-4 py-2.5">Joined</th>
                   <th className="px-4 py-2.5">Last sign-in</th>
                   <th className="px-4 py-2.5">Role</th>
+                  <th className="px-4 py-2.5">Branch</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#edeef0]">
@@ -89,6 +93,26 @@ function Accounts() {
                         {(Object.keys(ROLE_LABEL) as AccountRole[]).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                       </select>
                     </td>
+                    <td className="px-4 py-3">
+                      {a.role === 'passenger' ? (
+                        <span className="text-[#6b6d78]">—</span>
+                      ) : (
+                        <select
+                          aria-label={`Branch for ${a.fullName || a.email}`}
+                          value={a.branchId ?? ''}
+                          onChange={async (e) => {
+                            const next = e.target.value || null;
+                            const r = await erp.setBranch(a.id, next);
+                            const name = branches?.find((b) => b.id === next)?.name;
+                            toast(r.ok ? (name ? `${a.fullName || a.email} is now at ${name}` : `${a.fullName || a.email} has no branch`) : r.reason ?? 'Could not change the branch', r.ok ? 'ok' : 'error');
+                          }}
+                          className={`${inputClass} !w-auto !py-1.5 ${a.branchId ? '' : '!text-[#9a5b00]'}`}
+                        >
+                          <option value="">No branch</option>
+                          {(branches ?? []).filter((b) => b.active || b.id === a.branchId).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        </select>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -97,7 +121,7 @@ function Accounts() {
         )}
       </Card>
       <p className="text-[12px] text-[#6b6d78] mt-3">
-        To add staff: ask them to create an account on the website, then set their role here. They sign in at <code>/staff/login</code>.
+        To add staff: ask them to create an account on the website, then set their role here. They sign in at <code>/staff/login</code>. Add or rename branches on <Link href="/admin/branches" className="font-semibold text-[#050a44] underline">Branches</Link>.
       </p>
       <Toast />
     </>

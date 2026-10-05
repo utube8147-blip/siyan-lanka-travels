@@ -173,8 +173,10 @@ export interface Trip {
   bikeSpacesLeft: number;
   /** Share of the full-route fare this trip covers (scales bike fees). */
   routeShare: number;
-  /** Departure in the past or inside the booking cut-off. */
+  /** Departure in the past or inside the booking cut-off, or not open for booking yet (see opensOn). */
   closed: boolean;
+  /** Set when the trip is further ahead than passengers can book: the date booking opens. */
+  opensOn?: string | null;
 }
 
 /** What a page passes to createBooking. Prices here are for display only:
@@ -197,4 +199,6 @@ export interface StoreData {
   routes: Route[];
   schedules: Schedule[];
   bookings: Booking[];
+  /** How many days ahead passengers can book (0 = no limit). Staff: always 0. */
+  bookingWindowDays?: number;
 }

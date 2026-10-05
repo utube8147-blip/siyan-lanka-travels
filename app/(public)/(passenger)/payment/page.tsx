@@ -8,6 +8,7 @@ import { OPERATOR } from '@/config/operator';
 import { useQrDataUrl } from '@/lib/qr';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
 import { SuccessCheck } from '@/components/motion/SuccessCheck';
+import { counterPlaces, useBranches } from '@/lib/branches';
 import { useLoyalty, usePublicSettings, useSavedPassengers, whatsappShareUrl } from '@/lib/extras';
 import { addDays as addDaysIso } from '@/lib/trips';
 import { notify } from '@/lib/pwa';
@@ -89,6 +90,9 @@ function PaymentPageInner() {
   const trip = paidTrip ?? liveTrip;
 
   const pub = usePublicSettings();
+  // The counters that take payments (Staff area → Branches). Before any are set up: the main address.
+  const counters = counterPlaces(useBranches().branches);
+  const counterWhere = counters.list.length ? counters.list.map((b) => (b.address ? `${b.name} (${b.address})` : b.name)).join(', or ') : OPERATOR.contact.address;
   useBikeConfig(); // bike fees follow Settings → Bikes
   const seatPrice = trip ? trip.fare : 0;
   const platformFee = OPERATOR.bookingFee;
@@ -312,7 +316,7 @@ function PaymentPageInner() {
                   <>
                     Pay <span className="font-bold">{formatLKR(totalPrice)}</span> by{' '}
                     <span className="font-bold">{new Date(heldUntil).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>{' '}
-                    {method === 'bank' ? `to ${pub.bankDetails}, reference ${bookingRef}.` : `at our counter (${OPERATOR.contact.address}).`} We&apos;ve texted you the details.
+                    {method === 'bank' ? `to ${pub.bankDetails}, reference ${bookingRef}.` : `at ${counters.list.length ? `${counters.text}: ${counterWhere}` : `our counter (${counterWhere})`}.`} We&apos;ve texted you the details.
                   </>
                 ) : (
                   <>Your ticket is in My trips and we&apos;ve texted you the details. Show the QR code when you board.</>
@@ -653,7 +657,7 @@ function PaymentPageInner() {
                   </div>
                   </>
                 ) : (
-                  <p>Pay in cash at {OPERATOR.contact.address}. Show your booking reference.</p>
+                  <p>Pay in cash at {counterWhere}. Show your booking reference.</p>
                 )}
                 </>
                 )}

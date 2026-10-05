@@ -14,6 +14,7 @@ import { km, useLiveTrip, usePublicSettings, useTripContact, whatsappShareUrl } 
 import { startPayhere } from '@/lib/payhere-client';
 import type { Booking } from '@/lib/types';
 import { useT } from '@/lib/i18n';
+import { counterPlaces, useBranches } from '@/lib/branches';
 
 const ago = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -25,6 +26,7 @@ export function NextTripPanel() {
   const { user } = useAuth();
   const { data, ready } = useStore();
   const pub = usePublicSettings();
+  const counters = counterPlaces(useBranches().branches);
   const [payErr, setPayErr] = useState<string | null>(null);
 
   const next = useMemo(() => {
@@ -122,7 +124,7 @@ export function NextTripPanel() {
             Pay <b className="text-[#050a44]">{formatLKR(booking.total)}</b>
             {booking.paymentMethod === 'bus' && <> in cash to the conductor when you board. Your seat is reserved; show the QR code.</>}
             {booking.paymentMethod !== 'bus' && booking.holdExpiresAt && <> by <b className="text-[#050a44]">{new Date(booking.holdExpiresAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b></>}{' '}
-            {booking.paymentMethod === 'bus' ? null : booking.paymentMethod === 'bank' ? <>by bank transfer to {pub.bankDetails} (reference {booking.ref}).</> : booking.paymentMethod === 'counter' ? <>at our counter, {OPERATOR.contact.address}.</> : <>or the seat is released.</>}
+            {booking.paymentMethod === 'bus' ? null : booking.paymentMethod === 'bank' ? <>by bank transfer to {pub.bankDetails} (reference {booking.ref}).</> : booking.paymentMethod === 'counter' ? <>at {counters.list.length ? `${counters.text} (${counters.list.map((b) => b.address || b.name).join('; ')})` : `our counter, ${OPERATOR.contact.address}`}.</> : <>or the seat is released.</>}
           </span>
           {pub.paymentsMode === 'payhere' && pub.cardPayments && (
             <button onClick={async () => setPayErr(await startPayhere(booking.id))} className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#feb700] text-[#14120a] font-bold">

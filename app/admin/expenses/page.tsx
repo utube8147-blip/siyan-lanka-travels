@@ -1,7 +1,8 @@
 'use client';
 // Expenses & fuel — staff log running costs (fuel, tolls, parking, cleaning)
 // from the road; super admins see and log everything (service, repairs,
-// salaries, insurance…). Fuel with odometer readings feeds fuel efficiency.
+// salaries, insurance…). Fuel with odometer readings feeds fuel efficiency,
+// so the reading is checked against the bus's other readings as it is typed.
 
 import { useMemo, useState } from 'react';
 import { Fuel, Plus, Trash2 } from 'lucide-react';
@@ -12,6 +13,7 @@ import { compressPhoto, formatDateLabel, formatLKR, genId, todayISO } from '@/li
 import { Camera } from 'lucide-react';
 import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
+import { allReadings, checkReading, useOdometer, type OdoLog } from '@/lib/odometer';
 
 const blank = (category: ExpenseCategory, busId: string): Expense => ({
   id: uuid(), spentOn: todayISO(), category, amount: 0, busId, description: '', vendor: '', paymentMethod: 'cash',
@@ -24,6 +26,9 @@ export default function ExpensesPage() {
   const { data: store } = useStore();
   const erp = useErp({ admin: isAdmin });
   const { toast, Toast } = useToast();
+  // Every reading known for each bus: daily ones (closing a trip, the Odometer page) and those typed with fuel or a service.
+  const odo = useOdometer();
+  const readings = useMemo(() => allReadings(odo.logs, erp.data?.expenses ?? []), [odo.logs, erp.data]);
   const [month, setMonth] = useState(todayISO().slice(0, 7));
   const [cat, setCat] = useState<'all' | ExpenseCategory>('all');
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -142,18 +147,32 @@ export default function ExpensesPage() {
         )}
       </Card>
 
-      {editing && <ExpenseForm upload={erp.uploadReceipt} expense={editing} allowed={allowed} buses={store.buses.map((b) => ({ id: b.id, label: `${b.name} · ${b.regNo}` }))} onClose={() => setEditing(null)} onSave={save} />}
+      {editing && <ExpenseForm readings={readings} upload={erp.uploadReceipt} expense={editing} allowed={allowed} buses={store.buses.map((b) => ({ id: b.id, label: `${b.name} · ${b.regNo}` }))} onClose={() => setEditing(null)} onSave={save} />}
       <Toast />
     </>
   );
 }
 
-function ExpenseForm({ expense, allowed, buses, onClose, onSave, upload }: { upload: (dataUrl: string) => Promise<string>; expense: Expense; allowed: readonly ExpenseCategory[]; buses: { id: string; label: string }[]; onClose: () => void; onSave: (e: Expense) => void }) {
+function ExpenseForm({ expense, allowed, buses, onClose, onSave, upload, readings }: { readings: OdoLog[]; upload: (dataUrl: string) => Promise<string>; expense: Expense; allowed: readonly ExpenseCategory[]; buses: { id: string; label: string }[]; onClose: () => void; onSave: (e: Expense) => void }) {
   const [e, setE] = useState<Expense>(expense);
   const set = <K extends keyof Expense>(k: K, v: Expense[K]) => setE((p) => ({ ...p, [k]: v }));
   const isFuel = e.category === 'fuel';
   const isService = ['service', 'repair', 'tyres'].includes(e.category);
-  const valid = e.amount > 0 && e.spentOn && (!isFuel || (e.litres ?? 0) > 0);
+  // The reading against this bus's other readings (not counting this entry's own saved one).
+  const hasReading = (isFuel || isService) && typeof e.odometerKm === 'number';
+  const odo = e.busId
+    ? checkReading(readings.filter((r) => r.id !== `exp-${expense.id}`), e.busId, e.spentOn, hasReading ? e.odometerKm : '', (d) => formatDateLabel(d, false))
+    : null;
+  const km = (n: number) => `${n.toLocaleString('en-LK')} km`;
+  const odoProblem = !hasReading ? null : !e.busId ? 'Choose the bus this reading is for.' : odo?.problem ?? null;
+  const nextKmProblem = e.category === 'service' && e.nextDueKm && e.odometerKm && e.nextDueKm <= e.odometerKm ? 'The next service must be at a higher reading than today\'s.' : null;
+  const odoHint =
+    odoProblem ?? odo?.warning ?? (odo && odo.distance !== null
+      ? `${km(odo.distance)} since the last reading${odo.before ? ` (${km(odo.before.km)}, ${formatDateLabel(odo.before.date, false)})` : ''}.`
+      : odo?.before
+        ? `Last reading: ${km(odo.before.km)} on ${formatDateLabel(odo.before.date, false)}. Needed for fuel efficiency and service reminders.`
+        : 'Needed for fuel efficiency and service reminders.');
+  const valid = e.amount > 0 && e.spentOn && (!isFuel || (e.litres ?? 0) > 0) && !odoProblem && !nextKmProblem;
   const num = (v: string) => (v === '' ? null : Number(v));
   const [photo, setPhoto] = useState<string | null>(expense.receiptUrl ?? (expense.receiptPath?.startsWith('data:') ? expense.receiptPath : null));
   const [busy, setBusy] = useState(false);
@@ -211,16 +230,29 @@ function ExpenseForm({ expense, allowed, buses, onClose, onSave, upload }: { upl
               <input type="number" step="0.1" min={0} inputMode="decimal" className={inputClass} value={e.litres ?? ''} onChange={(x) => set('litres', num(x.target.value))} />
             </Field>
           )}
-          <Field label="Odometer (km)" hint="Needed for fuel efficiency and service reminders">
-            <input type="number" min={0} inputMode="numeric" className={inputClass} value={e.odometerKm ?? ''} onChange={(x) => set('odometerKm', num(x.target.value))} />
-          </Field>
+          <label className="block">
+            <span className="text-[12px] font-bold text-[#46464f] px-1">Odometer (km)</span>
+            <input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              className={`${inputClass} mt-1 ${odoProblem ? '!border-[#ba1a1a]' : ''}`}
+              value={e.odometerKm ?? ''}
+              placeholder={odo?.before ? `More than ${odo.before.km.toLocaleString('en-LK')}` : ''}
+              aria-invalid={!!odoProblem}
+              aria-describedby="expense-odo-hint"
+              onChange={(x) => set('odometerKm', x.target.value === '' ? null : Math.max(0, Math.round(Number(x.target.value))))}
+            />
+            <span id="expense-odo-hint" className={`block text-[11px] px-1 mt-1 ${odoProblem ? 'font-semibold text-[#ba1a1a]' : odo?.warning ? 'font-semibold text-[#9a5b00]' : 'text-[#686873]'}`}>{odoHint}</span>
+          </label>
         </div>
       )}
       {isFuel && e.litres && e.amount ? <p className="text-[12px] text-[#6b6d78]">That&apos;s {formatLKR(Math.round(e.amount / e.litres))} per litre.</p> : null}
       {e.category === 'service' && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Next service at (km)">
-            <input type="number" min={0} className={inputClass} value={e.nextDueKm ?? ''} onChange={(x) => set('nextDueKm', num(x.target.value))} />
+            <input type="number" min={0} className={`${inputClass} ${nextKmProblem ? '!border-[#ba1a1a]' : ''}`} value={e.nextDueKm ?? ''} onChange={(x) => set('nextDueKm', num(x.target.value))} />
+            {nextKmProblem && <span className="block text-[11px] font-semibold text-[#ba1a1a] px-1 mt-1">{nextKmProblem}</span>}
           </Field>
           <Field label="…or by date">
             <input type="date" className={inputClass} value={e.nextDueDate ?? ''} onChange={(x) => set('nextDueDate', x.target.value || null)} />

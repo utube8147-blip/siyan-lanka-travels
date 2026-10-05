@@ -4,12 +4,20 @@
 // they count. A day that is short or over can't be closed without a note,
 // and the super admins are told. The expected figure comes from the database
 // (migration 15); in demo mode it is worked out in the browser.
+//
+// The odometer reading is taken in the same step: closing a trip asks for the
+// bus's reading (the conductor is standing next to it), closing an office day
+// offers it for each bus. It is checked against the last reading as it is
+// typed, so a slipped digit is caught before anything is saved. The Odometer
+// page keeps the history and is where office staff correct a reading.
 
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
 import { useCashCounts, useCashOverview, useCashSummary, useCashUnclosed, type CashPerson } from '@/lib/extras';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { checkReading, useOdometer } from '@/lib/odometer';
+import Link from 'next/link';
 import { formatDateLabel, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 
@@ -23,6 +31,7 @@ function Difference({ expected, counted, className = '' }: { expected: number; c
   );
 }
 
+const km = (n: number) => `${n.toLocaleString('en-LK')} km`;
 /** One person's cash for a trip or a day: closed (with the result) or still open. */
 function PersonRow({ p }: { p: CashPerson }) {
   const role = p.role === 'conductor' ? 'conductor' : p.role === 'admin' ? 'super admin' : 'office';
@@ -47,6 +56,9 @@ export default function CashPage() {
   const { user } = useAuth();
   const { data } = useStore();
   const { counts, save } = useCashCounts();
+  const odometer = useOdometer();
+  const [readings, setReadings] = useState<Record<string, number | ''>>({});
+  const [savingOdo, setSavingOdo] = useState(false);
   const { toast, Toast } = useToast();
   const today = todayISO();
   // What is being closed. From the conductor screen: the departure chosen there
@@ -82,6 +94,7 @@ export default function CashPage() {
   useEffect(() => {
     setCounted('');
     setNotes('');
+    setReadings({});
   }, [date, scheduleId]);
 
   // Demo mode (no database): cash sales made today.
@@ -104,13 +117,69 @@ export default function CashPage() {
   const closedToday = counts.find((c) => c.date === date && (c.scheduleId ?? null) === scheduleId && c.mine !== false);
   const diff = typeof counted === 'number' ? counted - expected : 0;
   const needsNote = typeof counted === 'number' && diff !== 0;
+  // Odometer: a trip is closed next to its bus, so its reading is asked for
+  // (dated today, when it is read). A day closed at the office offers every
+  // bus on the road, dated that day, and can be left empty.
+  const odoDate = scheduleId ? today : date;
+  const odoBuses = scheduleId ? data.buses.filter((b) => b.id === schedule?.busId) : data.buses.filter((b) => b.status === 'active');
+  const odoRows = odoBuses.map((bus) => ({ bus, value: readings[bus.id] ?? '', ...checkReading(odometer.logs, bus.id, odoDate, readings[bus.id] ?? '', (d) => formatDateLabel(d, false)) }));
+  const odoProblem = odoRows.some((r) => r.problem);
+  const odoMissing = !!scheduleId && odometer.ready && !odometer.error && odoRows.some((r) => !r.logged && r.value === '');
+  const odoTyped = odoRows.filter((r) => typeof r.value === 'number' && !r.problem);
+  /** Saves the readings typed in. Stops at the first one the database refuses. */
+  const saveReadings = async () => {
+    for (const r of odoTyped) {
+      const res = await odometer.add(r.bus.id, odoDate, r.value as number, scheduleId ? `Closing trip ${tripLabel ?? ''}`.trim() : 'Closing the day');
+      if (!res.ok) return { ok: false as const, reason: `${r.bus.regNo}: ${res.reason ?? 'the reading could not be saved'}` };
+      setReadings((p) => ({ ...p, [r.bus.id]: '' }));
+    }
+    return { ok: true as const };
+  };
+  const odoSection =
+    odoRows.length === 0 || odometer.error ? null : (
+      <fieldset className="rounded-xl border border-[#e1e2e4] p-4 space-y-3">
+        <legend className="px-1 text-[12px] font-bold text-[#46464f]">Odometer {odoRows.every((r) => r.logged) ? '' : scheduleId ? '(needed to close this trip)' : '(if you have it)'}</legend>
+        {odoRows.map((r) => (
+          <div key={r.bus.id}>
+            {r.logged ? (
+              <p className="text-[14px] text-[#46464f]">
+                <b className="font-semibold text-[#050a44]">{r.bus.regNo}</b>: {km(r.logged.km)} logged {odoDate === today ? 'today' : 'that day'}{r.logged.by ? ` by ${r.logged.by}` : ''}.
+              </p>
+            ) : (
+              <label className="block">
+                <span className="text-[13px] font-semibold text-[#050a44]">{r.bus.regNo} reading now (km)</span>
+                <input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  className={`${inputClass} mt-1 ${r.problem ? '!border-[#ba1a1a]' : ''}`}
+                  value={r.value}
+                  placeholder={r.before ? `More than ${r.before.km.toLocaleString('en-LK')}` : 'The number on the dashboard'}
+                  aria-invalid={!!r.problem}
+                  aria-describedby={`odo-${r.bus.id}`}
+                  onChange={(e) => setReadings((p) => ({ ...p, [r.bus.id]: e.target.value === '' ? '' : Math.max(0, Math.round(Number(e.target.value))) }))}
+                />
+                <span id={`odo-${r.bus.id}`} className={`block text-[12px] mt-1 ${r.problem ? 'font-semibold text-[#ba1a1a]' : r.warning ? 'font-semibold text-[#9a5b00]' : 'text-[#6b6d78]'}`}>
+                  {r.problem ?? r.warning ?? (r.distance !== null
+                    ? `${km(r.distance)} since the last reading${r.before ? ` (${km(r.before.km)}, ${formatDateLabel(r.before.date, false)})` : ''}.`
+                    : r.before
+                      ? `Last reading: ${km(r.before.km)} on ${formatDateLabel(r.before.date, false)}.`
+                      : 'First reading for this bus: it sets the starting point.')}
+                </span>
+              </label>
+            )}
+          </div>
+        ))}
+      </fieldset>
+    );
+
   const whereLabel: Record<string, string> = { counter: 'counter sale', phone: 'phone sale', collected: 'collected for an online booking' };
 
   return (
     <>
       <PageHeader
         title={scheduleId ? 'Close this trip' : 'Close the day'}
-        description={`Cash count for ${formatDateLabel(date)}${tripLabel ? ` · ${tripLabel}` : ''}${user ? ` · ${user.user_metadata.full_name}` : ''}.`}
+        description={`Cash count and odometer for ${formatDateLabel(date)}${tripLabel ? ` · ${tripLabel}` : ''}${user ? ` · ${user.user_metadata.full_name}` : ''}.`}
       />
       {summaryError && (
         <p role="alert" className="mb-4 rounded-xl bg-[#ba1a1a]/10 border border-[#ba1a1a]/25 text-[#93000a] text-[14px] font-semibold px-4 py-3">
@@ -205,6 +274,7 @@ export default function CashPage() {
                   )}
                 </div>
               )}
+              {odoSection}
               <Field label={needsNote ? 'What happened? (needed to close the day)' : 'Notes'}>
                 <textarea
                   className={`${inputClass} min-h-[72px] py-2`}
@@ -214,7 +284,13 @@ export default function CashPage() {
                 />
               </Field>
               {needsNote && notes.trim().length < 3 && <p className="text-[12px] font-semibold text-[#ba1a1a]">Write a note to close a day that is {diff < 0 ? 'short' : 'over'}.</p>}
-              <Button variant="gold" disabled={loading || counted === '' || (needsNote && notes.trim().length < 3)} onClick={async () => {
+              {odoMissing && counted !== '' && <p className="text-[12px] font-semibold text-[#ba1a1a]">Enter the odometer reading to close this trip.</p>}
+              <Button variant="gold" disabled={loading || savingOdo || counted === '' || (needsNote && notes.trim().length < 3) || odoProblem || odoMissing} onClick={async () => {
+                // The reading first: if it is refused nothing is closed, and the number can be fixed.
+                setSavingOdo(true);
+                const odo = await saveReadings();
+                setSavingOdo(false);
+                if (!odo.ok) return toast(odo.reason, 'error');
                 const r = await save({ date, scheduleId, expected, counted: Number(counted), notes: notes.trim() });
                 toast(r.ok ? (diff === 0 ? 'Closed. Balanced.' : `Closed: ${diff < 0 ? 'short' : 'over'} by ${formatLKR(Math.abs(diff))}. The super admin has been told.`) : r.reason ?? 'Could not save', r.ok ? 'ok' : 'error');
               }}>
@@ -222,7 +298,26 @@ export default function CashPage() {
               </Button>
             </>
           ) : (
-            <p className="text-[14px] text-[#46464f]">You have closed this {scheduleId ? 'trip' : 'day'}{closedToday.notes ? `. Note: ${closedToday.notes}` : '.'}</p>
+            <>
+              <p className="text-[14px] text-[#46464f]">You have closed this {scheduleId ? 'trip' : 'day'}{closedToday.notes ? `. Note: ${closedToday.notes}` : '.'}</p>
+              {/* Closed before the reading was taken: it can still be added here. */}
+              {odoSection}
+              {odoRows.some((r) => !r.logged) && !odometer.error && (
+                <Button variant="secondary" disabled={savingOdo || odoProblem || odoTyped.length === 0} onClick={async () => {
+                  setSavingOdo(true);
+                  const odo = await saveReadings();
+                  setSavingOdo(false);
+                  toast(odo.ok ? 'Odometer reading saved' : odo.reason, odo.ok ? 'ok' : 'error');
+                }}>
+                  Save the reading
+                </Button>
+              )}
+            </>
+          )}
+          {!odometer.error && (
+            <p className="text-[12px] text-[#6b6d78]">
+              Typed a wrong reading? <Link href={user?.role === 'conductor' ? '/conductor/odometer' : '/admin/odometer'} className="font-semibold text-[#050a44] underline">Odometer</Link> has the history; office staff can remove a reading there.
+            </p>
           )}
         </Card>
 

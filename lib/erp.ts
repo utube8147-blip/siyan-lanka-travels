@@ -61,7 +61,7 @@ export interface CrewMember {
   perTripPay?: number;
 }
 export type AccountRole = 'passenger' | 'conductor' | 'staff' | 'admin';
-export interface Account { id: string; email: string; fullName: string; phone: string; role: AccountRole; createdAt: string; lastSignIn?: string | null }
+export interface Account { id: string; email: string; fullName: string; phone: string; role: AccountRole; createdAt: string; lastSignIn?: string | null; branchId?: string | null }
 
 /** A bike category id; the list is edited in Settings → Bikes (lib/bikeConfig.ts). */
 export type BikeKind = string;
@@ -76,6 +76,8 @@ export interface Settings {
   refundPolicy: { hoursBefore: number; percent: number }[];
   bikes: { minFee: number; maxPerBooking: number; kinds: Record<BikeKind, BikeKindSettings> };
   resaleEnabled: boolean;
+  /** Days ahead passengers can book (0 = no limit). */
+  bookingWindowDays: number;
   /** Ask for a one-time code on every online booking. */
   bookingOtp: boolean;
   /** Keep the seat beside a woman travelling alone for women. */
@@ -134,13 +136,13 @@ function normalizeSettings(s: Settings): Settings {
 
 const settingsFrom = (r: any): Settings => normalizeSettings({
   bookingFee: r.booking_fee, promoCode: r.promo_code ?? '', promoPercent: r.promo_percent, maxSeats: r.max_seats_per_booking,
-  cutoffMinutes: r.booking_cutoff_minutes, refundPolicy: r.refund_policy, bikes: r.bikes, resaleEnabled: !!r.resale_enabled, bookingOtp: r.booking_otp !== false, ladiesAdjacent: r.ladies_adjacent !== false, cardPayments: r.card_payments === true, payOnBus: r.pay_on_bus !== false,
+  cutoffMinutes: r.booking_cutoff_minutes, bookingWindowDays: r.booking_window_days ?? OPERATOR.bookingWindowDays, refundPolicy: r.refund_policy, bikes: r.bikes, resaleEnabled: !!r.resale_enabled, bookingOtp: r.booking_otp !== false, ladiesAdjacent: r.ladies_adjacent !== false, cardPayments: r.card_payments === true, payOnBus: r.pay_on_bus !== false,
   paymentsMode: r.payments_mode ?? 'demo', bankDetails: r.bank_details ?? '', holdMinutesCounter: r.hold_minutes_counter ?? 120,
   holdMinutesBank: r.hold_minutes_bank ?? 1440, rewardEvery: r.reward_every ?? 10, messaging: r.messaging ?? { sms: true, whatsapp: false }, siteUrl: r.site_url ?? '',
 });
 const settingsTo = (s: Settings) => ({
   booking_fee: s.bookingFee, promo_code: s.promoCode || null, promo_percent: s.promoPercent, max_seats_per_booking: s.maxSeats,
-  booking_cutoff_minutes: s.cutoffMinutes, refund_policy: s.refundPolicy, bikes: s.bikes, resale_enabled: s.resaleEnabled, booking_otp: s.bookingOtp, ladies_adjacent: s.ladiesAdjacent, card_payments: s.cardPayments, pay_on_bus: s.payOnBus,
+  booking_cutoff_minutes: s.cutoffMinutes, booking_window_days: s.bookingWindowDays, refund_policy: s.refundPolicy, bikes: s.bikes, resale_enabled: s.resaleEnabled, booking_otp: s.bookingOtp, ladies_adjacent: s.ladiesAdjacent, card_payments: s.cardPayments, pay_on_bus: s.payOnBus,
   payments_mode: s.paymentsMode, bank_details: s.bankDetails, hold_minutes_counter: s.holdMinutesCounter, hold_minutes_bank: s.holdMinutesBank,
   reward_every: s.rewardEvery, messaging: s.messaging, site_url: s.siteUrl,
 });
@@ -151,6 +153,7 @@ export const DEFAULT_SETTINGS: Settings = {
   promoPercent: OPERATOR.promo.percentOff,
   maxSeats: OPERATOR.maxSeatsPerBooking,
   cutoffMinutes: OPERATOR.bookingCutoffMinutes,
+  bookingWindowDays: OPERATOR.bookingWindowDays,
   refundPolicy: OPERATOR.refundPolicy.map((t) => ({ ...t })),
   bikes: {
     minFee: OPERATOR.bikes.minFee,
@@ -292,7 +295,7 @@ export function useErp({ admin }: { admin: boolean }) {
       crew: (crew.data ?? []).map(crewFrom),
       settings: settings.data ? settingsFrom(settings.data) : DEFAULT_SETTINGS,
       accounts: ((accounts.data as any[]) ?? []).map((a) => ({
-        id: a.id, email: a.email, fullName: a.full_name ?? '', phone: a.phone ?? '', role: a.role, createdAt: a.created_at, lastSignIn: a.last_sign_in_at,
+        id: a.id, email: a.email, fullName: a.full_name ?? '', phone: a.phone ?? '', role: a.role, createdAt: a.created_at, lastSignIn: a.last_sign_in_at, branchId: a.branch_id ?? null,
       })),
     });
   }, [db, admin]);
@@ -337,6 +340,11 @@ export function useErp({ admin }: { admin: boolean }) {
       ? dbWrite(() => supabase().rpc('set_user_role', { p_user: userId, p_role: role }))
       : Promise.resolve(demoWrite((d) => ({ ...d, accounts: d.accounts.map((a) => (a.id === userId ? { ...a, role } : a)) })));
 
+  const setBranch = (userId: string, branchId: string | null) =>
+    db
+      ? dbWrite(() => supabase().rpc('set_user_branch', { p_user: userId, p_branch: branchId }))
+      : Promise.resolve(demoWrite((d) => ({ ...d, accounts: d.accounts.map((a) => (a.id === userId ? { ...a, branchId } : a)) })));
+
   const saveSettings = (s: Settings) => {
     setBikeConfig(s.bikes); // bike categories and fees apply across the app straight away
     return db ? dbWrite(() => supabase().from('app_settings').update(settingsTo(s)).eq('id', true)) : Promise.resolve(demoWrite((d) => ({ ...d, settings: s })));
@@ -363,7 +371,7 @@ export function useErp({ admin }: { admin: boolean }) {
     return path;
   };
 
-  return { data, error, reload: load, uploadReceipt, expenses, income, documents, crew, setRole, saveSettings, resetDemo, mode: db ? ('supabase' as const) : ('demo' as const) };
+  return { data, error, reload: load, uploadReceipt, expenses, income, documents, crew, setRole, setBranch, saveSettings, resetDemo, mode: db ? ('supabase' as const) : ('demo' as const) };
 }
 
 // ------------------------------------------------------------ calculations ---

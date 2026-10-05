@@ -12,13 +12,13 @@ import BlurText from '@/components/motion/BlurText';
 import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { useStore } from '@/lib/store';
-import { addDays, allStopNames, busCapacity, findTrips, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
+import { addDays, allStopNames, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route, Trip } from '@/lib/types';
 import { useT } from '@/lib/i18n';
 
 const HERO_IMAGE = '/brand/bus.png';
 
-/** How many nights the departures strip shows, counting today. */
+/** The most nights the departures strip shows, counting today (two rows of four on a laptop). */
 const NIGHTS_AHEAD = 8;
 
 const INTERIOR_CARDS = [
@@ -206,7 +206,7 @@ export default function LandingPage() {
                   </label>
                   <div className="relative">
                     <Calendar className="w-5 h-5 absolute left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
-                    <input id="hero-date" type="date" min={todayISO()} value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
+                    <input id="hero-date" type="date" min={todayISO()} max={lastBookableDate(data)} value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} />
                   </div>
                 </div>
                 <button
@@ -542,15 +542,19 @@ function addMinutes(hhmm: string, mins: number) {
 /**
  * The next 8 nights (today plus the following 7), one tile each. With one
  * coach that goes out one night and comes back the next, this is the whole
- * timetable: which way the bus leaves tonight, tomorrow, and so on. Gold bar =
- * the first route (out), navy bar = the way back. A strip you swipe on phones,
- * two rows of four on a laptop.
+ * timetable: which way the bus leaves tonight, tomorrow, and so on. Only
+ * nights passengers can book are shown: fewer than 8 when Settings → days
+ * ahead is under 7. Gold bar = the first route (out), navy bar = the way
+ * back. A strip you swipe on phones, two rows of four on a laptop.
  */
 function NightStrip({ routes }: { routes: Route[] }) {
   const { t: tr } = useT();
   const { data } = useStore();
   const today = todayISO();
-  const nights: { date: string; trip?: Trip; dir?: number }[] = Array.from({ length: NIGHTS_AHEAD }, (_, i) => {
+  // Only the nights passengers can book: today and the days ahead set in
+  // Settings (7 unless changed), never more than NIGHTS_AHEAD tiles.
+  const ahead = bookingWindowDays(data);
+  const nights: { date: string; trip?: Trip; dir?: number }[] = Array.from({ length: ahead > 0 ? Math.min(ahead + 1, NIGHTS_AHEAD) : NIGHTS_AHEAD }, (_, i) => {
     const date = addDays(today, i);
     const found = routes.flatMap((route, dir) =>
       findTrips(data, route.stops[0].name, route.stops[route.stops.length - 1].name, date)
@@ -579,6 +583,11 @@ function NightStrip({ routes }: { routes: Route[] }) {
         })}
       </ul>
 
+      {ahead > 0 && (
+        <p className="mb-4 text-[13px] text-[#46464f]">
+          {tr('Booking opens {n} days before travel.', { n: ahead })}
+        </p>
+      )}
       <ol className="grid grid-flow-col auto-cols-[164px] gap-3 overflow-x-auto no-scrollbar snap-x -mx-4 px-4 pb-1 lg:mx-0 lg:px-0 lg:grid-flow-row lg:auto-cols-auto lg:grid-cols-4 lg:overflow-visible">
         {nights.map(({ date, trip, dir }, i) => {
           const day = (
