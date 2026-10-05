@@ -393,6 +393,8 @@ export interface CashCount { /** Whose cash it is (differs from the signed-in pe
 
 /** What one staff member should be holding for a day: cash they took, less cash refunds they paid out. Worked out by the database. */
 export interface CashSummary {
+  /** 31 or more: the database counts a trip's cash by where it was taken (migration 31). Missing on older ones. */
+  v?: number;
   expected: number;
   taken: { ref: string; name: string; seats: string[]; from: string; to: string; amount: number; at: string; where: string }[];
   refunds: { ref: string; name: string; amount: number; at: string }[];

@@ -91,7 +91,8 @@ export default function ConductorPage() {
   const bookings = m?.list ?? [];
   const act = {
     board: (b: Booking) => updateBooking(b.id, { status: 'boarded' }),
-    takeCash: (b: Booking) => confirmPayment(b.id, 'cash'),
+    // Recorded on this screen = taken on the bus: it is the trip's cash, not the office's.
+    takeCash: (b: Booking) => confirmPayment(b.id, 'cash', undefined, true),
   };
   const filter = q.trim().toLowerCase();
   const groups = (m?.groups ?? [])
@@ -107,12 +108,18 @@ export default function ConductorPage() {
   // Money: who still owes (on board first, then in seat order), and what has been taken in cash.
   const owing = bookings.filter(isDue).sort((a, b) => Number(b.status === 'boarded') - Number(a.status === 'boarded') || seatOrder(a.seats[0]) - seatOrder(b.seats[0]));
   const owingShown = owing.filter(matches);
-  const paidCash = bookings.filter((b) => b.paymentMethod === 'cash' && b.paymentStatus === 'paid' && b.status !== 'no-show');
+  // Cash collected ON THE BUS: payments recorded on this screen (or by a conductor account). A seat paid in
+  // cash at the office is the office's money even when it was booked online and even when the same person
+  // does both jobs; card and bank payments are nobody's cash. The database marks each payment (migration 31).
+  const paidCash = bookings.filter((b) => b.paymentMethod === 'cash' && b.paymentStatus === 'paid' && b.status !== 'no-show' && b.paidOnBus);
   const paidCashTotal = paidCash.reduce((n, b) => n + b.total, 0);
-  // From the database when connected (only what THIS person took); otherwise every cash payment on the trip.
+  // The headline figure comes from the database when connected: fares taken on the bus by the person signed in,
+  // less cash refunds they paid and costs paid from that cash. An older database (before migration 31) can't
+  // tell a counter payment from one taken on the bus, so there only a conductor account's figure is trusted.
   const mine = myCash && myCash !== 'error' && run ? myCash : null;
-  const holding = mine ? mine.expected : paidCashTotal;
-  const tookCount = mine ? mine.taken.length : paidCash.length;
+  const dbKnowsWhere = !!mine && (mine.v ?? 0) >= 31;
+  const holding = mine && (dbKnowsWhere || user?.role === 'conductor') ? mine.expected : paidCashTotal;
+  const tookCount = mine && (dbKnowsWhere || user?.role === 'conductor') ? mine.taken.length : paidCash.length;
 
   // Send this one passenger where the bus is right now (WhatsApp if set up, otherwise a text).
   const sendLocation = async (b: Booking) => {
@@ -139,9 +146,9 @@ export default function ConductorPage() {
     setOpen(null);
     const r =
       what === 'cash'
-        ? await confirmPayment(b.id, 'cash').then(async (p) => (p.ok ? updateBooking(b.id, { status: 'boarded' }) : p))
+        ? await confirmPayment(b.id, 'cash', undefined, true).then(async (p) => (p.ok ? updateBooking(b.id, { status: 'boarded' }) : p))
         : what === 'collect'
-        ? await confirmPayment(b.id, 'cash')
+        ? await confirmPayment(b.id, 'cash', undefined, true)
         : // Undo for someone who hasn't paid goes back to "held", so the money is still asked for.
           await updateBooking(b.id, { status: what === 'board' ? 'boarded' : what === 'noshow' ? 'no-show' : b.paymentStatus === 'unpaid' ? 'held' : 'confirmed' });
     toast(r.ok ? `${b.passenger.name}: ${what === 'board' ? 'on board' : what === 'noshow' ? 'no-show' : what === 'cash' ? 'paid & on board' : what === 'collect' ? `paid ${formatLKR(b.total)}` : 'undone'}` : r.reason ?? 'Could not update', r.ok ? 'ok' : 'error');
@@ -356,7 +363,7 @@ export default function ConductorPage() {
                   <p>
                     <span className="block text-[12px] text-white/60">Cash you should have</span>
                     <span className="block text-[24px] font-semibold tabular-nums">{formatLKR(holding)}</span>
-                    <span className="block text-[12px] text-white/60">{tookCount} payment{tookCount === 1 ? '' : 's'} you took</span>
+                    <span className="block text-[12px] text-white/60">{tookCount} fare{tookCount === 1 ? '' : 's'} collected on the bus</span>
                   </p>
                 </section>
 
@@ -401,7 +408,7 @@ export default function ConductorPage() {
 
                 {paidCash.length > 0 && (
                   <details className="rounded-2xl border border-white/10 bg-white/[0.03]">
-                    <summary className="px-4 py-3 text-[13px] font-semibold text-white/80 cursor-pointer">Paid in cash on this trip ({paidCash.length})</summary>
+                    <summary className="px-4 py-3 text-[13px] font-semibold text-white/80 cursor-pointer">Cash you collected on this trip ({paidCash.length})</summary>
                     <ul className="divide-y divide-white/10 border-t border-white/10">
                       {paidCash.map((b) => (
                         <li key={b.id} className="px-4 py-2.5 flex justify-between gap-3 text-[13px]">
@@ -425,7 +432,7 @@ export default function ConductorPage() {
                 <Wallet className="w-6 h-6 text-white/40 mb-1" aria-hidden />
               </div>
               <p className="text-[12px] text-white/60 mt-1">
-                {tookCount} cash payment{tookCount === 1 ? '' : 's'} you took{mine && mine.refunds.length > 0 ? ', less refunds you paid' : ''}{m.totals.unpaid > 0 ? `. ${formatLKR(m.totals.unpaid)} still to collect.` : '.'}
+                {tookCount} fare{tookCount === 1 ? '' : 's'} you collected on the bus{mine && mine.refunds.length > 0 ? ', less refunds you paid' : ''}{m.totals.unpaid > 0 ? `. ${formatLKR(m.totals.unpaid)} still to collect.` : '.'} Seats paid at the office, by card or by bank are not in this.
               </p>
               <p className="text-[13px] text-white/80 mt-3">
                 After arriving, hand this cash and your paper trip sheet to the booking centre. Write fuel, tolls and anything else you paid from it on the sheet; they take it off and close the trip.

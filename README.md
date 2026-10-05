@@ -600,6 +600,14 @@ recorded as the conductor's, with who typed it. The conductor's phone has no
 closing form: it shows "Cash you should have for this trip" (what they took,
 less refunds), and /conductor/cash is read-only for them.
 
+**What counts as a trip's cash** (migration 31): money taken on the bus. Each
+cash payment records where it was taken: on the conductor screen (Collect
+cash, or the scanner there) or by a conductor account means on the bus;
+anywhere in the office (Bookings, Departures) means the office. A trip's cash
+is only the first kind and a day's cash only the second, so nothing is counted
+twice, even when one person does both jobs or a seat booked online is paid at
+the counter. Card and bank payments are never cash.
+
 **Close this trip** asks for the same things in the same order (migration
 27): odometer at the start and end, fuel put in, tolls and other costs, then
 the cash. Each cost is saved as a normal expense tied to the trip, so the

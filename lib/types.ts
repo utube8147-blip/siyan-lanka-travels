@@ -140,6 +140,8 @@ export interface Booking {
   refund?: { amount: number; at: string };
   /** Staff member who recorded the payment (cash taken at the counter or on the bus). */
   paidBy?: string | null;
+  /** The cash was taken by the conductor on the bus (the trip's cash), not in the office. */
+  paidOnBus?: boolean;
   /** Push reminders for this trip (the bell in My trips). Missing = on. */
   notify?: boolean;
   /** Bank-transfer slip the passenger uploaded for a held booking. */

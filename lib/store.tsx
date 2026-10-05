@@ -38,7 +38,8 @@ interface StoreContextValue {
   createBooking: (b: NewBooking) => Promise<BookingResult>;
   updateBooking: (id: string, patch: Partial<Booking>) => Promise<ActionResult>;
   /** Staff: take payment for a held (unpaid) booking. */
-  confirmPayment: (id: string, method: 'cash' | 'bank' | 'card' | 'wallet', ref?: string) => Promise<ActionResult>;
+  /** `onBus`: taken by the conductor on the bus (conductor screen), so it is the trip's cash and not the office's. */
+  confirmPayment: (id: string, method: 'cash' | 'bank' | 'card' | 'wallet', ref?: string, onBus?: boolean) => Promise<ActionResult>;
   /** Demo mode only. */
   resetDemo: () => void;
   /** Re-read data (pull-to-refresh, after changes elsewhere). */
@@ -457,16 +458,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const confirmPayment = useCallback<StoreContextValue['confirmPayment']>(
-    async (id, method, ref) => {
+    async (id, method, ref, onBus) => {
       if (mode === 'supabase') {
-        const { error: err } = await supabase().rpc('confirm_payment', { p_id: id, p_method: method, p_ref: ref ?? null });
+        let err: { message?: string } | null = null;
+        if (onBus && method === 'cash') {
+          ({ error: err } = await supabase().rpc('collect_on_bus', { p_id: id }));
+          // A database without migration 31 has no collect_on_bus: record the payment the old way.
+          if (err && /collect_on_bus|schema cache|PGRST202/i.test(err.message ?? '')) {
+            ({ error: err } = await supabase().rpc('confirm_payment', { p_id: id, p_method: method, p_ref: ref ?? null }));
+          }
+        } else {
+          ({ error: err } = await supabase().rpc('confirm_payment', { p_id: id, p_method: method, p_ref: ref ?? null }));
+        }
         if (err) return { ok: false, reason: friendlyError(err) };
         sendBookingMessages(id);
         await refresh();
         return { ok: true };
       }
       const d = dataRef.current;
-      const next = { ...d, bookings: d.bookings.map((b) => (b.id === id && b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') ? { ...b, status: b.status === 'held' ? ('confirmed' as const) : b.status, paymentStatus: 'paid' as const, paymentMethod: method, holdExpiresAt: null } : b)) };
+      const next = { ...d, bookings: d.bookings.map((b) => (b.id === id && b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') ? { ...b, paidOnBus: !!onBus, status: b.status === 'held' ? ('confirmed' as const) : b.status, paymentStatus: 'paid' as const, paymentMethod: method, holdExpiresAt: null } : b)) };
       dataRef.current = next;
       setData(next);
       return { ok: true };
