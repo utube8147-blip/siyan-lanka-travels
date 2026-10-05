@@ -316,6 +316,8 @@ export async function postTripEvent(scheduleId: string, date: string, ev: Omit<T
     return { ok: true };
   }
   const { error } = await supabase().from('trip_events').insert({ schedule_id: scheduleId, travel_date: date, kind: ev.kind, stop: ev.stop, minutes: ev.minutes ?? null, message: ev.message });
+  // Push it to passengers now: don't wait for the every-minute cron (not awaited; the cron sends anything missed).
+  if (!error) fetch('/api/messages/push-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {});
   return error ? { ok: false, reason: friendlyError(error) } : { ok: true };
 }
 

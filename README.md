@@ -489,8 +489,10 @@ building before they are switched on.
 
 ## Messages (SMS / WhatsApp / email)
 The database queues a message when a booking is confirmed, a seat is held,
-a booking is cancelled, a waitlisted seat frees up, or the crew posts a trip
-update.
+a booking is cancelled, or a waitlisted seat frees up. Conductor updates
+(left, late, arriving, arrived, a note) are NOT texted: they go as push
+notifications to passengers with that trip's bell on and show on the tracking
+page (migration 32).
 
 **The booking message.** When a booking is done (paid, or the seat is kept
 for pay on the bus) the passenger's mobile gets ONE text with everything:
@@ -758,6 +760,16 @@ you can test installing locally.
   reminders for that one trip on or off (migration 29). Off stops the push
   reminders and pushed conductor updates for that booking only; texts still
   arrive.
+- **Not getting notifications?** Use "Send a test from the server" on the
+  Trip reminders card. It sends a real push through the same path as
+  reminders and says in plain words what is wrong if it can't arrive (keys
+  missing on the server, this device not registered, keys that don't match).
+  The push keys must be in the HOSTING settings (e.g. Vercel → Environment
+  Variables), not only in your local `.env`, and the site redeployed after.
+- Notifications caused by something happening (booking confirmed, a conductor
+  update) are pushed straight away. Timed reminders (1 day, 3 hours, 1 hour
+  before, trip starting) need the every-minute cron below: on Vercel's free
+  plan its own cron runs only once a day, so use Supabase pg_cron (Messages).
 - If notifications are blocked, the card explains how to re-allow them in
   Chrome's site settings. On iPhone, notifications only work after adding the
   app to the Home Screen (iOS 16.4+).

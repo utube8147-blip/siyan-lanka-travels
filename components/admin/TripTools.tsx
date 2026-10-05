@@ -246,6 +246,7 @@ export function UpdateModal({ stops, initial, onClose, onSend }: { stops: string
       )}
       <Field label={kind === 'note' ? 'Message' : 'Extra detail (optional)'}><input className={inputClass} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={kind === 'delayed' ? 'e.g. Traffic at Kadawatha' : ''} /></Field>
       <p className="text-[13px] text-[#46464f] bg-[#f2f4f6] rounded-lg p-3">Passengers will see: <b className="text-[#050a44]">{preview}{message && kind !== 'note' ? ` ${message}` : ''}</b></p>
+      <p className="text-[12px] text-[#6b6d78]">Sent as a notification to passengers who have reminders on for this trip, and shown on the tracking page. No text messages are sent.</p>
     </Modal>
   );
 }

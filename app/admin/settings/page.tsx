@@ -155,7 +155,7 @@ function SettingsForm() {
               </label>
             ))}
           </div>
-          <p className="text-[12px] text-[#6b6d78]">Booking confirmations (with the ticket and tracking links), payment reminders, trip updates and waitlist offers. The ticket is emailed when the passenger gave an email address. Needs the provider keys on the server (README → Messages).</p>
+          <p className="text-[12px] text-[#6b6d78]">Booking confirmations (with the ticket and tracking links), payment reminders and waitlist offers. Conductor updates go as notifications, not texts. The ticket is emailed when the passenger gave an email address. Needs the provider keys on the server (README → Messages).</p>
           <Field label="Website address used in messages"><input className={inputClass} value={s.siteUrl} onChange={(e) => setS({ ...s, siteUrl: e.target.value.trim() })} placeholder="https://www.siyanlanka.lk" /></Field>
           <MessageLog />
         </Card>

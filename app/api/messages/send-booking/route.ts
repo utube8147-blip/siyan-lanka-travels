@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { adminClient } from '@/lib/server/admin';
 import { deliverQueued } from '@/lib/server/dispatch';
+import { pushPendingNotifications } from '@/lib/server/push';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,5 +37,7 @@ export async function POST(req: NextRequest) {
   const { data: batch, error } = await db.from('message_queue').select('*').eq('booking_id', bookingId).eq('status', 'pending').order('created_at').limit(10);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const results = await deliverQueued(db, batch ?? []);
-  return NextResponse.json({ processed: batch?.length ?? 0, ...results });
+  // …and the push that goes with it ("Booking confirmed", "Payment received").
+  const push = await pushPendingNotifications(db).catch((e) => ({ error: String(e).slice(0, 200) }));
+  return NextResponse.json({ processed: batch?.length ?? 0, ...results, push });
 }

@@ -155,3 +155,56 @@ function urlBase64ToUint8Array(base64: string) {
   const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
+
+/**
+ * Throws away this browser's push subscription and makes a fresh one. Needed
+ * when the saved one was made with different server keys (the push service
+ * then refuses every message), e.g. after the keys were changed.
+ */
+export async function resubscribeToPush() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) await existing.unsubscribe();
+  } catch {
+    /* fall through to a normal subscribe */
+  }
+  return subscribeToPush();
+}
+
+export type ServerPushTest = { ok: boolean; message: string };
+
+/**
+ * A real push, sent by the server to this person's devices through the same
+ * path as trip reminders, with the reason in plain words when it can't arrive.
+ * (The older "test" only asked this browser to show a notification itself,
+ * which works even when server push is broken.)
+ */
+export async function testServerPush(): Promise<ServerPushTest> {
+  if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return { ok: false, message: 'Push is not set up on this site: the public push key (NEXT_PUBLIC_VAPID_PUBLIC_KEY) was missing when it was built. Add it in the hosting settings and redeploy.' };
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return { ok: false, message: "This browser can't receive push notifications. On iPhone, open the app from the Home Screen icon." };
+  const attempt = async () => {
+    const res = await fetch('/api/messages/push-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ test: true }) });
+    return (await res.json().catch(() => ({}))) as { devices?: number; delivered?: number; problem?: string | null; code?: number | null };
+  };
+  // Make sure this device is registered to the signed-in person first.
+  if (!(await subscribeToPush())) return { ok: false, message: 'This device could not register for push. Check that notifications are allowed for this site, then try again.' };
+  let r = await attempt();
+  // Registered with other keys, or not saved yet: register again from scratch and try once more.
+  if (r.problem === 'key_mismatch' || r.problem === 'no_device' || r.problem === 'refused') {
+    await resubscribeToPush();
+    r = await attempt();
+  }
+  if ((r.delivered ?? 0) > 0) return { ok: true, message: 'Sent from the server. It should appear within a few seconds. If it does, reminders will reach this device.' };
+  const why: Record<string, string> = {
+    signed_out: 'Sign in first: reminders are sent to your account.',
+    no_database: 'The site is not connected to its database.',
+    no_secret_key: 'The server is missing its database key (SUPABASE_SECRET_KEY) in the hosting settings.',
+    no_keys: 'The server has no push keys. Add NEXT_PUBLIC_VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in the hosting settings and redeploy.',
+    no_table: 'The database is missing the push tables. Run the latest database update.',
+    no_device: 'This device is not saved to your account yet. Turn reminders off and on again for this site, then test again.',
+    key_mismatch: "The push service refused the server's keys: the public and private push keys on the server don't belong together, or were changed. Check both keys in the hosting settings.",
+    refused: `The push service did not accept the message${r.code ? ` (code ${r.code})` : ''}. Try again in a minute.`,
+  };
+  return { ok: false, message: why[r.problem ?? ''] ?? 'The server could not send it. Try again in a minute.' };
+}

@@ -6,12 +6,13 @@
 
 import { useState } from 'react';
 import { Bell, BellOff, BellRing, Check } from 'lucide-react';
-import { isIOS, isStandalone, notify, useNotificationPermission } from '@/lib/pwa';
+import { isIOS, isStandalone, notify, testServerPush, useNotificationPermission, type ServerPushTest } from '@/lib/pwa';
 
 export function NotificationOptIn({ compact = false }: { compact?: boolean }) {
   const { state, request } = useNotificationPermission();
   const [busy, setBusy] = useState(false);
-  const [tested, setTested] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [test, setTest] = useState<ServerPushTest | null>(null);
   const iosNeedsInstall = typeof window !== 'undefined' && isIOS() && !isStandalone() && state === 'unsupported';
 
   const turnOn = async () => {
@@ -55,21 +56,25 @@ export function NotificationOptIn({ compact = false }: { compact?: boolean }) {
           {state === 'granted' && (
             <>
               <p className="text-[12px] text-[#46464f] mt-1">We&apos;ll notify you on this device before each trip.</p>
+              {/* A real push from the server, through the same path as reminders: if this arrives, they will. */}
               <button
+                disabled={testing}
                 onClick={async () => {
-                  await notify('Test reminder', { body: 'This is how your trip reminders will look.', tag: 'test' });
-                  setTested(true);
+                  setTesting(true);
+                  setTest(null);
+                  setTest(await testServerPush());
+                  setTesting(false);
                 }}
-                className="mt-2 inline-flex items-center gap-1 text-[12px] font-bold text-[#050a44] hover:underline"
+                className="mt-2 inline-flex items-center gap-1 text-[12px] font-bold text-[#050a44] hover:underline disabled:opacity-60"
               >
-                {tested ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" /> Sent
-                  </>
-                ) : (
-                  'Send a test notification'
-                )}
+                {testing ? 'Sending…' : 'Send a test from the server'}
               </button>
+              {test && (
+                <p role="status" className={`mt-2 text-[12px] leading-snug ${test.ok ? 'text-[#006e1c]' : 'text-[#ba1a1a]'}`}>
+                  {test.ok && <Check className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />}
+                  {test.message}
+                </p>
+              )}
             </>
           )}
 

@@ -67,3 +67,31 @@ export async function pushPendingNotifications(db: SupabaseClient) {
   }
   return out;
 }
+
+/**
+ * Pushes one message straight to every device of one user, and says what
+ * happened. Used by "Send a test from the server", which goes through the
+ * same path as real reminders (keys, saved subscription, the push service),
+ * so if the test arrives, reminders can.
+ */
+export async function pushToUser(db: SupabaseClient, userId: string, note: { title: string; body: string; url: string; tag: string }) {
+  if (!configure()) return { devices: 0, delivered: 0, problem: 'no_keys' as const };
+  const { data: subs, error } = await db.from('push_subscriptions').select('endpoint, p256dh, auth').eq('user_id', userId);
+  if (error) return { devices: 0, delivered: 0, problem: 'no_table' as const };
+  const devices = subs ?? [];
+  if (devices.length === 0) return { devices: 0, delivered: 0, problem: 'no_device' as const };
+  let delivered = 0;
+  let lastCode: number | null = null;
+  for (const d of devices) {
+    try {
+      await webpush.sendNotification({ endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } }, JSON.stringify(note), { TTL: 600, urgency: 'high' });
+      delivered += 1;
+      await db.from('push_subscriptions').update({ last_ok_at: new Date().toISOString() }).eq('endpoint', d.endpoint);
+    } catch (e) {
+      lastCode = (e as { statusCode?: number }).statusCode ?? 0;
+      // Gone, or made with different keys: this saved subscription can never work again.
+      if (lastCode === 404 || lastCode === 410 || lastCode === 401 || lastCode === 403) await db.from('push_subscriptions').delete().eq('endpoint', d.endpoint);
+    }
+  }
+  return { devices: devices.length, delivered, problem: delivered > 0 ? null : lastCode === 401 || lastCode === 403 ? ('key_mismatch' as const) : ('refused' as const), code: lastCode };
+}
