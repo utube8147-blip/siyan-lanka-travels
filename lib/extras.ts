@@ -300,6 +300,14 @@ export async function shareLocation(scheduleId: string, date: string, pos: Geolo
   if (!DB) {
     const v = readLocal<{ loc: BusLocation | null; events: TripEvent[]; trail?: BusLocation[] }>(liveKey(scheduleId, date), { loc: null, events: [] });
     writeLocal(liveKey(scheduleId, date), { ...v, loc: row, trail: [row, ...(v.trail ?? [])].slice(0, 5) });
+    // Full GPS log (admin → GPS trip log). With a database, a trigger keeps it instead.
+    const logKey = `demo-gpslog:${scheduleId}:${date}`;
+    // Like the database: a fix within 100 m of the last logged point only moves its "until" time on.
+    const log = readLocal<(BusLocation & { until?: string })[]>(logKey, []);
+    const last = log[log.length - 1];
+    if (last && km(last, row) < 0.1) last.until = row.updatedAt;
+    else log.push({ ...row, accuracyM: pos.coords.accuracy } as BusLocation & { accuracyM: number });
+    writeLocal(logKey, log.slice(-5000));
     return { ok: true };
   }
   const { error } = await supabase().from('bus_locations').upsert({

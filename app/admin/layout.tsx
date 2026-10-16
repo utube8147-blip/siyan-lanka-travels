@@ -6,7 +6,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Store, LayoutDashboard, CalendarClock, Ticket, Bus, Route as RouteIcon, ExternalLink, LogOut, Wallet, Receipt, Wrench, Users, UserCog, Settings as SettingsIcon, Banknote, ScanLine, HandCoins, Menu, X, BarChart3 } from 'lucide-react';
+import { Store, LayoutDashboard, CalendarClock, Ticket, Bus, Route as RouteIcon, ExternalLink, LogOut, Wallet, Receipt, Wrench, Users, UserCog, Settings as SettingsIcon, Banknote, ScanLine, HandCoins, Menu, X, BarChart3, MapPinned } from 'lucide-react';
 import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -32,6 +32,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       // The page (history, removing a wrong reading) is still at /admin/odometer, linked from Close the day.
       { href: '/admin/fleet', label: 'Buses', icon: Bus },
       { href: '/admin/routes', label: 'Routes & timetable', icon: RouteIcon },
+      { href: '/admin/gps-log', label: 'GPS trip log', icon: MapPinned },
     ],
   },
   {

@@ -564,6 +564,33 @@ every 2 minutes. It is sent by the every-minute cron, so allow up to a minute.
 **Send from my WhatsApp** opens the conductor's own WhatsApp with the message
 ready, which works without the WhatsApp API.
 
+## GPS trip log & planning new stops (Staff area → GPS trip log)
+
+`bus_locations` only keeps the bus's latest position, and `bus_location_history`
+only the last 20 points. **`bus_location_log`** keeps the whole journey: a
+trigger on `bus_locations` copies each position the conductor's phone sends
+while "Share location" is on. Nothing changes for conductors or passengers.
+
+- **100 m rule:** a position less than 100 m (straight line) from the last
+  logged point isn't saved as a new row. That row's `last_seen_at` is moved on
+  instead, so a parked bus doesn't fill the table, but the page still knows how
+  long it stood there.
+- **Trip log tab:** pick a day and a trip to see the road driven, distance, time,
+  speeds, stops (3 min or more in one place), signal gaps (3 min or more with no
+  position), a replay slider and every point. Export as CSV or GPX (opens in
+  Google Earth / My Maps).
+- **Plan & sample tab:** take a sample point every 250 m to 10 km along the real
+  road. Click the map (or paste coordinates / a Google Maps link) to drop
+  possible new stops, and drag them to move them. Each one shows how far it is
+  off the road, km from the start, between which existing stops it falls, when
+  the bus passed, and a rough extra time (stop time + detour there and back).
+  Plans are saved in `route_plans` and can be exported as CSV/GPX.
+- **Deleting:** admins can delete a trip's whole GPS log or tick single points
+  (e.g. a bad GPS jump). Office staff can view only.
+- **Database:** run `supabase/migrations/20261033000000_gps_trip_log.sql` in
+  Supabase → SQL Editor (also included in `setup.sql`). Safe to run again.
+  Logging starts from then on; trips before that only have the last 20 points.
+
 ## Languages
 English, Tamil and Sinhala (switcher in the header and Profile). Strings live
 in `lib/i18n.tsx`; anything untranslated shows in English. **Have a native
