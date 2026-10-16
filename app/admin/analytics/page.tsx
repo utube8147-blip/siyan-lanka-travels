@@ -466,7 +466,7 @@ function Analytics() {
       {tab === 'fleet' && (
         <div role="tabpanel">
           {fig.pinsMissing && (
-            <p className="-mt-2 mb-5 text-[13px] font-semibold text-[#9a5b00]">Some stops have no map pin, so the distance for those routes shows as 0. Add the pins in Routes &amp; timetable → Edit stops &amp; fares.</p>
+            <p className="-mt-2 mb-5 text-[13px] font-semibold text-[#9a5b00]">Some stops have no map pin, so the distance for those routes shows as 0. Add the pins in Routes &amp; timetable → Edit route &amp; map (search the place or click the map).</p>
           )}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <Stat label="Distance driven" value={`${num(fig.km)} km`} note={fig.kmFromOdometer ? `from odometer readings · timetable says ${num(fig.kmEstimated)} km` : 'estimate: trips run × route length'} />

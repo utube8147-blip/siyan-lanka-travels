@@ -12,7 +12,6 @@ import { useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatTime12, listRuns, routeLabel, todayISO } from '@/lib/trips';
 import { deleteGpsPoints, downloadCsv, downloadGpx, findGaps, findStops, loadGpsPoints, loadGpsTrips, summarise, type GpsPoint, type GpsTripSummary } from '@/lib/gpsLog';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
-import { RoutePlanner } from '@/components/admin/RoutePlanner';
 
 const GpsRouteMap = dynamic(() => import('@/components/admin/GpsRouteMap').then((m) => m.GpsRouteMap), {
   ssr: false,
@@ -39,7 +38,6 @@ export default function GpsLogPage() {
   const [error, setError] = useState<string | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [view, setView] = useState<'log' | 'plan'>('log');
 
   // Trips that ran that day (from the timetable) plus any with GPS points but no longer in the timetable.
   const trips = useMemo(() => {
@@ -215,28 +213,13 @@ export default function GpsLogPage() {
           </div>
           <p className="text-[12px] text-[#6b6d78]">
             Points are recorded while the conductor has &ldquo;Share location&rdquo; on. A new point is saved once the bus is 100 m or more from the last one; while it stands or crawls, that point just shows how long it was there. Overnight trips are listed under the day they left.
+            <br />
+            <br />
+            To plan a route with a trip&apos;s real road, download its GPX or CSV here and load it in Routes &amp; timetable → Edit route.
           </p>
         </Card>
 
         <div className="space-y-6 min-w-0">
-          <div role="tablist" aria-label="View" className="inline-flex p-1 rounded-xl bg-[#f2f4f6] border border-[#e1e2e4]">
-            {(
-              [
-                ['log', 'Trip log'],
-                ['plan', 'Plan & sample'],
-              ] as const
-            ).map(([v, label]) => (
-              <button
-                key={v}
-                role="tab"
-                aria-selected={view === v}
-                onClick={() => setView(v)}
-                className={`px-4 h-9 rounded-lg text-[13px] font-bold transition-colors ${view === v ? 'bg-[#050a44] text-white keep-navy' : 'text-[#050a44] hover:bg-white'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           {scheduleId && (
             <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-6 gap-3">
               {[
@@ -255,8 +238,6 @@ export default function GpsLogPage() {
             </div>
           )}
 
-          {view === 'log' ? (
-            <>
           <Card className="p-3">
             {live && <p className="px-2 pb-2 text-[12px] font-bold text-[#050a44]"><span className="inline-block w-2 h-2 rounded-full bg-[#feb700] mr-1.5 align-middle" />Trip still sending: updates every 30 seconds</p>}
             <GpsRouteMap points={points} routeStops={route?.stops ?? []} stops={stops} gaps={gaps} focus={focus} className="h-[460px] md:h-[560px]" />
@@ -395,10 +376,6 @@ export default function GpsLogPage() {
                 </table>
               </div>
             </Card>
-          )}
-            </>
-          ) : (
-            <RoutePlanner points={points} routeStops={route?.stops ?? []} scheduleId={scheduleId} date={date} tripLabel={trip ? `${trip.label}${trip.departure ? `, ${formatTime12(trip.departure)}` : ''}` : scheduleId} totalMin={stats.totalMin} />
           )}
         </div>
       </div>

@@ -564,7 +564,7 @@ every 2 minutes. It is sent by the every-minute cron, so allow up to a minute.
 **Send from my WhatsApp** opens the conductor's own WhatsApp with the message
 ready, which works without the WhatsApp API.
 
-## GPS trip log & planning new stops (Staff area → GPS trip log)
+## GPS trip log (Staff area → GPS trip log)
 
 `bus_locations` only keeps the bus's latest position, and `bus_location_history`
 only the last 20 points. **`bus_location_log`** keeps the whole journey: a
@@ -575,21 +575,42 @@ while "Share location" is on. Nothing changes for conductors or passengers.
   logged point isn't saved as a new row. That row's `last_seen_at` is moved on
   instead, so a parked bus doesn't fill the table, but the page still knows how
   long it stood there.
-- **Trip log tab:** pick a day and a trip to see the road driven, distance, time,
-  speeds, stops (3 min or more in one place), signal gaps (3 min or more with no
-  position), a replay slider and every point. Export as CSV or GPX (opens in
-  Google Earth / My Maps).
-- **Plan & sample tab:** take a sample point every 250 m to 10 km along the real
-  road. Click the map (or paste coordinates / a Google Maps link) to drop
-  possible new stops, and drag them to move them. Each one shows how far it is
-  off the road, km from the start, between which existing stops it falls, when
-  the bus passed, and a rough extra time (stop time + detour there and back).
-  Plans are saved in `route_plans` and can be exported as CSV/GPX.
-- **Deleting:** admins can delete a trip's whole GPS log or tick single points
-  (e.g. a bad GPS jump). Office staff can view only.
-- **Database:** run `supabase/migrations/20261033000000_gps_trip_log.sql` in
-  Supabase → SQL Editor (also included in `setup.sql`). Safe to run again.
-  Logging starts from then on; trips before that only have the last 20 points.
+- Pick a day and a trip: the road driven, distance, time, speeds, stops (3 min
+  or more in one place), signal gaps (3 min or more with no position), a replay
+  slider and every point. Refreshes every 30 s while the trip is still sending.
+- **Export** as CSV or GPX, to load in the route editor (below) or Google Earth.
+- **Deleting:** admins can delete a trip's whole log or tick single points.
+  Office staff can view only.
+
+## Route editor (Routes & timetable → Edit route & map)
+
+A full page with the stops on one side and a live map on the other.
+
+- **Find stops by name** (place search, OpenStreetMap Nominatim, Sri Lanka only)
+  or **click the map**: the stop goes where it fits best on the way and is named
+  after the place. Drag pins to move stops; "Pick on map" places one exactly.
+- The **road route** through the stops is drawn as you edit (routing server),
+  with km and time between stops. While the stops differ from the saved route,
+  the saved route is drawn dashed and the top cards show the difference in
+  distance, bus time and stops. That is the simulation: nothing is live until
+  **Save route**.
+- **Road estimate** next to each stop's time; "Fill times from road" sets all
+  times from it (road time × "Bus vs car time" + stop time, rounded to 5 min).
+  Times are typed as h:mm and can go over 24 hours.
+- **Load GPS file**: a CSV or GPX from GPS trip log (or any GPX) is drawn as the
+  road really driven; stops far from it are flagged.
+- **Save as draft** keeps a version in `route_plans` without touching the live
+  route; pick it under "Version" to continue, and "Save route" to make it live.
+- "Create return route" now keeps each stop's map pin and waiting details.
+- Settings: `NEXT_PUBLIC_ROUTING_URL` (default: the public OSRM server, about
+  one request a second; the old spelling `NEXT_PUBLIC_ROUING_URL` also works)
+  and `NEXT_PUBLIC_GEOCODING_URL` (default: nominatim.openstreetmap.org, one
+  search a second, so searches run only when you press Search). For heavy use,
+  run your own OSRM / Nominatim or use a paid service.
+
+**Database:** run `supabase/migrations/20261033000000_gps_trip_log.sql` in
+Supabase → SQL Editor (also in `setup.sql`). It is safe to run again, and also
+updates the `route_plans` table if an earlier version of this update was run.
 
 ## Languages
 English, Tamil and Sinhala (switcher in the header and Profile). Strings live

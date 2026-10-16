@@ -3,22 +3,10 @@
 // (which bus leaves when, on which days).
 
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { Map as MapIcon, Plus, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { compressPhoto } from '@/lib/trips';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
-
-/** Stop photos: public storage with Supabase, an embedded image in demo mode. */
-async function uploadStopPhoto(file: File) {
-  const dataUrl = await compressPhoto(file, 1000);
-  if (!isSupabaseConfigured) return dataUrl;
-  const blob = await (await fetch(dataUrl)).blob();
-  const path = `${uuid()}.jpg`;
-  const { error } = await supabase().storage.from('stop-photos').upload(path, blob, { contentType: 'image/jpeg' });
-  if (error) return dataUrl;
-  return supabase().storage.from('stop-photos').getPublicUrl(path).data.publicUrl;
-}
-import type { Route, RouteStop, Schedule, Weekday } from '@/lib/types';
+import type { Route, Schedule, Weekday } from '@/lib/types';
 import { addDays, describeRuns, formatDuration, formatLKR, formatTime12, fromMinutes, genId, isAlternating, routeLabel, scheduleConflicts, todayISO, toMinutes } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, WEEKDAYS, formatDays, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
@@ -26,7 +14,6 @@ import { uuid } from '@/lib/uuid';
 export default function RoutesPage() {
   const { data, saveRoute, deleteRoute, saveSchedule, deleteSchedule } = useStore();
   const { toast, Toast } = useToast();
-  const [editingRoute, setEditingRoute] = useState<Route | null>(null);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
 
   const reverseOf = (r: Route): Route => {
@@ -35,7 +22,8 @@ export default function RoutesPage() {
       id: genId('route'),
       active: true,
       flatFare: r.flatFare !== false,
-      stops: [...r.stops].reverse().map((s) => ({ name: s.name, offsetMin: last.offsetMin - s.offsetMin, fareFromStart: last.fareFromStart - s.fareFromStart })),
+      // Keep each stop's map pin and waiting details: they're the same places.
+      stops: [...r.stops].reverse().map((s) => ({ ...s, offsetMin: last.offsetMin - s.offsetMin, fareFromStart: last.fareFromStart - s.fareFromStart })),
     };
   };
 
@@ -55,9 +43,9 @@ export default function RoutesPage() {
         description="Stops, travel times and fares for each direction, and which bus runs when. Passengers only pay for the stretch they ride."
         actions={
           <>
-            <Button variant="secondary" onClick={() => setEditingRoute({ id: genId('route'), active: true, stops: [{ name: '', offsetMin: 0, fareFromStart: 0 }, { name: '', offsetMin: 60, fareFromStart: 500 }] })}>
+            <Link href="/admin/routes/new" className="inline-flex items-center justify-center gap-1.5 rounded-xl font-bold h-10 px-4 text-[13px] bg-white border border-[#c7c5d1] text-[#050a44] hover:bg-[#f2f4f6]">
               <Plus className="w-4 h-4" /> New route
-            </Button>
+            </Link>
             <Button variant="gold" disabled={!data.routes.length || !data.buses.length} onClick={() => setEditingSchedule(newSchedule())}>
               <Plus className="w-4 h-4" /> Add departure
             </Button>
@@ -162,9 +150,9 @@ export default function RoutesPage() {
               ))}
             </ol>
             <div className="flex flex-wrap gap-2 px-5 pb-4">
-              <Button size="sm" variant="secondary" onClick={() => setEditingRoute(structuredClone(r))}>
-                Edit stops &amp; fares
-              </Button>
+              <Link href={`/admin/routes/${r.id}`} className="inline-flex items-center justify-center gap-1.5 rounded-xl font-bold h-8 px-3 text-[12px] bg-white border border-[#c7c5d1] text-[#050a44] hover:bg-[#f2f4f6]">
+                <MapIcon className="w-3.5 h-3.5" /> Edit route &amp; map
+              </Link>
               <Button
                 size="sm"
                 variant="ghost"
@@ -191,18 +179,6 @@ export default function RoutesPage() {
         ))}
       </div>
 
-      {editingRoute && (
-        <RouteForm
-          route={editingRoute}
-          onClose={() => setEditingRoute(null)}
-          onSave={async (r) => {
-            const res = await saveRoute(r);
-            if (!res.ok) return toast(res.reason ?? 'Could not save', 'error');
-            setEditingRoute(null);
-            toast(`${routeLabel(r)} saved`);
-          }}
-        />
-      )}
       {editingSchedule && (
         <ScheduleForm
           schedule={editingSchedule}
@@ -221,192 +197,6 @@ export default function RoutesPage() {
       <Toast />
     </>
   );
-}
-
-function RouteForm({ route, onClose, onSave }: { route: Route; onClose: () => void; onSave: (r: Route) => void }) {
-  const [stops, setStops] = useState<RouteStop[]>(route.stops);
-  const [active, setActive] = useState(route.active);
-  const update = (i: number, patch: Partial<RouteStop>) => setStops((p) => p.map((s, j) => (j === i ? { ...s, ...patch } : s)));
-  // One price for the whole route (default), or a fare per stop.
-  const [flat, setFlat] = useState(route.flatFare !== false);
-  const [price, setPrice] = useState(route.stops[route.stops.length - 1]?.fareFromStart ?? 0);
-  const move = (i: number, d: -1 | 1) =>
-    setStops((p) => {
-      const n = [...p];
-      [n[i], n[i + d]] = [n[i + d], n[i]];
-      return n;
-    });
-
-  const problems: string[] = [];
-  if (stops.length < 2) problems.push('A route needs at least two stops.');
-  if (stops.some((s) => !s.name.trim())) problems.push('Every stop needs a name.');
-  if (new Set(stops.map((s) => s.name.trim().toLowerCase())).size !== stops.length) problems.push('Stop names must be different.');
-  if (stops[0] && (stops[0].offsetMin !== 0 || (!flat && stops[0].fareFromStart !== 0))) problems.push('The first stop is the start: time and fare 0.');
-  if (flat && price <= 0) problems.push('Enter the ticket price.');
-  for (let i = 1; i < stops.length; i++) {
-    if (stops[i].offsetMin <= stops[i - 1].offsetMin) problems.push(`${stops[i].name || `Stop ${i + 1}`} must come later than the stop before.`);
-    if (!flat && stops[i].fareFromStart < stops[i - 1].fareFromStart) problems.push(`${stops[i].name || `Stop ${i + 1}`} fare can't be lower than the stop before.`);
-  }
-
-  return (
-    <Modal
-      wide
-      title={route.stops[0]?.name ? `Edit ${routeLabel(route)}` : 'New route'}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={problems.length > 0} onClick={() => onSave({ ...route, active, flatFare: flat, stops: (flat ? flatStops(stops, price) : stops).map((s) => ({ ...s, name: s.name.trim() })) })}>
-            Save route
-          </Button>
-        </>
-      }
-    >
-      <div className="rounded-xl bg-[#f2f4f6] p-4 space-y-3">
-        <p className="text-[13px] font-bold text-[#050a44]">Ticket price</p>
-        <div className="flex gap-2">
-          {([true, false] as const).map((f) => (
-            <button
-              key={String(f)}
-              type="button"
-              aria-pressed={flat === f}
-              onClick={() => setFlat(f)}
-              className={`flex-1 min-h-10 px-2 py-1.5 rounded-lg text-[13px] font-bold border ${flat === f ? 'bg-[#050a44] text-white border-[#050a44]' : 'bg-white border-[#c7c5d1] text-[#46464f]'}`}
-            >
-              {f ? 'One price for the whole route' : 'Price by distance (per stop)'}
-            </button>
-          ))}
-        </div>
-        {flat ? (
-          <label className="block max-w-[260px]">
-            <span className="block text-[11px] font-bold text-[#686873] mb-1">Price per seat (LKR)</span>
-            <input type="number" min={0} step={50} className={inputClass} value={price} onChange={(e) => setPrice(Math.max(0, Number(e.target.value)))} aria-label="Ticket price" />
-            <span className="block text-[12px] text-[#6b6d78] mt-1">Every passenger pays this, wherever they get on or off.</span>
-          </label>
-        ) : (
-          <p className="text-[12px] text-[#46464f]">Enter each stop&apos;s fare from the first stop below. A passenger riding Kurunegala → Batticaloa pays the difference.</p>
-        )}
-      </div>
-      <p className="text-[13px] text-[#46464f]">
-        For each stop, enter how long after leaving the first stop the bus gets there{flat ? '.' : ', and the fare from the first stop.'}
-      </p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="text-left text-[11px] font-bold text-[#46464f]">
-              <th className="py-2 pr-2">Stop</th>
-              <th className="py-2 pr-2">Arrives after (h:mm)</th>
-              <th className={`py-2 pr-2 ${flat ? 'hidden' : ''}`}>Fare from start (LKR)</th>
-              <th className="py-2">
-                <span className="sr-only">Order</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {stops.map((s, i) => (
-              <tr key={i} className="align-top">
-                <td className="py-1 pr-2 min-w-[200px]">
-                  <input aria-label={`Stop ${i + 1} name`} className={inputClass} value={s.name} onChange={(e) => update(i, { name: e.target.value })} />
-                  <details className="mt-1">
-                    <summary className="text-[11px] font-bold text-[#7c5800] cursor-pointer">Where to wait{s.landmark ? ' ✓' : ''}</summary>
-                    <div className="space-y-1.5 mt-1.5">
-                      <input aria-label={`Stop ${i + 1} landmark`} className={inputClass} placeholder="Landmark, e.g. Clock tower roundabout" value={s.landmark ?? ''} onChange={(e) => update(i, { landmark: e.target.value })} />
-                      <input aria-label={`Stop ${i + 1} map pin`} className={inputClass} placeholder="Map pin: lat, lng (copy from Google Maps)" value={s.lat != null ? `${s.lat}, ${s.lng}` : ''}
-                        onChange={(e) => { const m = e.target.value.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/); update(i, m ? { lat: Number(m[1]), lng: Number(m[2]) } : { lat: undefined, lng: undefined }); }} />
-                      <input aria-label={`Stop ${i + 1} notes`} className={inputClass} placeholder="Notes, e.g. wait under the bus shelter" value={s.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value })} />
-                      <div className="flex items-center gap-2">
-                        {s.photo && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={s.photo} alt="" className="w-12 h-12 rounded object-cover border border-[#e1e2e4]" />
-                        )}
-                        <label className="text-[12px] font-bold text-[#050a44] underline cursor-pointer">
-                          {s.photo ? 'Replace photo' : 'Add photo of the spot'}
-                          <input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const f = e.target.files?.[0]; if (f) update(i, { photo: await uploadStopPhoto(f) }); }} />
-                        </label>
-                      </div>
-                    </div>
-                  </details>
-                </td>
-                <td className="py-1 pr-2">
-                  <input
-                    aria-label={`Stop ${i + 1} time from start`}
-                    type="time"
-                    className={inputClass}
-                    value={fromMinutes(s.offsetMin)}
-                    disabled={i === 0}
-                    onChange={(e) => update(i, { offsetMin: toMinutes(e.target.value || '00:00') })}
-                  />
-                </td>
-                <td className={`py-1 pr-2 ${flat ? 'hidden' : ''}`}>
-                  <input
-                    aria-label={`Stop ${i + 1} fare`}
-                    type="number"
-                    min={0}
-                    step={10}
-                    className={inputClass}
-                    value={s.fareFromStart}
-                    disabled={i === 0}
-                    onChange={(e) => update(i, { fareFromStart: Number(e.target.value) })}
-                  />
-                </td>
-                <td className="py-1 whitespace-nowrap">
-                  <Button size="sm" variant="ghost" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
-                    <ArrowUp className="w-4 h-4" />
-                  </Button>
-                  <Button size="sm" variant="ghost" aria-label="Move down" disabled={i === stops.length - 1} onClick={() => move(i, 1)}>
-                    <ArrowDown className="w-4 h-4" />
-                  </Button>
-                  <Button size="sm" variant="ghost" aria-label="Remove stop" disabled={stops.length <= 2} onClick={() => setStops((p) => p.filter((_, j) => j !== i))}>
-                    <Trash2 className="w-4 h-4 text-[#ba1a1a]" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[11px] text-[#686873]">Travel times over 24 hours aren&apos;t supported by the time picker.</p>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            const last = stops[stops.length - 1];
-            setStops((p) => [...p, { name: '', offsetMin: last.offsetMin + 30, fareFromStart: last.fareFromStart + 100 }]);
-          }}
-        >
-          <Plus className="w-4 h-4" /> Add stop at the end
-        </Button>
-        <label className="flex items-center gap-2 text-[13px] font-semibold text-[#050a44]">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="w-4 h-4 accent-[#050a44]" />
-          Route is open for booking
-        </label>
-      </div>
-      {problems.length > 0 && (
-        <ul className="text-[12px] font-semibold text-[#ba1a1a] space-y-0.5">
-          {problems.slice(0, 4).map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      )}
-    </Modal>
-  );
-}
-
-/**
- * Saving a one-price route: the last stop carries the price. The other stops'
- * figures aren't used, but are kept valid (never above the price, never going
- * down) so switching back to per-stop fares later starts from something sane.
- */
-function flatStops(stops: RouteStop[], price: number): RouteStop[] {
-  let prev = 0;
-  return stops.map((s, i) => {
-    const fare = i === 0 ? 0 : i === stops.length - 1 ? price : Math.min(price, Math.max(prev, s.fareFromStart));
-    prev = fare;
-    return { ...s, fareFromStart: fare };
-  });
 }
 
 /** "Sunday 4 October 2026": unambiguous, whatever order the date box uses. */

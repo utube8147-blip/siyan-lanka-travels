@@ -12,7 +12,7 @@
 -- last_seen_at is moved on instead, so a parked bus doesn't fill the log but
 -- the time it stood there is still known.
 --
--- Also adds route_plans: saved plans for new stops (GPS trip log → Plan & sample).
+-- Also adds route_plans: draft versions of a route, made in the route editor.
 -- Safe to run again.
 -- =============================================================================
 create table if not exists public.bus_location_log (
@@ -84,20 +84,27 @@ revoke execute on function public.gps_log_trips(date) from public, anon;
 grant execute on function public.gps_log_trips(date) to authenticated;
 
 -- ------------------------------------------------------------ route plans ---
--- Plans for new stops, made on the GPS trip log page from a trip's real road.
+-- Draft versions of a route (Routes & timetable → Edit route → Save as draft):
+-- a copy of the stops to try ideas on, not live until "Save route".
 create table if not exists public.route_plans (
   id uuid primary key default gen_random_uuid(),
-  name text not null default 'New plan',
-  schedule_id text references public.schedules (id) on delete set null,
-  travel_date date,
+  name text not null default 'Draft',
+  route_id text references public.routes (id) on delete cascade,
   stops jsonb not null default '[]',
-  detour_speed_kmh numeric not null default 25,
-  sample_km numeric not null default 1,
   notes text not null default '',
   created_by uuid default auth.uid(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Earlier drafts of this update had other columns: bring an existing table into this shape.
+alter table public.route_plans add column if not exists route_id text references public.routes (id) on delete cascade;
+alter table public.route_plans drop column if exists schedule_id;
+alter table public.route_plans drop column if exists travel_date;
+alter table public.route_plans drop column if exists detour_speed_kmh;
+alter table public.route_plans drop column if exists sample_km;
+alter table public.route_plans drop column if exists stop_edits;
+alter table public.route_plans drop column if exists bus_factor;
+create index if not exists route_plans_route on public.route_plans (route_id, updated_at desc);
 alter table public.route_plans enable row level security;
 drop policy if exists "office route plans" on public.route_plans;
 create policy "office route plans" on public.route_plans for all using (public.is_office_staff()) with check (public.is_office_staff());
