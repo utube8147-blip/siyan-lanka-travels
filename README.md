@@ -617,8 +617,8 @@ A full page with the stops on one side and a live map on the other.
   Stops without a pin get an estimate between their neighbours. While the new
   road is being worked out, the old estimates are shown faded.
 - **Times follow the road** (on by default): after you add, move, remove or
-  reorder stops, every stop's "Arrives after" time is set from the new
-  estimate, rounded to 5 minutes. Undo brings the previous times back. Switch
+  reorder stops, or change "Bus vs car time" or "Stop time", every stop's
+  "Arrives after" time is set from the new estimate, rounded to 5 minutes. Undo brings the previous times back. Switch
   it off to keep typed times; "Fill times from road" then applies it once.
   Times are typed as h:mm and can go over 24 hours.
 - **Load GPS file**: a CSV or GPX from GPS trip log (or any GPX) is drawn as the

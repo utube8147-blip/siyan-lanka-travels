@@ -274,12 +274,12 @@ function Editor({
   // ---- undo / redo ----
   // Every change first records how things were. Typing in one box counts as one
   // step (keystrokes less than a second apart are grouped).
-  type Snap = { stops: RouteStop[]; flat: boolean; price: number };
+  type Snap = { stops: RouteStop[]; flat: boolean; price: number; busFactor: number; dwell: number };
   const past = useRef<Snap[]>([]);
   const future = useRef<Snap[]>([]);
   const lastTyping = useRef<{ key: string; t: number } | null>(null);
   const [, setHistoryTick] = useState(0);
-  const snap = (): Snap => ({ stops, flat, price });
+  const snap = (): Snap => ({ stops, flat, price, busFactor, dwell });
   const record = (typingKey?: string) => {
     const now = Date.now();
     if (typingKey && lastTyping.current?.key === typingKey && now - lastTyping.current.t < 1000) {
@@ -296,6 +296,8 @@ function Editor({
     setStops(to.stops);
     setFlat(to.flat);
     setPrice(to.price);
+    setBusFactor(to.busFactor);
+    setDwell(to.dwell);
     setDirty(true);
     setSelected(null);
     setPickFor(null);
@@ -968,13 +970,22 @@ function Editor({
           <Card className="p-4 grid grid-cols-2 gap-3">
             <label className="block">
               <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Bus vs car time</span>
-              <input type="number" min={1} max={3} step={0.05} className={inputClass} value={busFactor} onChange={(e) => setBusFactor(Math.min(3, Math.max(1, Number(e.target.value) || 1.3)))} />
-              <span className="block text-[11px] text-[#686873] mt-0.5">Road times are car times; a bus is slower.</span>
+              <input type="number" min={1} max={3} step={0.05} className={inputClass} value={busFactor} onChange={(e) => {
+                  // A slower or faster bus: re-time the stops too (if "Times follow the road" is on). Undoable.
+                  record('setting:busFactor');
+                  retime.current = true;
+                  setBusFactor(Math.min(3, Math.max(1, Number(e.target.value) || 1.3)));
+                }} />
+              <span className="block text-[11px] text-[#686873] mt-0.5">Road times are car times; a bus is slower. With &ldquo;Times follow the road&rdquo; on, changing this re-times the stops.</span>
             </label>
             <label className="block">
               <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Stop time (min)</span>
-              <input type="number" min={0} max={30} className={inputClass} value={dwell} onChange={(e) => setDwell(Math.max(0, Number(e.target.value) || 0))} />
-              <span className="block text-[11px] text-[#686873] mt-0.5">At each stop on the way.</span>
+              <input type="number" min={0} max={30} className={inputClass} value={dwell} onChange={(e) => {
+                  record('setting:dwell');
+                  retime.current = true;
+                  setDwell(Math.max(0, Number(e.target.value) || 0));
+                }} />
+              <span className="block text-[11px] text-[#686873] mt-0.5">At each stop on the way. Also re-times the stops.</span>
             </label>
           </Card>
         </div>
