@@ -4,8 +4,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
+import { touchpadFriendlyWheel } from './mapWheel';
 import type { Map as LMap, LayerGroup, CircleMarker } from 'leaflet';
-import type { Gap, GpsPoint, Stop } from '@/lib/gpsLog';
+import type { Fill, Gap, GpsPoint, Stop } from '@/lib/gpsLog';
 import type { RouteStop } from '@/lib/types';
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -16,6 +17,7 @@ export function GpsRouteMap({
   stops,
   gaps,
   focus,
+  fills = [],
   className = '',
 }: {
   points: GpsPoint[];
@@ -24,6 +26,8 @@ export function GpsRouteMap({
   gaps: Gap[];
   /** Index into `points` to highlight (time slider / table click). */
   focus: number | null;
+  /** Big jumps between points, with the likely road between them. */
+  fills?: Fill[];
   className?: string;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -32,13 +36,15 @@ export function GpsRouteMap({
   const focusMarker = useRef<CircleMarker | null>(null);
   const fittedFor = useRef<string>('');
   const [ready, setReady] = useState(false);
+  const unWheel = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const L = (await import('leaflet')).default;
       if (cancelled || !el.current || map.current) return;
-      map.current = L.map(el.current, { zoomControl: true, scrollWheelZoom: true }).setView([7.6, 80.9], 7);
+      map.current = L.map(el.current, { zoomControl: true, scrollWheelZoom: false, zoomSnap: 0.5 }).setView([7.6, 80.9], 7);
+      unWheel.current = touchpadFriendlyWheel(map.current);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -48,6 +54,7 @@ export function GpsRouteMap({
     })();
     return () => {
       cancelled = true;
+      unWheel.current?.();
       map.current?.remove();
       map.current = null;
       focusMarker.current = null;
@@ -62,7 +69,7 @@ export function GpsRouteMap({
       draw((await import('leaflet')).default);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, points, routeStops, stops, gaps]);
+  }, [ready, points, routeStops, stops, gaps, fills]);
 
   useEffect(() => {
     (async () => {
@@ -104,8 +111,11 @@ export function GpsRouteMap({
       return;
     }
 
-    // The road actually driven, split where the phone went quiet (gaps are drawn dashed).
+    // The road actually driven. Where the phone went quiet, the line breaks:
+    // - a big jump with a likely road from the routing server: that road, dotted red ("estimated");
+    // - otherwise a straight dashed red line.
     const gapStarts = new Set(gaps.map((g) => g.from));
+    const fillTo = new Map(fills.map((f) => [f.to, f]));
     let seg: [number, number][] = [];
     const flush = () => {
       if (seg.length > 1) {
@@ -115,10 +125,22 @@ export function GpsRouteMap({
     };
     points.forEach((p, i) => {
       seg.push([p.lat, p.lng]);
-      if (gapStarts.has(p.at) && points[i + 1]) {
+      const next = points[i + 1];
+      if (!next) return;
+      const fill = fillTo.get(i + 1);
+      const gap = gaps.find((g) => g.from === p.at);
+      const quiet = gap ? `No GPS for ${gap.minutes} min` : fill ? `No GPS for ${fill.minutes} min` : '';
+      if (fill?.path) {
         flush();
-        L.polyline([[p.lat, p.lng], [points[i + 1].lat, points[i + 1].lng]], { color: '#ba1a1a', weight: 3, opacity: 0.8, dashArray: '4 8' })
-          .bindTooltip(`No GPS for ${gaps.find((g) => g.from === p.at)?.minutes ?? '?'} min`)
+        L.polyline(fill.path, { color: '#ffffff', weight: 7, opacity: 0.6, interactive: false }).addTo(layer.current!);
+        L.polyline(fill.path, { color: '#ba1a1a', weight: 4, opacity: 0.9, dashArray: '1 8', lineCap: 'round' })
+          .bindTooltip(`${quiet}: likely road ${fill.roadKm!.toFixed(1)} km (estimated, ${fill.straightKm.toFixed(1)} km straight)`, { sticky: true })
+          .addTo(layer.current!);
+        seg = [];
+      } else if (fill || gapStarts.has(p.at)) {
+        flush();
+        L.polyline([[p.lat, p.lng], [next.lat, next.lng]], { color: '#ba1a1a', weight: 3, opacity: 0.8, dashArray: '4 8' })
+          .bindTooltip(fill ? `${quiet}: ${fill.straightKm.toFixed(1)} km straight (no road found yet)` : quiet, { sticky: true })
           .addTo(layer.current!);
         seg = [];
       }

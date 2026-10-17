@@ -15,10 +15,11 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, ArrowUp, Crosshair, FileUp, Loader2, MapPin, Plus, Search, Trash2, Wand2, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, Crosshair, Share2, Eye, EyeOff, FileUp, Loader2, MapPin, Plus, Redo2, RotateCcw, Search, Trash2, Undo2, Wand2, X } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { km } from '@/lib/extras';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
-import { compressPhoto, formatDuration, genId, routeLabel } from '@/lib/trips';
+import { compressPhoto, formatDuration, formatTime12, genId, routeLabel } from '@/lib/trips';
 import { uuid } from '@/lib/uuid';
 import type { Route, RouteStop } from '@/lib/types';
 import { fetchRoadRoute, type RoadRoute } from '@/lib/routing';
@@ -28,8 +29,11 @@ import {
   distanceToLine,
   lineLengthKm,
   loadPlans,
-  offsetsFromLegs,
+  arrivalEstimates,
+  roundedOffsets,
   parseGpsFile,
+  countJumps,
+  fillGpsGaps,
   placeName,
   savePlan,
   searchPlaces,
@@ -38,6 +42,8 @@ import {
   type RoutePlan,
 } from '@/lib/routeEditor';
 import { Button, Card, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { ShareRouteDialog } from '@/components/admin/ShareRouteDialog';
+import { GoogleMapsLinks } from '@/components/GoogleMapsLinks';
 
 const RouteEditorMap = dynamic(() => import('@/components/admin/RouteEditorMap').then((m) => m.RouteEditorMap), {
   ssr: false,
@@ -78,6 +84,7 @@ const dur = (m: number) => formatDuration(Math.max(0, Math.round(m)));
 function useRoad(stops: RouteStop[], delay = 600) {
   const key = coordsKey(stops);
   const [road, setRoad] = useState<RoadRoute | null>(null);
+  const [roadKey, setRoadKey] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -93,6 +100,7 @@ function useRoad(stops: RouteStop[], delay = 600) {
         if (ctl.signal.aborted) return;
         setLoading(false);
         setRoad(r.route);
+        setRoadKey(key);
         setError(r.error ?? null);
       });
     }, delay);
@@ -102,7 +110,8 @@ function useRoad(stops: RouteStop[], delay = 600) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return { road, loading, error };
+  // fresh: the road is for the stops as they are now (not the ones before the last change).
+  return { road, loading, error, fresh: !!road && roadKey === key };
 }
 
 export default function RouteEditorPage() {
@@ -134,6 +143,7 @@ export default function RouteEditorPage() {
       key={base.id}
       route={base}
       savedRoute={isNew ? null : saved ?? null}
+      departures={data.schedules.filter((sc) => sc.routeId === base.id).sort((a, b) => Number(b.active) - Number(a.active) || a.departure.localeCompare(b.departure)).map((sc) => sc.departure)}
       onSave={async (r) => {
         const res = await saveRoute(r);
         if (!res.ok) {
@@ -161,12 +171,15 @@ function BackLink() {
 function Editor({
   route,
   savedRoute,
+  departures,
   onSave,
   toast,
   Toast,
 }: {
   route: Route;
   savedRoute: Route | null;
+  /** "HH:MM" departures of this route (active first), for clock times. */
+  departures: string[];
   onSave: (r: Route) => Promise<boolean>;
   toast: (msg: string, kind?: 'ok' | 'error') => void;
   Toast: () => React.ReactNode;
@@ -181,6 +194,18 @@ function Editor({
   const [busFactor, setBusFactor] = useState(1.3);
   const [dwell, setDwell] = useState(2);
   const [gps, setGps] = useState<GpsFile | null>(null);
+  const [gpsShown, setGpsShown] = useState(true);
+  // Counts files loaded: the map frames a new file once, but doesn't jump when one is hidden or removed.
+  const [gpsLoads, setGpsLoads] = useState(0);
+  const [gpsFill, setGpsFill] = useState<{ done: number; total: number; filling: boolean } | null>(null);
+  const gpsAbort = useRef<AbortController | null>(null);
+  /** Unload the GPS file (stops placed from it stay where they are). */
+  const removeGps = () => {
+    gpsAbort.current?.abort();
+    setGps(null);
+    setGpsFill(null);
+    setGpsShown(true);
+  };
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   // Search: per stop (index) or for a new stop ('new').
@@ -192,6 +217,42 @@ function Editor({
   const [plans, setPlans] = useState<RoutePlan[]>([]);
   const [planId, setPlanId] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
+  // The map follows the stop you're looking at in the list while you scroll.
+  const [follow, setFollow] = useState(true);
+  const [inView, setInView] = useState<number | null>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    if (!follow) {
+      setInView(null);
+      return;
+    }
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const items = listRef.current?.querySelectorAll<HTMLElement>('[data-stop]');
+        if (!items?.length) return;
+        // The first stop whose card reaches below the top fifth of the screen.
+        const line = window.innerHeight * 0.2;
+        let found: number | null = null;
+        for (const el of items) {
+          if (el.getBoundingClientRect().bottom > line) {
+            found = Number(el.dataset.stop);
+            break;
+          }
+        }
+        setInView(found);
+      });
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [follow]);
 
   useEffect(() => {
     if (!savedRoute) return;
@@ -210,11 +271,82 @@ function Editor({
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  const change = (fn: (s: RouteStop[]) => RouteStop[]) => {
-    setStops(fn);
+  // ---- undo / redo ----
+  // Every change first records how things were. Typing in one box counts as one
+  // step (keystrokes less than a second apart are grouped).
+  type Snap = { stops: RouteStop[]; flat: boolean; price: number };
+  const past = useRef<Snap[]>([]);
+  const future = useRef<Snap[]>([]);
+  const lastTyping = useRef<{ key: string; t: number } | null>(null);
+  const [, setHistoryTick] = useState(0);
+  const snap = (): Snap => ({ stops, flat, price });
+  const record = (typingKey?: string) => {
+    const now = Date.now();
+    if (typingKey && lastTyping.current?.key === typingKey && now - lastTyping.current.t < 1000) {
+      lastTyping.current.t = now;
+      return;
+    }
+    lastTyping.current = typingKey ? { key: typingKey, t: now } : null;
+    past.current.push(snap());
+    if (past.current.length > 200) past.current.shift();
+    future.current = [];
+    setHistoryTick((n) => n + 1);
+  };
+  const restore = (to: Snap) => {
+    setStops(to.stops);
+    setFlat(to.flat);
+    setPrice(to.price);
+    setDirty(true);
+    setSelected(null);
+    setPickFor(null);
+    lastTyping.current = null;
+    retime.current = false; // undo/redo brings back the times as they were
+    setHistoryTick((n) => n + 1);
+  };
+  const undo = () => {
+    const to = past.current.pop();
+    if (!to) return;
+    future.current.push(snap());
+    restore(to);
+  };
+  const redo = () => {
+    const to = future.current.pop();
+    if (!to) return;
+    past.current.push(snap());
+    restore(to);
+  };
+  // Ctrl/⌘+Z, Ctrl/⌘+Shift+Z, Ctrl+Y. Inside a text box, the box's own undo is left alone.
+  const keys = useRef({ undo, redo });
+  keys.current = { undo, redo };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) keys.current.undo();
+      else if ((k === 'z' && e.shiftKey) || k === 'y') keys.current.redo();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Set when stops are added, moved, removed or reordered: the next fresh road estimate re-times them (if "Times follow the road" is on).
+  const retime = useRef(false);
+  const change = (fn: (s: RouteStop[]) => RouteStop[], typingKey?: string) => {
+    record(typingKey);
+    const next = fn(stops);
+    if (layout(next) !== layout(stops)) retime.current = true;
+    setStops(next);
     setDirty(true);
   };
-  const update = (i: number, patch: Partial<RouteStop>) => change((p) => p.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  const TYPED: (keyof RouteStop)[] = ['name', 'landmark', 'notes', 'fareFromStart'];
+  const update = (i: number, patch: Partial<RouteStop>) => {
+    const fields = Object.keys(patch) as (keyof RouteStop)[];
+    change((p) => p.map((s, j) => (j === i ? { ...s, ...patch } : s)), fields.every((k) => TYPED.includes(k)) ? `${i}:${fields.join(',')}` : undefined);
+  };
   const move = (i: number, d: -1 | 1) =>
     change((p) => {
       const n = [...p];
@@ -226,24 +358,55 @@ function Editor({
     setSelected(null);
   };
 
-  /** A new stop at a place: put where it fits best, with a time and fare between its neighbours. */
-  const insertStop = (lat: number, lng: number, name: string) => {
+  /** Where a new stop fits best: the gap it adds the least distance to (or before the last stop). */
+  const bestAt = (lat: number, lng: number) => (stops.length >= 2 && stops.every((s) => s.lat != null) ? bestInsertIndex(stops, { lat, lng }) : Math.max(1, stops.length - 1));
+
+  /**
+   * Adds a stop at position `at` (0 = new first stop, stops.length = new last stop),
+   * with a time and fare between its neighbours.
+   */
+  const insertStop = (lat: number, lng: number, name: string, at: number) => {
     const p = stops;
-    const pinned = p.every((s) => s.lat != null);
-    // Stops with a pin: where it adds the least distance. Otherwise: before the last stop.
-    const at = pinned && p.length >= 2 ? bestInsertIndex(p, { lat, lng }) : Math.max(1, p.length - 1);
     const prev = p[at - 1];
     const next = p[at];
-    const offsetMin = next ? Math.round((prev.offsetMin + next.offsetMin) / 2) : (prev?.offsetMin ?? 0) + 30;
-    const fareFromStart = next ? Math.round((prev.fareFromStart + next.fareFromStart) / 2 / 10) * 10 : (prev?.fareFromStart ?? 0) + 100;
-    const n = [...p];
-    n.splice(at, 0, { name, offsetMin, fareFromStart, lat, lng });
+    let n: RouteStop[];
+    if (at === 0) {
+      // New start: it leaves at 0:00, everything else is 30 min later.
+      n = [{ name, offsetMin: 0, fareFromStart: 0, lat, lng }, ...p.map((s) => ({ ...s, offsetMin: s.offsetMin + 30 }))];
+    } else {
+      const offsetMin = next ? Math.round((prev.offsetMin + next.offsetMin) / 2) : prev.offsetMin + 30;
+      const fareFromStart = next ? Math.round((prev.fareFromStart + next.fareFromStart) / 2 / 10) * 10 : prev.fareFromStart + 100;
+      n = [...p];
+      n.splice(at, 0, { name, offsetMin, fareFromStart, lat, lng });
+    }
     change(() => n);
     setSelected(at);
     return at;
   };
 
-  const onMapClick = async (lat: number, lng: number) => {
+  // A place clicked on the map or found by name waits here until you say where it goes.
+  const [pending, setPending] = useState<{ lat: number; lng: number; name: string; at: number; best: number } | null>(null);
+  const propose = async (lat: number, lng: number, name: string | null) => {
+    const best = bestAt(lat, lng);
+    setPending({ lat: round(lat), lng: round(lng), name: name ?? 'New stop', at: best, best });
+    if (name == null) {
+      const found = await placeName(lat, lng);
+      if (found) setPending((cur) => (cur && cur.lat === round(lat) && cur.lng === round(lng) && cur.name === 'New stop' ? { ...cur, name: uniqueName(stops, found) } : cur));
+    }
+  };
+  const confirmPending = () => {
+    if (!pending) return;
+    insertStop(pending.lat, pending.lng, uniqueName(stops, pending.name.trim() || 'New stop'), pending.at);
+    setPending(null);
+  };
+  useEffect(() => {
+    if (!pending) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPending(null);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pending]);
+
+  const onMapClick = (lat: number, lng: number) => {
     if (pickFor != null) {
       update(pickFor, { lat: round(lat), lng: round(lng) });
       setSelected(pickFor);
@@ -251,9 +414,7 @@ function Editor({
       return;
     }
     if (!clickAdds) return;
-    const at = insertStop(round(lat), round(lng), 'New stop');
-    const name = await placeName(lat, lng);
-    if (name) setStops((p) => p.map((s, j) => (j === at && s.name === 'New stop' ? { ...s, name: uniqueName(p, name) } : s)));
+    propose(lat, lng, null);
   };
 
   const runSearch = async () => {
@@ -265,7 +426,7 @@ function Editor({
     else if (!r.places.length) toast('No place found with that name. Try a nearby town, or pick it on the map.', 'error');
   };
   const choosePlace = (pl: Place) => {
-    if (searchFor === 'new') insertStop(round(pl.lat), round(pl.lng), uniqueName(stops, pl.name));
+    if (searchFor === 'new') propose(pl.lat, pl.lng, uniqueName(stops, pl.name));
     else if (typeof searchFor === 'number') {
       update(searchFor, { lat: round(pl.lat), lng: round(pl.lng), ...(stops[searchFor].name.trim() ? {} : { name: pl.name }) });
       setSelected(searchFor);
@@ -284,17 +445,67 @@ function Editor({
   const edited = useRoad(stops);
   const savedRoad = useRoad(savedRoute?.stops ?? [], 0);
   const allPinned = stops.length >= 2 && stops.every((s) => s.lat != null);
-  const legs = allPinned && edited.road && edited.road.legs.length === stops.length - 1 ? edited.road.legs : null;
-  const busTime = (r: RoadRoute | null, n: number) => (r ? r.durationMin * busFactor + Math.max(0, n - 2) * dwell : null);
-  const editedTime = busTime(legs ? edited.road : null, stops.length);
+  // Road estimates for every stop (stops without a pin are spread between their neighbours).
+  const estimates = useMemo(
+    () => (edited.fresh && edited.road ? arrivalEstimates(stops, edited.road.legs, busFactor, dwell) : null),
+    [edited.fresh, edited.road, stops, busFactor, dwell],
+  );
+  // While the road for the latest change is on its way, keep showing the last estimates (faded).
+  const lastEstimates = useRef<number[] | null>(null);
+  if (estimates) lastEstimates.current = estimates;
+  const shownEst = estimates ?? (lastEstimates.current && lastEstimates.current.length === stops.length ? lastEstimates.current : null);
+  const estStale = !estimates && !!shownEst;
+  const roadOffsets = useMemo(() => (estimates ? roundedOffsets(estimates) : null), [estimates]);
+  // Road distance / time for the leg into stop i, when it and the stop before both have pins.
+  const legInto = (i: number) => {
+    if (!edited.fresh || !edited.road) return null;
+    const pinned = stops.map((s, j) => (s.lat != null ? j : -1)).filter((j) => j >= 0);
+    const k = pinned.indexOf(i);
+    return k > 0 && pinned[k - 1] === i - 1 ? edited.road.legs[k - 1] ?? null : null;
+  };
+  const editedTime = estimates ? estimates[estimates.length - 1] : null;
   const savedPinned = savedRoute ? located(savedRoute.stops).length === savedRoute.stops.length : false;
-  const savedTime = savedPinned ? busTime(savedRoad.road, savedRoute!.stops.length) : null;
-  const roadOffsets = useMemo(() => (legs ? offsetsFromLegs(legs, busFactor, dwell) : null), [legs, busFactor, dwell]);
+  const savedTime = savedPinned && savedRoad.road && savedRoad.fresh ? arrivalEstimates(savedRoute!.stops, savedRoad.road.legs, busFactor, dwell)?.at(-1) ?? null : null;
+
+  // "Times follow the road": after you add, move, remove or reorder stops, every stop's time is set from the new estimate.
+  const [autoTimes, setAutoTimes] = useState(true);
+  useEffect(() => {
+    if (!autoTimes || !retime.current || !roadOffsets || roadOffsets.length !== stops.length) return;
+    retime.current = false;
+    if (stops.every((s, i) => s.offsetMin === roadOffsets[i])) return;
+    setStops((p) => (p.length === roadOffsets.length ? p.map((s, i) => ({ ...s, offsetMin: roadOffsets[i] })) : p));
+    setDirty(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roadOffsets, autoTimes]);
+
+  // Clock times on one of this route's departures.
+  const [clockDep, setClockDep] = useState(departures[0] ?? '');
+  const [sharing, setSharing] = useState(false);
   const changedFromSaved = !!savedRoute && JSON.stringify(savedRoute.stops.map(pick)) !== JSON.stringify(stops.map(pick));
+
+  /**
+   * Turn the route round: last stop first. Times and fares are mirrored (a stop
+   * 2:05 from the start is now 2:05 from the end), and with "Times follow the
+   * road" they are then re-timed from the road in the new direction. Undoable.
+   */
+  const reverseStops = () => {
+    if (
+      departures.length > 0 &&
+      !window.confirm(
+        `This route has ${departures.length} departure${departures.length === 1 ? '' : 's'} in the timetable. Saving it reversed changes the direction those buses run, for passengers who already booked too.\n\nTo run the other direction as well, use "Create return route" on the Routes & timetable page instead.\n\nReverse this route anyway? (You can undo it, and nothing changes until you save.)`,
+      )
+    )
+      return;
+    change((p) => {
+      const last = p[p.length - 1];
+      return [...p].reverse().map((s) => ({ ...s, offsetMin: last.offsetMin - s.offsetMin, fareFromStart: last.fareFromStart - s.fareFromStart }));
+    });
+    setSelected(null);
+    toast('Route reversed. Undo brings it back.', 'ok');
+  };
 
   const fillTimes = () => {
     if (!roadOffsets) return;
-    if (!window.confirm('Set every stop’s "arrives after" time from the road estimate? You can still change any of them after.')) return;
     change((p) => p.map((s, i) => ({ ...s, offsetMin: roadOffsets[i] })));
     toast('Times filled from the road estimate', 'ok');
   };
@@ -303,8 +514,19 @@ function Editor({
   const loadGps = async (file: File) => {
     const parsed = parseGpsFile(file.name, await file.text());
     if (!parsed) return toast('No GPS points found in that file. Use the CSV or GPX from GPS trip log, or any GPX track.', 'error');
+    gpsAbort.current?.abort();
     setGps(parsed);
+    setGpsShown(true);
+    setGpsLoads((n) => n + 1);
     toast(`Loaded ${parsed.line.length.toLocaleString()} points from ${file.name}`, 'ok');
+    // Gaps of more than 2 km still in the file (e.g. exported before they were filled, or from another app): fill them with the likely road.
+    const total = countJumps(parsed);
+    setGpsFill(total ? { done: 0, total, filling: true } : null);
+    if (!total) return;
+    const ctl = new AbortController();
+    gpsAbort.current = ctl;
+    await fillGpsGaps(parsed, (f, done) => { if (!ctl.signal.aborted) { setGps(f); setGpsFill({ done, total, filling: done < total }); } }, ctl.signal);
+    if (!ctl.signal.aborted) setGpsFill((g) => (g ? { ...g, filling: false } : g));
   };
 
   // ---- checks (same rules as before) ----
@@ -345,6 +567,7 @@ function Editor({
     setPlanId(id);
     const src = id ? plans.find((p) => p.id === id)?.stops : savedRoute?.stops;
     if (!src) return;
+    record();
     setStops(structuredClone(src));
     setPrice(src[src.length - 1]?.fareFromStart ?? price);
     setSelected(null);
@@ -371,6 +594,11 @@ function Editor({
         actions={
           <>
             {savedRoute && (
+              <Button variant="secondary" onClick={() => setSharing(true)} title="A private link to a read-only page with this route as it is now">
+                <Share2 className="w-4 h-4" /> Share
+              </Button>
+            )}
+            {savedRoute && (
               <Button variant="secondary" onClick={saveDraft}>
                 Save as draft
               </Button>
@@ -384,7 +612,7 @@ function Editor({
 
       {/* Summary: as edited vs saved */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <Stat label="Road distance" value={legs ? `${edited.road!.distanceKm.toFixed(1)} km` : edited.loading ? '…' : '—'} sub={savedRoute && legs && savedRoad.road && savedPinned ? `${signed(edited.road!.distanceKm - savedRoad.road.distanceKm, 'km', 1)} vs saved` : allPinned ? 'by road' : `${unpinned} stop${unpinned === 1 ? '' : 's'} without a map pin`} />
+        <Stat label="Road distance" value={edited.fresh && edited.road ? `${edited.road.distanceKm.toFixed(1)} km${allPinned ? '' : '*'}` : edited.loading ? '…' : '—'} sub={savedRoute && edited.fresh && edited.road && savedRoad.road && savedPinned && allPinned ? `${signed(edited.road!.distanceKm - savedRoad.road.distanceKm, 'km', 1)} vs saved` : allPinned ? 'by road' : `*through pinned stops · ${unpinned} without a pin`} />
         <Stat label="Bus time (road estimate)" value={editedTime != null ? dur(editedTime) : '—'} sub={savedTime != null && editedTime != null ? `${signed(editedTime - savedTime, 'min')} vs saved` : `road × ${busFactor} + ${dwell} min a stop`} />
         <Stat label="Timetable end to end" value={dur(stops[stops.length - 1]?.offsetMin ?? 0)} sub={editedTime != null ? `${signed((stops[stops.length - 1]?.offsetMin ?? 0) - editedTime, 'min')} vs road estimate` : 'from the times below'} />
         <Stat label="Stops" value={String(stops.length)} sub={savedRoute ? (changedFromSaved ? `${signed(stops.length - savedRoute.stops.length, 'vs saved')}` : 'same as saved') : 'new route'} />
@@ -426,7 +654,7 @@ function Editor({
                   key={String(f)}
                   type="button"
                   aria-pressed={flat === f}
-                  onClick={() => { setFlat(f); setDirty(true); }}
+                  onClick={() => { if (flat !== f) record(); setFlat(f); setDirty(true); }}
                   className={`flex-1 min-h-10 px-2 py-1.5 rounded-lg text-[13px] font-bold border ${flat === f ? 'bg-[#050a44] text-white border-[#050a44]' : 'bg-white border-[#c7c5d1] text-[#46464f]'}`}
                 >
                   {f ? 'One price for the whole route' : 'Price by distance (per stop)'}
@@ -436,7 +664,7 @@ function Editor({
             {flat ? (
               <label className="flex flex-wrap items-center gap-3">
                 <span className="text-[12px] font-bold text-[#46464f]">Price per seat (LKR)</span>
-                <input type="number" min={0} step={50} className={`${inputClass} !w-36`} value={price} onChange={(e) => { setPrice(Math.max(0, Number(e.target.value))); setDirty(true); }} aria-label="Ticket price" />
+                <input type="number" min={0} step={50} className={`${inputClass} !w-36`} value={price} onChange={(e) => { record('price'); setPrice(Math.max(0, Number(e.target.value))); setDirty(true); }} aria-label="Ticket price" />
               </label>
             ) : (
               <p className="text-[12px] text-[#46464f]">Each stop&apos;s fare from the first stop is set below. A passenger pays the difference between their two stops.</p>
@@ -449,22 +677,45 @@ function Editor({
                 <h2 className="text-[16px] font-semibold text-[#050a44]">Stops</h2>
                 <p className="text-[12px] text-[#6b6d78]">&ldquo;Arrives after&rdquo; is the time from leaving the first stop.</p>
               </div>
-              <Button size="sm" variant="secondary" disabled={!roadOffsets} onClick={fillTimes} title={roadOffsets ? '' : 'Every stop needs a map pin first'}>
-                <Wand2 className="w-3.5 h-3.5" /> Fill times from road
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="secondary" disabled={stops.length < 2} onClick={reverseStops} title="Last stop first: turn this route round (undoable)">
+                  <ArrowUpDown className="w-3.5 h-3.5" /> Reverse order
+                </Button>
+                <label className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#050a44]" title="When you add, move, remove or reorder stops, every stop's time is set from the road estimate (undo brings the old times back)">
+                  <input type="checkbox" className="w-4 h-4 accent-[#050a44]" checked={autoTimes} onChange={(e) => { setAutoTimes(e.target.checked); if (e.target.checked) retime.current = true; }} />
+                  Times follow the road
+                </label>
+                {!autoTimes && (
+                  <Button size="sm" variant="secondary" disabled={!roadOffsets} onClick={fillTimes} title={roadOffsets ? '' : 'The first and last stops need a map pin'}>
+                    <Wand2 className="w-3.5 h-3.5" /> Fill times from road
+                  </Button>
+                )}
+              </div>
             </div>
-            <ol>
+            {departures.length > 0 && (
+              <div className="px-4 py-2 border-b border-[#edeef0] flex flex-wrap items-center gap-2 text-[12px] text-[#46464f]">
+                <span className="font-bold">Clock times for the</span>
+                <select className={`${inputClass} !w-auto !py-1`} value={clockDep} onChange={(e) => setClockDep(e.target.value)} aria-label="Departure for clock times">
+                  {departures.filter((d, i, a) => a.indexOf(d) === i).map((d) => (
+                    <option key={d} value={d}>{formatTime12(d)}</option>
+                  ))}
+                  <option value="">(no clock times)</option>
+                </select>
+                <span>departure</span>
+              </div>
+            )}
+            <ol ref={listRef}>
               {stops.map((s, i) => {
-                const leg = legs && i > 0 ? legs[i - 1] : null;
-                const est = roadOffsets?.[i];
-                const off = est != null && i > 0 ? s.offsetMin - est : null;
-                const fromGps = gps && s.lat != null ? distanceToLine(gps.line, { lat: s.lat, lng: s.lng! }) : null;
+                const leg = i > 0 ? legInto(i) : null;
+                const est = shownEst?.[i];
+                const off = est != null && i > 0 && !estStale ? s.offsetMin - est : null;
+                const fromGps = gps && gpsShown && s.lat != null ? distanceToLine(gps.line, { lat: s.lat, lng: s.lng! }) : null;
                 const end = i === 0 || i === stops.length - 1;
                 return (
-                  <li key={i}>
+                  <li key={i} data-stop={i}>
                     {i > 0 && (
                       <div className="pl-[30px] py-1 text-[11px] font-semibold text-[#6b6d78] tabular-nums border-l-2 border-dashed border-[#c7c5d1] ml-[27px]">
-                        {leg ? `${leg.km.toFixed(1)} km · ${dur(leg.min * busFactor)} by road` : edited.loading ? '…' : ''}
+                        {leg ? `${leg.km.toFixed(1)} km · ${dur(leg.min * busFactor)} by road` : edited.loading ? 'working out the road…' : ''}
                       </div>
                     )}
                     <div className={`px-4 py-3 ${selected === i ? 'bg-[#feb700]/10' : ''}`} onFocus={() => setSelected(i)}>
@@ -510,9 +761,12 @@ function Editor({
                               </label>
                             )}
                             {est != null && i > 0 && (
-                              <p className="text-[11px] text-[#6b6d78] pb-2">
+                              <p className={`text-[11px] text-[#6b6d78] pb-2 transition-opacity ${estStale ? 'opacity-40' : ''}`} aria-live="polite">
                                 Road estimate <b className="text-[#050a44] tabular-nums">{hmm(est)}</b>
-                                {off != null && Math.abs(off) >= 15 && <span className={`font-semibold ${off < 0 ? 'text-[#ba1a1a]' : 'text-[#7c5800]'}`}> ({signed(off, 'min')})</span>}
+                                {clockDep && <> · arrives <b className="text-[#050a44] tabular-nums">≈ {clock(clockDep, est)}</b></>}
+                                {s.lat == null && ' (no pin: between its neighbours)'}
+                                {off != null && Math.abs(off) >= 15 && <span className={`font-semibold ${off < 0 ? 'text-[#ba1a1a]' : 'text-[#7c5800]'}`}> ({signed(off, 'min')} vs timetable)</span>}
+                                {estStale && ' · updating…'}
                               </p>
                             )}
                           </div>
@@ -603,12 +857,57 @@ function Editor({
                   </button>
                 ))}
               </div>
+              <div className="inline-flex gap-1" role="group" aria-label="Undo and redo">
+                <Button size="sm" variant="secondary" disabled={!past.current.length} onClick={undo} title="Undo (Ctrl+Z)" aria-label="Undo">
+                  <Undo2 className="w-3.5 h-3.5" /> Undo
+                </Button>
+                <Button size="sm" variant="secondary" disabled={!future.current.length} onClick={redo} title="Redo (Ctrl+Shift+Z or Ctrl+Y)" aria-label="Redo">
+                  <Redo2 className="w-3.5 h-3.5" /> Redo
+                </Button>
+              </div>
+              {savedRoute && changedFromSaved && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  title="Back to the saved route (can be undone)"
+                  onClick={() => {
+                    record();
+                    setStops(structuredClone(savedRoute.stops));
+                    setFlat(savedRoute.flatFare !== false);
+                    setPrice(savedRoute.stops[savedRoute.stops.length - 1]?.fareFromStart ?? price);
+                    setSelected(null);
+                    setDirty(false);
+                  }}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Back to saved
+                </Button>
+              )}
+              <GoogleMapsLinks stops={stops} />
               <Button size="sm" variant="secondary" onClick={() => fileInput.current?.click()}>
                 <FileUp className="w-3.5 h-3.5" /> {gps ? 'Change GPS file' : 'Load GPS file'}
               </Button>
+              {gps && (
+                <>
+                  <Button size="sm" variant="secondary" onClick={() => setGpsShown((v) => !v)} aria-pressed={!gpsShown} title={gpsShown ? 'Hide the GPS track (keep it loaded)' : 'Show the GPS track again'}>
+                    {gpsShown ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />} {gpsShown ? 'Hide GPS' : 'Show GPS'}
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={removeGps} title="Remove the GPS track from the map. Your stops stay where you put them.">
+                    <X className="w-3.5 h-3.5" /> Remove GPS
+                  </Button>
+                </>
+              )}
               <input ref={fileInput} type="file" accept=".gpx,.csv,application/gpx+xml,text/csv" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) loadGps(f); e.target.value = ''; }} />
               {(edited.loading || savedRoad.loading) && <Loader2 className="w-4 h-4 animate-spin text-[#6b6d78]" aria-label="Updating the road route" />}
             </div>
+            {pending && (
+              <PendingPanel
+                pending={pending}
+                stops={stops}
+                onChange={(patch) => setPending((cur) => (cur ? { ...cur, ...patch } : cur))}
+                onAdd={confirmPending}
+                onCancel={() => setPending(null)}
+              />
+            )}
             {pickFor != null && (
               <p className="mx-1 mb-2 rounded-lg bg-[#feb700]/20 px-3 py-2 text-[12px] font-bold text-[#050a44]">
                 Click the map to place {stops[pickFor]?.name || `stop ${pickFor + 1}`}.{' '}
@@ -620,25 +919,50 @@ function Editor({
               selected={selected}
               editedRoad={edited.road?.path}
               savedRoad={changedFromSaved ? savedRoad.road?.path : null}
-              gps={gps?.line}
+              gps={gps && gpsShown ? { line: gps.line, est: gps.est } : null}
               picking={pickFor != null || clickAdds}
+              follow={follow ? inView : null}
+              pending={
+                pending
+                  ? {
+                      lat: pending.lat,
+                      lng: pending.lng,
+                      prev: pinOf(stops[pending.at - 1]),
+                      next: pinOf(stops[pending.at]),
+                    }
+                  : null
+              }
+              onMovePending={(lat, lng) =>
+                setPending((cur) => {
+                  if (!cur) return cur;
+                  const best = bestAt(lat, lng);
+                  // Still on the suggested position? Keep following the best fit.
+                  return { ...cur, lat: round(lat), lng: round(lng), best, at: cur.at === cur.best ? best : cur.at };
+                })
+              }
               onMoveStop={(i, lat, lng) => { update(i, { lat: round(lat), lng: round(lng) }); setSelected(i); }}
               onSelect={setSelected}
               onMapClick={onMapClick}
-              fitKey={`${route.id}:${planId}:${gps?.name ?? ''}`}
+              fitKey={`${route.id}:${planId}:${gpsLoads}`}
               className="h-[420px] xl:h-[calc(100vh-260px)] xl:min-h-[480px]"
             />
             <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 pt-2 text-[12px] text-[#46464f]">
               <span><i className="inline-block w-5 h-1.5 align-middle rounded bg-[#1f7a3a] mr-1" />Route as edited</span>
-              {changedFromSaved && <span><i className="inline-block w-5 h-1 align-middle rounded bg-[#050a44]/50 mr-1" />Saved route</span>}
+              {changedFromSaved && <span><i className="inline-block w-5 align-middle border-t-[3px] border-dashed border-[#6b6d78] mr-1" />Saved route</span>}
               {gps && (
                 <span className="inline-flex items-center gap-1">
                   <i className="inline-block w-5 h-1 align-middle rounded bg-[#feb700] mr-1" />
-                  Road driven: {gps.name} · {lineLengthKm(gps.line).toFixed(1)} km
-                  <button aria-label="Remove GPS file" onClick={() => setGps(null)} className="ml-0.5"><X className="w-3.5 h-3.5" /></button>
+                  Road driven: {gps.name} · {lineLengthKm(gps.line).toFixed(1)} km{gpsShown ? '' : ' (hidden)'}
+                  {gps.est.some(Boolean) && <span className="inline-flex items-center"><i className="inline-block w-4 align-middle border-t-[3px] border-dotted border-[#ba1a1a] mx-1" />estimated road in gaps</span>}
+                  {gpsFill?.filling && <span className="text-[#6b6d78]"> · filling gaps over 2 km… {gpsFill.done}/{gpsFill.total}</span>}
+                  <button aria-label="Remove GPS file" onClick={removeGps} className="ml-0.5"><X className="w-3.5 h-3.5" /></button>
                 </span>
               )}
-              <span className="text-[#6b6d78]">Drag a pin to move a stop.</span>
+              <label className="inline-flex items-center gap-1.5 font-semibold text-[#050a44]">
+                <input type="checkbox" className="w-3.5 h-3.5 accent-[#050a44]" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
+                Map follows the list
+              </label>
+              <span className="text-[#6b6d78]">Scroll or swipe to move the map · pinch or Ctrl+scroll to zoom · drag a pin to move a stop.</span>
             </div>
           </Card>
           <Card className="p-4 grid grid-cols-2 gap-3">
@@ -655,8 +979,90 @@ function Editor({
           </Card>
         </div>
       </div>
+      {sharing && savedRoute && (
+        <ShareRouteDialog
+          routeId={savedRoute.id}
+          defaultTitle={plans.find((x) => x.id === planId)?.name ?? `${stops[0]?.name || 'Start'} → ${stops[stops.length - 1]?.name || 'End'}${changedFromSaved ? ' (proposed)' : ''}`}
+          stops={stops}
+          path={edited.fresh && allPinned ? edited.road?.path ?? null : null}
+          distanceKm={edited.fresh && allPinned ? edited.road?.distanceKm ?? null : null}
+          departures={departures}
+          defaultDeparture={clockDep}
+          onClose={() => setSharing(false)}
+          toast={toast}
+        />
+      )}
       <Toast />
     </>
+  );
+}
+
+const pinOf = (s: RouteStop | undefined): [number, number] | null => (s?.lat != null && s.lng != null ? [s.lat, s.lng] : null);
+
+/** A place waiting to be added: its name and which stop it comes after. */
+function PendingPanel({
+  pending,
+  stops,
+  onChange,
+  onAdd,
+  onCancel,
+}: {
+  pending: { lat: number; lng: number; name: string; at: number; best: number };
+  stops: RouteStop[];
+  onChange: (patch: { name?: string; at?: number }) => void;
+  onAdd: () => void;
+  onCancel: () => void;
+}) {
+  const p = { lat: pending.lat, lng: pending.lng };
+  const prev = stops[pending.at - 1];
+  const next = stops[pending.at];
+  // Extra straight-line distance from going via this place (a rough guide; the road route updates once it's added).
+  const extra = (() => {
+    const a = prev?.lat != null ? { lat: prev.lat, lng: prev.lng! } : null;
+    const b = next?.lat != null ? { lat: next.lat, lng: next.lng! } : null;
+    if (a && b) return km(a, p) + km(p, b) - km(a, b);
+    if (a) return km(a, p);
+    if (b) return km(p, b);
+    return null;
+  })();
+  const label = (s: RouteStop, i: number) => `${i + 1}. ${s.name || `Stop ${i + 1}`}`;
+  return (
+    <div className="mx-1 mb-2 rounded-xl border-2 border-[#feb700] bg-[#feb700]/10 p-3 space-y-2" role="dialog" aria-label="Add this place as a stop">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block flex-1 min-w-[160px]">
+          <span className="block text-[11px] font-bold text-[#686873] mb-0.5">New stop</span>
+          <input className={inputClass} value={pending.name} onChange={(e) => onChange({ name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && onAdd()} aria-label="New stop name" />
+        </label>
+        <label className="block flex-1 min-w-[200px]">
+          <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Comes after</span>
+          <select className={inputClass} value={pending.at} onChange={(e) => onChange({ at: Number(e.target.value) })} aria-label="Comes after">
+            <option value={0}>Nothing: the new first stop</option>
+            {stops.map((s, i) => (
+              <option key={i} value={i + 1}>
+                {label(s, i)}
+                {i === stops.length - 1 ? ' (becomes the new last stop)' : ''}
+                {i + 1 === pending.best ? '  ★ best fit' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="text-[12px] text-[#46464f]">
+        {prev ? <>After <b className="text-[#050a44]">{prev.name || 'the stop before'}</b></> : <b className="text-[#050a44]">New first stop</b>}
+        {next ? <> and before <b className="text-[#050a44]">{next.name || 'the next stop'}</b></> : prev ? <>, as the <b className="text-[#050a44]">new last stop</b></> : null}
+        {extra != null && <> · adds about <b className="text-[#050a44] tabular-nums">{extra.toFixed(1)} km</b> in a straight line</>}
+        {pending.at !== pending.best && <> · <button type="button" className="font-bold underline text-[#050a44]" onClick={() => onChange({ at: pending.best })}>use best fit</button></>}
+        . Drag the gold pin to adjust the spot.
+      </p>
+      <div className="flex gap-2">
+        <Button size="sm" variant="gold" onClick={onAdd}>
+          <Plus className="w-3.5 h-3.5" /> Add stop
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -718,6 +1124,15 @@ function SearchBox({
   );
 }
 
+/** "21:00" + 135 min → "23:15", or "01:15 (+1)" past midnight. */
+const clock = (departure: string, plusMin: number) => {
+  const [h, m] = departure.split(':').map(Number);
+  const total = h * 60 + m + Math.round(plusMin);
+  const day = Math.floor(total / 1440);
+  const t = ((total % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}${day > 0 ? ` (+${day})` : ''}`;
+};
+
 /** 125 → "2:05" (a duration, not a clock time). */
 const hmm = (m: number) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
 
@@ -746,6 +1161,9 @@ function DurationInput({ minutes, onChange, disabled, label }: { minutes: number
     />
   );
 }
+
+/** Which stops, where, in what order (stops without a pin by name): what the road estimate depends on. */
+const layout = (stops: RouteStop[]) => stops.map((s) => (s.lat != null ? `${s.lat},${s.lng}` : `?${s.name}`)).join(';');
 
 const round = (n: number) => Math.round(n * 1e5) / 1e5;
 const pick = (s: RouteStop) => [s.name.trim(), s.offsetMin, s.fareFromStart, s.lat ?? null, s.lng ?? null];

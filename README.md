@@ -578,7 +578,15 @@ while "Share location" is on. Nothing changes for conductors or passengers.
 - Pick a day and a trip: the road driven, distance, time, speeds, stops (3 min
   or more in one place), signal gaps (3 min or more with no position), a replay
   slider and every point. Refreshes every 30 s while the trip is still sending.
-- **Export** as CSV or GPX, to load in the route editor (below) or Google Earth.
+- **Big gaps filled with the road:** where two logged points are more than
+  2 km apart (no signal, phone locked, sharing off), the routing server finds
+  the likely road between them. It is drawn dotted red and labelled
+  "estimated", counted in the distance (marked *), and included in the
+  exports (CSV `source` = `estimated`, GPX points with `<desc>estimated</desc>`
+  and no time). If no sensible road is found (more than 3× the straight
+  distance) or the server can't be reached, it stays a straight dashed line.
+- **Export** as CSV or GPX, to load in the route editor (below) or Google Earth. The
+  export buttons wait until big gaps have been filled, so the file includes them.
 - **Deleting:** admins can delete a trip's whole log or tick single points.
   Office staff can view only.
 
@@ -587,26 +595,79 @@ while "Share location" is on. Nothing changes for conductors or passengers.
 A full page with the stops on one side and a live map on the other.
 
 - **Find stops by name** (place search, OpenStreetMap Nominatim, Sri Lanka only)
-  or **click the map**: the stop goes where it fits best on the way and is named
-  after the place. Drag pins to move stops; "Pick on map" places one exactly.
+  or **click the map**: a gold pin appears with a small panel. The place is
+  named automatically (rename it if you like), and **"Comes after"** picks
+  its position: the best fit (least extra distance) is preselected and marked
+  ★, or choose any stop, or make it the new first or last stop. Dotted lines
+  preview where it joins; drag the gold pin to adjust, then **Add stop**
+  (Esc cancels). Drag pins to move existing stops; "Pick on map" places one
+  exactly.
+- **Moving the map:** scroll or two-finger swipe pans the map; pinch or
+  Ctrl/⌘ + scroll zooms (same on the GPS trip log map).
+- **Map follows the list:** while you scroll the stops, the map pans to the
+  stop you're looking at and rings it (switch off under the map).
 - The **road route** through the stops is drawn as you edit (routing server),
   with km and time between stops. While the stops differ from the saved route,
   the saved route is drawn dashed and the top cards show the difference in
   distance, bus time and stops. That is the simulation: nothing is live until
   **Save route**.
-- **Road estimate** next to each stop's time; "Fill times from road" sets all
-  times from it (road time × "Bus vs car time" + stop time, rounded to 5 min).
+- **Road estimate** next to each stop's time (road time × "Bus vs car time" +
+  stop time at each stop on the way), updated as you place stops, with the
+  clock time on one of the route's departures ("Clock times for the … departure").
+  Stops without a pin get an estimate between their neighbours. While the new
+  road is being worked out, the old estimates are shown faded.
+- **Times follow the road** (on by default): after you add, move, remove or
+  reorder stops, every stop's "Arrives after" time is set from the new
+  estimate, rounded to 5 minutes. Undo brings the previous times back. Switch
+  it off to keep typed times; "Fill times from road" then applies it once.
   Times are typed as h:mm and can go over 24 hours.
 - **Load GPS file**: a CSV or GPX from GPS trip log (or any GPX) is drawn as the
-  road really driven; stops far from it are flagged.
+  road really driven; stops far from it are flagged. Points the export marked
+  "estimated" are drawn dotted red, and any jump of more than 2 km still in
+  the file (an older export, or a GPX from another app) is filled with the
+  likely road on load, the same way as on GPS trip log.
+  **Hide GPS** / **Show GPS** toggles the track; **Remove GPS** unloads it once
+  your stops are placed (the stops stay where they are, the map doesn't move).
+- **Undo / Redo** (buttons on the map bar, or Ctrl/⌘+Z and Ctrl/⌘+Shift+Z or
+  Ctrl+Y outside a text box) step back and forward through every change:
+  stops added, moved, removed or reordered, times, fares, price, "Fill times
+  from road", opening a draft. Typing in one box counts as one step.
+  "Back to saved" returns to the live route (and can be undone too).
 - **Save as draft** keeps a version in `route_plans` without touching the live
   route; pick it under "Version" to continue, and "Save route" to make it live.
-- "Create return route" now keeps each stop's map pin and waiting details.
+- **Reverse order** (Stops header) turns the route round in the editor: last
+  stop first, times and fares mirrored, then re-timed from the road if "Times
+  follow the road" is on. Undoable. If the route has departures it warns
+  first, because saving changes the direction those buses run.
+- To run **both directions**, use "Create return route" on the Routes &
+  timetable page instead: it makes a separate reversed route (keeping each
+  stop's map pin and waiting details) and leaves this one as it is.
 - Settings: `NEXT_PUBLIC_ROUTING_URL` (default: the public OSRM server, about
   one request a second; the old spelling `NEXT_PUBLIC_ROUING_URL` also works)
   and `NEXT_PUBLIC_GEOCODING_URL` (default: nominatim.openstreetmap.org, one
   search a second, so searches run only when you press Search). For heavy use,
   run your own OSRM / Nominatim or use a paid service.
+
+### Sharing a route plan
+
+- **Share** (route editor header) makes a private link,
+  `/share/route/<22 random characters>`, to a read-only page: map, road line,
+  numbered stops with landmarks, "+h:mm" and clock times for a chosen
+  departure, distance and travel time, an optional note, and Google Maps
+  buttons. It is a **snapshot** of the route as it was when shared; later edits
+  don't change it (share again for a new version). No sign-in needed; the page
+  isn't listed anywhere and search engines are told not to index it.
+- The Share window lists the route's links that are on, with **Copy** and
+  **Turn off**. A turned-off link shows "This link isn't available".
+- **Google Maps** (map toolbar in the editor, and on the shared page) opens
+  directions through the stops. Google takes about 10 stops per link, so a
+  longer route opens in even parts that follow on from each other (12 stops →
+  7 + 6).
+- Database: `supabase/migrations/20261034000000_route_share_links.sql` (also in
+  `setup.sql`): table `route_shares` (office staff only) and the function
+  `get_route_share(token)` the public page uses to open one link.
+- In demo mode, links are kept in your browser only, so they open on this
+  computer but not for anyone else.
 
 **Database:** run `supabase/migrations/20261033000000_gps_trip_log.sql` in
 Supabase → SQL Editor (also in `setup.sql`). It is safe to run again, and also

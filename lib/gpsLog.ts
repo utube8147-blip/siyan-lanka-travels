@@ -8,6 +8,7 @@
 
 import { isSupabaseConfigured as DB, supabase } from './supabase/client';
 import { km } from './extras';
+import { fetchRoadRoute } from './routing';
 
 export interface GpsPoint {
   /** Row id (database); the time in demo mode. */
@@ -142,14 +143,75 @@ const mins = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getT
 /** When the bus left a point (its last-seen time, or the time it was logged). */
 export const leftAt = (p: GpsPoint) => p.until ?? p.at;
 
-/** Distance, time and speed for the whole log. Poor fixes (>100 m accuracy) don't count towards distance. */
-export function summarise(points: GpsPoint[]) {
+// ------------------------------------------------------ filling big gaps ----
+// Where two logged points are far apart (no signal, phone locked, sharing
+// off), the road between them is estimated with the routing server, so the
+// map, the distance and the exports follow the road instead of a straight line.
+
+export interface Fill {
+  /** The point after the jump: the jump is points[to - 1] → points[to]. */
+  to: number;
+  straightKm: number;
+  /** The likely road (null: the routing server gave nothing usable). */
+  path: [number, number][] | null;
+  roadKm: number | null;
+  minutes: number;
+}
+
+/** Consecutive points more than `minKm` apart, as Fills not yet routed. */
+export function findJumps(points: GpsPoint[], minKm = 2): Fill[] {
+  const out: Fill[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const d = km(points[i - 1], points[i]);
+    if (d > minKm) out.push({ to: i, straightKm: d, path: null, roadKm: null, minutes: Math.round(mins(leftAt(points[i - 1]), points[i].at)) });
+  }
+  return out;
+}
+
+/**
+ * Asks the routing server for the road across each jump, one at a time (the
+ * free server allows about one request a second; repeats come from its cache).
+ * `onProgress` gets the list as each one is filled.
+ */
+export async function fillJumps(points: GpsPoint[], jumps: Fill[], onProgress: (f: Fill[]) => void, signal?: AbortSignal): Promise<Fill[]> {
+  const out = jumps.map((j) => ({ ...j }));
+  for (let k = 0; k < out.length && k < 40; k++) {
+    if (signal?.aborted) break;
+    const a = points[out[k].to - 1];
+    const b = points[out[k].to];
+    const t0 = Date.now();
+    const r = await fetchRoadRoute([[a.lat, a.lng], [b.lat, b.lng]], signal);
+    // A road far longer than the straight line is probably a wrong guess (other side of a river…): keep the straight line.
+    if (r.route && r.route.distanceKm <= out[k].straightKm * 3 + 2) {
+      out[k].path = r.route.path;
+      out[k].roadKm = r.route.distanceKm;
+    }
+    onProgress([...out]);
+    const waited = Date.now() - t0;
+    if (waited < 300 && k < out.length - 1) continue; // came from the cache: no need to wait
+    if (k < out.length - 1) await new Promise((res) => setTimeout(res, Math.max(0, 1100 - waited)));
+  }
+  return out;
+}
+
+/** Distance, time and speed for the whole log. Poor fixes (>100 m accuracy) don't count towards distance. Filled jumps count their road distance. */
+export function summarise(points: GpsPoint[], fills: Fill[] = []) {
   let distance = 0;
+  let filledKm = 0;
   let maxSpeed = 0;
   let movingMin = 0;
   let prev: GpsPoint | null = null;
-  for (const p of points) {
+  const byTo = new Map(fills.filter((f) => f.roadKm != null).map((f) => [f.to, f]));
+  for (const [i, p] of points.entries()) {
     if (p.speedKmh != null && p.speedKmh > maxSpeed && p.speedKmh < 160) maxSpeed = p.speedKmh;
+    const fill = byTo.get(i);
+    if (fill && prev) {
+      distance += fill.roadKm!;
+      filledKm += fill.roadKm!;
+      movingMin += Math.max(0, mins(leftAt(prev), p.at));
+      prev = p;
+      continue;
+    }
     if (p.accuracyM != null && p.accuracyM > 100) continue;
     if (prev) {
       const d = km(prev, p);
@@ -163,7 +225,7 @@ export function summarise(points: GpsPoint[]) {
     prev = p;
   }
   const total = points.length ? mins(points[0].at, leftAt(points[points.length - 1])) : 0;
-  return { distance, totalMin: total, movingMin, maxSpeed, avgMoving: movingMin > 0 ? distance / (movingMin / 60) : 0 };
+  return { distance, filledKm, totalMin: total, movingMin, maxSpeed, avgMoving: movingMin > 0 ? distance / (movingMin / 60) : 0 };
 }
 
 /** Places the bus stayed within `radiusKm` for at least `minMin` minutes. */
@@ -203,16 +265,30 @@ function download(name: string, type: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function downloadCsv(name: string, points: GpsPoint[]) {
-  const rows = [['time', 'latitude', 'longitude', 'speed_kmh', 'heading', 'accuracy_m', 'still_there_until']];
-  for (const p of points) rows.push([p.at, String(p.lat), String(p.lng), p.speedKmh?.toString() ?? '', p.heading?.toString() ?? '', p.accuracyM?.toString() ?? '', p.until ?? '']);
+/** The points of a filled jump, without its two ends (those are real points). */
+const fillPoints = (f: Fill | undefined) => (f?.path ? f.path.slice(1, -1) : []);
+
+/** CSV of every point. Filled jumps add rows with source "estimated" and no time. */
+export function downloadCsv(name: string, points: GpsPoint[], fills: Fill[] = []) {
+  const byTo = new Map(fills.map((f) => [f.to, f]));
+  const rows = [['time', 'latitude', 'longitude', 'speed_kmh', 'heading', 'accuracy_m', 'still_there_until', 'source']];
+  points.forEach((p, i) => {
+    for (const [lat, lng] of fillPoints(byTo.get(i))) rows.push(['', lat.toFixed(6), lng.toFixed(6), '', '', '', '', 'estimated']);
+    rows.push([p.at, String(p.lat), String(p.lng), p.speedKmh?.toString() ?? '', p.heading?.toString() ?? '', p.accuracyM?.toString() ?? '', p.until ?? '', 'gps']);
+  });
   download(`${name}.csv`, 'text/csv', rows.map((r) => r.join(',')).join('\n'));
 }
 
-/** GPX opens in Google Earth, Google My Maps and most GPS apps. */
-export function downloadGpx(name: string, points: GpsPoint[]) {
+/** GPX opens in Google Earth, Google My Maps and most GPS apps. Filled jumps add points marked "estimated", without a time. */
+export function downloadGpx(name: string, points: GpsPoint[], fills: Fill[] = []) {
   const esc = (s: string) => s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!);
-  const pts = points.map((p) => `      <trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.at).toISOString()}</time></trkpt>`).join('\n');
+  const byTo = new Map(fills.map((f) => [f.to, f]));
+  const pts = points
+    .flatMap((p, i) => [
+      ...fillPoints(byTo.get(i)).map(([lat, lng]) => `      <trkpt lat="${lat.toFixed(6)}" lon="${lng.toFixed(6)}"><desc>estimated</desc></trkpt>`),
+      `      <trkpt lat="${p.lat}" lon="${p.lng}"><time>${new Date(p.at).toISOString()}</time></trkpt>`,
+    ])
+    .join('\n');
   download(
     `${name}.gpx`,
     'application/gpx+xml',

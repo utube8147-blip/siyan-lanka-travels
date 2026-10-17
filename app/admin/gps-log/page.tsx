@@ -10,7 +10,7 @@ import { Download, MapPinned, RefreshCw, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatTime12, listRuns, routeLabel, todayISO } from '@/lib/trips';
-import { deleteGpsPoints, downloadCsv, downloadGpx, findGaps, findStops, loadGpsPoints, loadGpsTrips, summarise, type GpsPoint, type GpsTripSummary } from '@/lib/gpsLog';
+import { deleteGpsPoints, downloadCsv, downloadGpx, fillJumps, findGaps, findJumps, findStops, loadGpsPoints, loadGpsTrips, summarise, type Fill, type GpsPoint, type GpsTripSummary } from '@/lib/gpsLog';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 
 const GpsRouteMap = dynamic(() => import('@/components/admin/GpsRouteMap').then((m) => m.GpsRouteMap), {
@@ -110,7 +110,24 @@ export default function GpsLogPage() {
     return () => clearInterval(id);
   }, [live, loadPoints, loadTrips]);
 
-  const stats = useMemo(() => summarise(points), [points]);
+  // Jumps of more than 2 km between points: fill them with the likely road (routing server).
+  // Keyed by the jumps' ends, so the 30-second refresh doesn't ask again for the same ones.
+  const [fills, setFills] = useState<Fill[]>([]);
+  const [filling, setFilling] = useState(false);
+  const jumps = useMemo(() => findJumps(points), [points]);
+  const jumpKey = jumps.map((j) => `${points[j.to - 1].at}>${points[j.to].at}`).join('|');
+  useEffect(() => {
+    setFills(jumps);
+    if (!jumps.length) return;
+    const ctl = new AbortController();
+    setFilling(true);
+    fillJumps(points, jumps, (f) => !ctl.signal.aborted && setFills(f), ctl.signal).finally(() => !ctl.signal.aborted && setFilling(false));
+    return () => ctl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpKey]);
+  const filled = fills.filter((f) => f.path);
+
+  const stats = useMemo(() => summarise(points, fills), [points, fills]);
   const stops = useMemo(() => findStops(points), [points]);
   const gaps = useMemo(() => findGaps(points), [points]);
   const fileName = `gps-${trip?.bus || scheduleId}-${date}`.replace(/[^\w.-]+/g, '_');
@@ -157,10 +174,10 @@ export default function GpsLogPage() {
             <Button variant="secondary" disabled={loading} onClick={() => { loadTrips(); loadPoints(); }}>
               <RefreshCw className="w-4 h-4" /> Refresh
             </Button>
-            <Button variant="secondary" disabled={points.length === 0} onClick={() => downloadCsv(fileName, points)}>
+            <Button variant="secondary" disabled={points.length === 0 || filling} title={filling ? 'Wait until the gaps are filled with the road, so the file includes them' : ''} onClick={() => downloadCsv(fileName, points, fills)}>
               <Download className="w-4 h-4" /> CSV
             </Button>
-            <Button variant="secondary" disabled={points.length === 0} onClick={() => downloadGpx(fileName, points)}>
+            <Button variant="secondary" disabled={points.length === 0 || filling} title={filling ? 'Wait until the gaps are filled with the road, so the file includes them' : ''} onClick={() => downloadGpx(fileName, points, fills)}>
               <Download className="w-4 h-4" /> GPX
             </Button>
             {isAdmin && (
@@ -223,7 +240,7 @@ export default function GpsLogPage() {
           {scheduleId && (
             <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-6 gap-3">
               {[
-                ['Distance', `${stats.distance.toFixed(1)} km`],
+                ['Distance', `${stats.distance.toFixed(1)} km${stats.filledKm ? '*' : ''}`],
                 ['First → last point', points.length ? `${hm(points[0].at)} → ${hm(points[points.length - 1].at)}` : '—'],
                 ['Time', points.length > 1 ? dur(stats.totalMin) : '—'],
                 ['Avg moving speed', stats.avgMoving ? `${Math.round(stats.avgMoving)} km/h` : '—'],
@@ -240,7 +257,17 @@ export default function GpsLogPage() {
 
           <Card className="p-3">
             {live && <p className="px-2 pb-2 text-[12px] font-bold text-[#050a44]"><span className="inline-block w-2 h-2 rounded-full bg-[#feb700] mr-1.5 align-middle" />Trip still sending: updates every 30 seconds</p>}
-            <GpsRouteMap points={points} routeStops={route?.stops ?? []} stops={stops} gaps={gaps} focus={focus} className="h-[460px] md:h-[560px]" />
+            <GpsRouteMap points={points} routeStops={route?.stops ?? []} stops={stops} gaps={gaps} focus={focus} fills={fills} className="h-[460px] md:h-[560px]" />
+            {jumps.length > 0 && (
+              <p className="px-2 pt-2 text-[12px] text-[#46464f]">
+                <span className="inline-block w-5 align-middle border-t-[3px] border-dotted border-[#ba1a1a] mr-1.5" />
+                {filling
+                  ? `Finding the likely road for ${jumps.length} gap${jumps.length === 1 ? '' : 's'} over 2 km… (${filled.length} done)`
+                  : `${filled.length} of ${jumps.length} gap${jumps.length === 1 ? '' : 's'} over 2 km filled with the likely road (dotted red, estimated${stats.filledKm ? `: ${stats.filledKm.toFixed(1)} km of the distance*` : ''}).`}
+                {!filling && filled.length < jumps.length && ' The rest stay straight lines: no sensible road was found, or the routing server could not be reached.'}
+                {' '}Exports include these estimated points, marked as such.
+              </p>
+            )}
             {points.length > 1 ? (
               <div className="px-2 pt-3">
                 <label className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] font-bold text-[#46464f]">
@@ -299,7 +326,13 @@ export default function GpsLogPage() {
                       <li key={g.from}>
                         <button className="w-full text-left px-5 py-2.5 text-[13px] hover:bg-[#f2f4f6] flex justify-between gap-3" onClick={() => setFocus(nearestIndex(g.from))}>
                           <span className="text-[#050a44] font-semibold tabular-nums">{hm(g.from)} – {hm(g.to)}</span>
-                          <span className="text-[#ba1a1a] font-semibold tabular-nums">{dur(g.minutes)}</span>
+                          <span className="text-[#ba1a1a] font-semibold tabular-nums text-right">
+                            {dur(g.minutes)}
+                            {(() => {
+                              const f = fills.find((x) => points[x.to - 1]?.at === g.from);
+                              return f ? <span className="block text-[11px] font-medium text-[#6b6d78]">{f.roadKm != null ? `≈ ${f.roadKm.toFixed(1)} km by road (filled)` : `${f.straightKm.toFixed(1)} km straight`}</span> : null;
+                            })()}
+                          </span>
                         </button>
                       </li>
                     ))}
