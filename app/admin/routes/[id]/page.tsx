@@ -191,7 +191,7 @@ function Editor({
   const [selected, setSelected] = useState<number | null>(null);
   const [pickFor, setPickFor] = useState<number | null>(null); // stop waiting for a map click
   const [clickAdds, setClickAdds] = useState(true);
-  const [busFactor, setBusFactor] = useState(1.3);
+  const [busFactor, setBusFactor] = useState(1.1);
   const [dwell, setDwell] = useState(2);
   const [gps, setGps] = useState<GpsFile | null>(null);
   const [gpsShown, setGpsShown] = useState(true);
@@ -970,21 +970,33 @@ function Editor({
           <Card className="p-4 grid grid-cols-2 gap-3">
             <label className="block">
               <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Bus vs car time</span>
-              <input type="number" min={1} max={3} step={0.05} className={inputClass} value={busFactor} onChange={(e) => {
+              <SettingNumber
+                label="Bus vs car time"
+                value={busFactor}
+                min={0.5}
+                max={3}
+                onChange={(v) => {
                   // A slower or faster bus: re-time the stops too (if "Times follow the road" is on). Undoable.
                   record('setting:busFactor');
                   retime.current = true;
-                  setBusFactor(Math.min(3, Math.max(1, Number(e.target.value) || 1.3)));
-                }} />
+                  setBusFactor(v);
+                }}
+              />
               <span className="block text-[11px] text-[#686873] mt-0.5">Road times are car times; a bus is slower. With &ldquo;Times follow the road&rdquo; on, changing this re-times the stops.</span>
             </label>
             <label className="block">
               <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Stop time (min)</span>
-              <input type="number" min={0} max={30} className={inputClass} value={dwell} onChange={(e) => {
+              <SettingNumber
+                label="Stop time in minutes"
+                value={dwell}
+                min={0}
+                max={30}
+                onChange={(v) => {
                   record('setting:dwell');
                   retime.current = true;
-                  setDwell(Math.max(0, Number(e.target.value) || 0));
-                }} />
+                  setDwell(v);
+                }}
+              />
               <span className="block text-[11px] text-[#686873] mt-0.5">At each stop on the way. Also re-times the stops.</span>
             </label>
           </Card>
@@ -1146,6 +1158,46 @@ const clock = (departure: string, plusMin: number) => {
 
 /** 125 → "2:05" (a duration, not a clock time). */
 const hmm = (m: number) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
+
+/**
+ * A number box for the settings: takes "1.1" or "1,1", applies the value as soon
+ * as it's a valid number in range, and doesn't jump back while you're typing
+ * (an empty or half-typed box is left alone; leaving the box shows the value in use).
+ */
+function SettingNumber({ value, onChange, min, max, label }: { value: number; onChange: (v: number) => void; min: number; max: number; label: string }) {
+  const [text, setText] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) setText(String(value));
+  }, [value, focused]);
+  const parse = (t: string) => {
+    const n = Number(t.trim().replace(',', '.'));
+    return t.trim() !== '' && Number.isFinite(n) && n >= min && n <= max ? n : null;
+  };
+  const bad = focused && text.trim() !== '' && parse(text) == null && !/[.,]$/.test(text.trim());
+  return (
+    <>
+      <input
+        aria-label={label}
+        inputMode="decimal"
+        className={`${inputClass} ${bad ? '!border-[#ba1a1a]' : ''}`}
+        value={text}
+        onFocus={() => setFocused(true)}
+        onChange={(e) => {
+          setText(e.target.value);
+          const n = parse(e.target.value);
+          if (n != null && n !== value) onChange(n);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          setText(String(value));
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+      {bad && <span className="block text-[11px] font-semibold text-[#ba1a1a] mt-0.5">Enter a number from {min} to {max}</span>}
+    </>
+  );
+}
 
 /** Duration box: type "2:05", "2.05" or minutes ("125"). Applied when you leave the box or press Enter. */
 function DurationInput({ minutes, onChange, disabled, label }: { minutes: number; onChange: (m: number) => void; disabled?: boolean; label: string }) {
