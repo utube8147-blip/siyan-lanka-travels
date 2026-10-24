@@ -589,9 +589,9 @@ export default function MyBookingsPage() {
                           </div>
                         </div>
 
-                        {/* The trip details keep a readable width; when the buttons don't fit beside them they drop to their own row. */}
-                        <div className="mt-[16px] flex flex-wrap justify-between items-center gap-x-[12px] gap-y-[12px]">
-                          <div className="flex items-center gap-2 min-w-[200px] flex-1">
+                        {/* Trip details on their own row; the buttons sit on a full-width row below. */}
+                        <div className="mt-[16px] space-y-[12px]">
+                          <div className="flex items-center gap-2">
                             <OperatorBadge operator={booking.operator} />
                             <div className="min-w-0">
                               <p className="text-[12px] text-[#46464f] font-medium whitespace-nowrap">{txn(booking.seats.length, '{date} · Seat {seats}', '{date} · Seats {seats}', { date: booking.date, seats: booking.seats.join(', ') })}
@@ -600,34 +600,33 @@ export default function MyBookingsPage() {
                             </div>
                           </div>
 
-                          {/* Phones: bell + Track share the first line, View Ticket takes the second.
-                              Desktop (sm and up): all three share one row and stretch to fill it. */}
-                          <div className="flex flex-wrap items-stretch gap-2 w-full">
+                          {/* Phones: bell + Track share line 1, View Ticket fills line 2.
+                              Desktop (sm+): all three share one row, equal width, filling the card. */}
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full">
                           {isPending ? (
                             <button
                               disabled
-                              className="w-full bg-[#f2f4f6] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                              className="col-span-full h-[38px] bg-[#f2f4f6] text-[#6b6d78] px-4 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
                             >{tx('Ticket Pending')}</button>
                           ) : isCancelling ? (
                             <button
                               disabled
-                              className="w-full bg-[#e1e2e4] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                              className="col-span-full h-[38px] bg-[#e1e2e4] text-[#6b6d78] px-4 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
                             >{tx('Cancelling…')}</button>
                           ) : (
                             <>
-                            <TripBell
-                              bookingId={booking.id}
-                              size="sm"
-                              className="w-[calc(50%-4px)] sm:w-auto sm:flex-1 h-[38px] justify-center"
-                            />
+                            {/* Wrapper forces whatever TripBell renders (and its nested button) to fill the grid cell */}
+                            <div className="min-w-0 grid [&>*]:!w-full [&_button]:!w-full [&_button]:!h-[38px] [&_button]:!justify-center">
+                              <TripBell bookingId={booking.id} size="sm" />
+                            </div>
                             <a
                               href={`/track?ref=${booking.bookingRef}`}
-                              className="w-[calc(50%-4px)] sm:w-auto sm:flex-1 h-[38px] justify-center bg-[#feb700] text-[#14120a] px-3 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
+                              className="w-full h-[38px] justify-center bg-[#feb700] text-[#14120a] px-3 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
                             >
                               <span className="material-symbols-outlined text-[14px]">my_location</span>{tx('Track')}</a>
                             <button
                               onClick={() => setTicketTarget(booking)}
-                              className="w-full sm:w-auto sm:flex-1 h-[38px] justify-center bg-[#050a44] text-white px-4 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                              className="col-span-2 sm:col-span-1 w-full h-[38px] justify-center bg-[#050a44] text-white px-4 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
                             >{tx('View Ticket')}<span className="material-symbols-outlined text-[14px]">confirmation_number</span>
                             </button>
                             </>
