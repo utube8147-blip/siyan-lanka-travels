@@ -600,29 +600,34 @@ export default function MyBookingsPage() {
                             </div>
                           </div>
 
-                          {/* Phones: the three buttons share one row, equal widths. Wider: their natural size, on the right. */}
-                          <div className="flex items-start gap-2 w-full sm:w-auto">
+                          {/* Phones: bell + Track share the first line, View Ticket takes the second.
+                              Desktop (sm and up): all three share one row and stretch to fill it. */}
+                          <div className="flex flex-wrap items-stretch gap-2 w-full">
                           {isPending ? (
                             <button
                               disabled
-                              className="bg-[#f2f4f6] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                              className="w-full bg-[#f2f4f6] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
                             >{tx('Ticket Pending')}</button>
                           ) : isCancelling ? (
                             <button
                               disabled
-                              className="bg-[#e1e2e4] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                              className="w-full bg-[#e1e2e4] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
                             >{tx('Cancelling…')}</button>
                           ) : (
                             <>
-                            <TripBell bookingId={booking.id} size="sm" className="flex-1 sm:flex-none" />
+                            <TripBell
+                              bookingId={booking.id}
+                              size="sm"
+                              className="w-[calc(50%-4px)] sm:w-auto sm:flex-1 h-[38px] justify-center"
+                            />
                             <a
                               href={`/track?ref=${booking.bookingRef}`}
-                              className="flex-1 sm:flex-none h-[38px] justify-center bg-[#feb700] text-[#14120a] px-2 sm:px-3 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
+                              className="w-[calc(50%-4px)] sm:w-auto sm:flex-1 h-[38px] justify-center bg-[#feb700] text-[#14120a] px-3 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
                             >
                               <span className="material-symbols-outlined text-[14px]">my_location</span>{tx('Track')}</a>
                             <button
                               onClick={() => setTicketTarget(booking)}
-                              className="flex-1 sm:flex-none h-[38px] justify-center bg-[#050a44] text-white px-2 sm:px-4 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                              className="w-full sm:w-auto sm:flex-1 h-[38px] justify-center bg-[#050a44] text-white px-4 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
                             >{tx('View Ticket')}<span className="material-symbols-outlined text-[14px]">confirmation_number</span>
                             </button>
                             </>
