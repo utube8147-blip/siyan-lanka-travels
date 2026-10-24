@@ -7,11 +7,12 @@ import { useMemo, useState } from 'react';
 import { Download, Search } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { Booking } from '@/lib/types';
-import { formatDateLabel, formatLKR, formatTime12, todayISO } from '@/lib/trips';
+import { formatDateLabel, formatLKR, formatTime12, todayISO, dateLocale } from '@/lib/trips';
 import { Badge, Button, Card, Modal, PageHeader, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { BikeThumb } from '@/components/admin/BikeList';
 import { OPERATOR } from '@/config/operator';
 import { rejectSlip, slipIsPdf, slipOnFile, slipUrl, useSlips } from '@/lib/money';
+import { tx } from '@/lib/i18n';
 
 type When = 'upcoming' | 'past' | 'all';
 const PAGE = 40;
@@ -93,7 +94,7 @@ export default function BookingsPage() {
 
   const cancel = async (b: Booking) => {
     const res = await updateBooking(b.id, { status: 'cancelled', refund: { amount: b.total - b.fee, at: new Date().toISOString() } });
-    toast(res.ok ? `${b.ref} cancelled. ${formatLKR(b.total - b.fee)} is now under Refunds & payouts` : res.reason ?? 'Could not cancel', res.ok ? 'ok' : 'error');
+    toast(res.ok ? tx('{ref} cancelled. {amount} is now under Refunds & payouts', { ref: b.ref, amount: formatLKR(b.total - b.fee) }) : res.reason ?? tx('Could not cancel'), res.ok ? 'ok' : 'error');
     closeModal();
   };
 
@@ -103,12 +104,11 @@ export default function BookingsPage() {
   return (
     <>
       <PageHeader
-        title="Bookings"
-        description="Search by booking reference, passenger name or phone number."
+        title={tx('Bookings')}
+        description={tx('Search by booking reference, passenger name or phone number.')}
         actions={
           <Button variant="secondary" onClick={exportCsv}>
-            <Download className="w-4 h-4" /> Export CSV
-          </Button>
+            <Download className="w-4 h-4" />{' '}{tx('Export CSV')}</Button>
         }
       />
 
@@ -121,54 +121,52 @@ export default function BookingsPage() {
               setQ(e.target.value);
               setLimit(PAGE);
             }}
-            placeholder="SLT-7K2Q1P, Fathima, 077…"
-            aria-label="Search bookings"
+            placeholder={tx('SLT-7K2Q1P, Fathima, 077…')}
+            aria-label={tx('Search bookings')}
             className={`${inputClass} pl-9`}
           />
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           {(['upcoming', 'past', 'all'] as const).map((w) => (
             <button key={w} className={pill(when === w)} aria-pressed={when === w} onClick={() => setWhen(w)}>
-              {w === 'upcoming' ? 'Upcoming' : w === 'past' ? 'Past' : 'All dates'}
+              {w === 'upcoming' ? tx('Upcoming') : w === 'past' ? tx('Past') : tx('All dates')}
             </button>
           ))}
-          <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className={`${inputClass} !w-auto !py-2`}>
-            <option value="all">Any status</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="held">Held (unpaid)</option>
-            <option value="boarded">Boarded</option>
-            <option value="no-show">No-show</option>
-            <option value="cancelled">Cancelled</option>
+          <select aria-label={tx('Status')} value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className={`${inputClass} !w-auto !py-2`}>
+            <option value="all">{tx('Any status')}</option>
+            <option value="confirmed">{tx('Confirmed')}</option>
+            <option value="held">{tx('Held (unpaid)')}</option>
+            <option value="boarded">{tx('Boarded')}</option>
+            <option value="no-show">{tx('No-show')}</option>
+            <option value="cancelled">{tx('Cancelled')}</option>
           </select>
-          <select aria-label="Channel" value={channel} onChange={(e) => setChannel(e.target.value as typeof channel)} className={`${inputClass} !w-auto !py-2`}>
-            <option value="all">Any channel</option>
-            <option value="online">Online</option>
-            <option value="counter">Counter</option>
-            <option value="phone">Phone</option>
+          <select aria-label={tx('Channel')} value={channel} onChange={(e) => setChannel(e.target.value as typeof channel)} className={`${inputClass} !w-auto !py-2`}>
+            <option value="all">{tx('Any channel')}</option>
+            <option value="online">{tx('Online')}</option>
+            <option value="counter">{tx('Counter')}</option>
+            <option value="phone">{tx('Phone')}</option>
           </select>
           {(slipCount > 0 || slipsOnly) && (
-            <button className={pill(slipsOnly)} aria-pressed={slipsOnly} onClick={() => setSlipsOnly((v) => !v)}>
-              Bank slips to check ({slipCount})
-            </button>
+            <button className={pill(slipsOnly)} aria-pressed={slipsOnly} onClick={() => setSlipsOnly((v) => !v)}>{tx('Bank slips to check ({slipCount})', { slipCount })}</button>
           )}
-          <span className="ml-auto text-[13px] font-semibold text-[#46464f]">{rows.length} bookings</span>
+          <span className="ml-auto text-[13px] font-semibold text-[#46464f]">{tx('{length} bookings', { length: rows.length })}</span>
         </div>
       </Card>
 
       <Card className="overflow-hidden">
         {rows.length === 0 ? (
-          <p className="p-8 text-center text-[14px] text-[#46464f]">No bookings match. Clear the search or pick &ldquo;All dates&rdquo;.</p>
+          <p className="p-8 text-center text-[14px] text-[#46464f]">{tx('No bookings match. Clear the search or pick “All dates”.')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
-                  <th className="px-4 py-2.5">Reference</th>
-                  <th className="px-4 py-2.5">Travel</th>
-                  <th className="px-4 py-2.5">Passenger</th>
-                  <th className="px-4 py-2.5">Seats</th>
-                  <th className="px-4 py-2.5 text-right">Total</th>
-                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5">{tx('Reference')}</th>
+                  <th className="px-4 py-2.5">{tx('Travel')}</th>
+                  <th className="px-4 py-2.5">{tx('Passenger')}</th>
+                  <th className="px-4 py-2.5">{tx('Seats')}</th>
+                  <th className="px-4 py-2.5 text-right">{tx('Total')}</th>
+                  <th className="px-4 py-2.5">{tx('Status')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#edeef0]">
@@ -197,13 +195,13 @@ export default function BookingsPage() {
                     <td className="px-4 py-3 font-bold whitespace-nowrap">{b.seats.join(', ')}</td>
                     <td
                       className={`px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap ${b.status === 'cancelled' ? 'text-[#6b6d78]' : b.paymentStatus === 'unpaid' ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}
-                      title={b.status === 'cancelled' ? 'Cancelled' : b.paymentStatus === 'unpaid' ? 'Not paid yet' : 'Paid in full'}
+                      title={b.status === 'cancelled' ? tx('Cancelled') : b.paymentStatus === 'unpaid' ? tx('Not paid yet') : tx('Paid in full')}
                     >
                       {formatLKR(b.total)}
                     </td>
                     <td className="px-4 py-3">
                       <Badge value={b.status} />
-                      {toCheck(b) && <div className="mt-1"><Badge value="new" label="Slip to check" /></div>}
+                      {toCheck(b) && <div className="mt-1"><Badge value="new" label={tx('Slip to check')} /></div>}
                     </td>
                   </tr>
                 ))}
@@ -213,9 +211,7 @@ export default function BookingsPage() {
         )}
         {rows.length > limit && (
           <div className="p-4 border-t border-[#edeef0] text-center">
-            <Button variant="secondary" onClick={() => setLimit((l) => l + PAGE)}>
-              Show more ({rows.length - limit} left)
-            </Button>
+            <Button variant="secondary" onClick={() => setLimit((l) => l + PAGE)}>{tx('Show more ({n} left)', { n: rows.length - limit })}</Button>
           </div>
         )}
       </Card>
@@ -229,44 +225,39 @@ export default function BookingsPage() {
               {open.paymentStatus === 'unpaid' && (open.status === 'held' || open.status === 'boarded') && (
                 <Button variant="gold" onClick={async () => {
                   const r = await confirmPayment(open.id, open.paymentMethod === 'bank' ? 'bank' : 'cash', open.slip?.reference || undefined);
-                  toast(r.ok ? `${open.ref} marked paid` : r.reason ?? 'Could not confirm', r.ok ? 'ok' : 'error');
+                  toast(r.ok ? tx('{ref} marked paid', { ref: open.ref }) : r.reason ?? tx('Could not confirm'), r.ok ? 'ok' : 'error');
                   if (r.ok) closeModal();
-                }}>
-                  Mark paid ({open.paymentMethod === 'bank' ? 'bank transfer' : 'cash'})
+                }}>{open.paymentMethod === 'bank' ? tx('Mark paid (bank transfer)') : tx('Mark paid (cash)')}
                 </Button>
               )}
               <Link href={`/admin/departures?date=${open.date}&run=${open.scheduleId}`}>
-                <Button variant="secondary">Open departure</Button>
+                <Button variant="secondary">{tx('Open departure')}</Button>
               </Link>
               {open.status === 'confirmed' &&
                 (confirmCancel ? (
-                  <Button variant="danger" onClick={() => cancel(open)}>
-                    Yes, cancel and refund {formatLKR(open.total - open.fee)}
-                  </Button>
+                  <Button variant="danger" onClick={() => cancel(open)}>{tx('Yes, cancel and refund {amount}', { amount: formatLKR(open.total - open.fee) })}</Button>
                 ) : (
-                  <Button variant="danger" onClick={() => setConfirmCancel(true)}>
-                    Cancel booking
-                  </Button>
+                  <Button variant="danger" onClick={() => setConfirmCancel(true)}>{tx('Cancel booking')}</Button>
                 ))}
             </>
           }
         >
           <dl className="grid grid-cols-2 gap-3 text-[14px]">
             {[
-              ['Travel date', formatDateLabel(open.date)],
-              ['Departure', formatTime12(schedule(open.scheduleId)?.departure ?? '00:00')],
-              ['From', open.from],
-              ['To', open.to],
-              ['Seats', open.seats.join(', ')],
-              ['Gender', open.passenger.gender || '—'],
-              ['Phone', open.passenger.phone || '—'],
-              ['Email', open.contact.email || '—'],
-              ['Fare', `${formatLKR(open.fare)} × ${open.seats.length}`],
-              ['Fee / discount', `${formatLKR(open.fee)} / ${formatLKR(open.discount)}`],
-              ['Total', formatLKR(open.total)],
-              ['Refund', open.refund ? `${formatLKR(open.refund.amount)} (see Refunds & payouts)` : '—'],
-              ['Booked', new Date(open.createdAt).toLocaleString('en-GB')],
-              ['Channel', open.channel],
+              [tx('Travel date'), formatDateLabel(open.date)],
+              [tx('Departure'), formatTime12(schedule(open.scheduleId)?.departure ?? '00:00')],
+              [tx('From'), open.from],
+              [tx('To'), open.to],
+              [tx('Seats'), open.seats.join(', ')],
+              [tx('Gender'), open.passenger.gender || '—'],
+              [tx('Phone'), open.passenger.phone || '—'],
+              [tx('Email'), open.contact.email || '—'],
+              [tx('Fare'), `${formatLKR(open.fare)} × ${open.seats.length}`],
+              [tx('Fee / discount'), `${formatLKR(open.fee)} / ${formatLKR(open.discount)}`],
+              [tx('Total'), formatLKR(open.total)],
+              [tx('Refund'), open.refund ? `${formatLKR(open.refund.amount)} (see Refunds & payouts)` : '—'],
+              [tx('Booked'), new Date(open.createdAt).toLocaleString(dateLocale())],
+              [tx('Channel'), open.channel],
             ].map(([k, v]) => (
               <div key={k}>
                 <dt className="text-[11px] font-bold text-[#686873]">{k}</dt>
@@ -276,7 +267,7 @@ export default function BookingsPage() {
           </dl>
           {open.bikes?.length ? (
             <div className="rounded-xl bg-[#f8f9fb] border border-[#edeef0] p-3 space-y-2">
-              <p className="text-[11px] font-bold text-[#686873]">Luggage compartment</p>
+              <p className="text-[11px] font-bold text-[#686873]">{tx('Luggage compartment')}</p>
               {open.bikes.map((bike) => (
                 <div key={bike.id} className="flex items-center gap-3">
                   <BikeThumb bike={bike} size={64} />
@@ -285,7 +276,7 @@ export default function BookingsPage() {
                       {bikeKind(bike.kind).label} · {bike.description}
                     </p>
                     <p className="text-[#46464f]">
-                      {bike.regNo || 'No plate'} · {formatLKR(bike.fee)}
+                      {bike.regNo || tx('No plate')} · {formatLKR(bike.fee)}
                     </p>
                   </div>
                 </div>
@@ -296,41 +287,35 @@ export default function BookingsPage() {
             const slip = slipFor(open);
             return (
               <div className="rounded-xl bg-[#f8f9fb] border border-[#edeef0] p-3 space-y-2">
-                <p className="text-[11px] font-bold text-[#686873]">Bank transfer slip</p>
+                <p className="text-[11px] font-bold text-[#686873]">{tx('Bank transfer slip')}</p>
                 {slipOnFile(slip) ? (
                   <>
-                    <p className="text-[13px] text-[#46464f]">
-                      Uploaded {new Date(slip.uploadedAt).toLocaleString('en-GB')}
-                      {slip.reference && <> · passenger&apos;s reference <b className="text-[#050a44]">{slip.reference}</b></>}. Check {formatLKR(open.total)} has reached the account, then mark it paid.
-                    </p>
+                    <p className="text-[13px] text-[#46464f]">{tx('Uploaded')}{' '}{new Date(slip.uploadedAt).toLocaleString(dateLocale())}
+                      {slip.reference && <>{tx('· passenger\'s reference')}{' '}<b className="text-[#050a44]">{slip.reference}</b></>}{tx('. Check {amount} has reached the account, then mark it paid.', { amount: formatLKR(open.total) })}</p>
                     {slipImg && slipIsPdf(slipImg) ? (
-                      <a href={slipImg} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#050a44] text-white text-[13px] font-bold">Open the PDF slip</a>
+                      <a href={slipImg} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#050a44] text-white text-[13px] font-bold">{tx('Open the PDF slip')}</a>
                     ) : slipImg ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <a href={slipImg} target="_blank" rel="noopener"><img src={slipImg} alt={`Payment slip for ${open.ref}`} className="w-full max-h-[420px] object-contain rounded-lg border border-[#edeef0] bg-white" /></a>
+                      <a href={slipImg} target="_blank" rel="noopener"><img src={slipImg} alt={tx('Payment slip for {ref}', { ref: open.ref })} className="w-full max-h-[420px] object-contain rounded-lg border border-[#edeef0] bg-white" /></a>
                     ) : (
-                      <Button size="sm" variant="secondary" onClick={async () => { const u = await slipUrl(open); if (u) setSlipImg(u); else toast("Couldn't open the slip", 'error'); }}>
-                        View slip
-                      </Button>
+                      <Button size="sm" variant="secondary" onClick={async () => { const u = await slipUrl(open); if (u) setSlipImg(u); else toast(tx('Couldn\'t open the slip'), 'error'); }}>{tx('View slip')}</Button>
                     )}
                     {rejecting ? (
                       <div className="flex flex-wrap gap-2 pt-1">
-                        <input className={`${inputClass} flex-1 min-w-[200px]`} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="What's wrong? The passenger sees this." aria-label="Reason" />
+                        <input className={`${inputClass} flex-1 min-w-[200px]`} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder={tx('What\'s wrong? The passenger sees this.')} aria-label={tx('Reason')} />
                         <Button size="md" variant="danger" onClick={async () => {
                           const r = await rejectSlip(open.id, rejectReason.trim());
-                          toast(r.ok ? 'Slip sent back; the passenger has been told' : r.reason ?? 'Could not save', r.ok ? 'ok' : 'error');
+                          toast(r.ok ? tx('Slip sent back; the passenger has been told') : r.reason ?? tx('Could not save'), r.ok ? 'ok' : 'error');
                           if (r.ok) { reload(); closeModal(); }
-                        }}>
-                          Send back
-                        </Button>
+                        }}>{tx('Send back')}</Button>
                       </div>
                     ) : (
-                      <button className="block text-[12px] font-bold text-[#ba1a1a] underline" onClick={() => setRejecting(true)}>Slip is wrong or the money hasn&apos;t arrived</button>
+                      <button className="block text-[12px] font-bold text-[#ba1a1a] underline" onClick={() => setRejecting(true)}>{tx('Slip is wrong or the money hasn\'t arrived')}</button>
                     )}
                   </>
                 ) : (
                   <p className="text-[13px] text-[#46464f]">
-                    {slip && 'rejectedReason' in slip ? `Last slip was sent back: ${slip.rejectedReason}. Waiting for a new one.` : 'No slip uploaded yet.'}
+                    {slip && 'rejectedReason' in slip ? tx('Last slip was sent back: {rejectedReason}. Waiting for a new one.', { rejectedReason: slip.rejectedReason }) : tx('No slip uploaded yet.')}
                   </p>
                 )}
               </div>

@@ -7,9 +7,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { AUTH_COOKIE_MAX_AGE } from '@/lib/features';
+import { safeNext } from '@/lib/safeNext';
 
 /** Business pages: super admins only. */
-const ADMIN_ONLY = ['/admin/finance', '/admin/analytics', '/admin/fleet-health', '/admin/crew', '/admin/accounts', '/admin/branches', '/admin/settings'];
+const ADMIN_ONLY = ['/admin/reports', '/admin/people', '/admin/finance', '/admin/analytics', '/admin/fleet-health', '/admin/crew', '/admin/accounts', '/admin/branches', '/admin/settings'];
 
 /** Pages that need a signed-in passenger (with Supabase connected). */
 const SIGNED_IN_ONLY = ['/my-bookings', '/dashboard', '/payment', '/refund', '/marketplace/buy', '/track'];
@@ -47,8 +48,7 @@ export async function proxy(request: NextRequest) {
   if (SIGNED_IN_ONLY.some((p) => path === p || path.startsWith(`${p}/`)) && !user) return signIn();
   // Signed in already? Skip the sign-in / sign-up pages.
   if (user && (path === '/auth/login' || path === '/auth/signup')) {
-    const next = request.nextUrl.searchParams.get('next');
-    return to(next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard');
+    return to(safeNext(request.nextUrl.searchParams.get('next'), '/dashboard'));
   }
 
   if (path === '/staff/login') return response;

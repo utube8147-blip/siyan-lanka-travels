@@ -7,6 +7,7 @@
 // kept in this browser only.
 
 import { isSupabaseConfigured as DB, supabase } from './supabase/client';
+import { tx } from '@/lib/i18n';
 
 export interface SharedStop {
   name: string;
@@ -69,11 +70,11 @@ const round5 = (n: number) => Math.round(n * 1e5) / 1e5;
 
 export async function createShare(s: Omit<RouteShare, 'token' | 'createdAt' | 'revokedAt'>): Promise<{ ok: boolean; share?: RouteShare; reason?: string }> {
   const share: RouteShare = { ...s, path: s.path ? thin(s.path) : null, token: newToken(), createdAt: new Date().toISOString(), revokedAt: null };
-  if (!DB) return writeLocal([share, ...readLocal()]) ? { ok: true, share } : { ok: false, reason: 'Could not save in this browser' };
+  if (!DB) return writeLocal([share, ...readLocal()]) ? { ok: true, share } : { ok: false, reason: tx('Could not save in this browser') };
   const { error } = await supabase()
     .from('route_shares')
     .insert({ token: share.token, route_id: share.routeId, title: share.title, note: share.note, stops: share.stops, path: share.path, distance_km: share.distanceKm, departure: share.departure });
-  if (error) return { ok: false, reason: /route_shares|schema cache/.test(error.message) ? 'Sharing needs the database update: run migration 34 (route share links).' : error.message };
+  if (error) return { ok: false, reason: /route_shares|schema cache/.test(error.message) ? tx('Sharing needs the database update: run migration 34 (route share links).') : error.message };
   return { ok: true, share };
 }
 
@@ -81,7 +82,7 @@ export async function createShare(s: Omit<RouteShare, 'token' | 'createdAt' | 'r
 export async function listShares(routeId: string): Promise<{ shares: RouteShare[]; error?: string }> {
   if (!DB) return { shares: readLocal().filter((x) => x.routeId === routeId && !x.revokedAt) };
   const { data, error } = await supabase().from('route_shares').select('*').eq('route_id', routeId).is('revoked_at', null).order('created_at', { ascending: false });
-  if (error) return { shares: [], error: /route_shares|schema cache/.test(error.message) ? 'Sharing needs the database update: run migration 34 (route share links).' : error.message };
+  if (error) return { shares: [], error: /route_shares|schema cache/.test(error.message) ? tx('Sharing needs the database update: run migration 34 (route share links).') : error.message };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { shares: ((data as any[]) ?? []).map(fromRow) };
 }

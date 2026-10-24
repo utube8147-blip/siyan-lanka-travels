@@ -14,6 +14,7 @@ import { MobileTabBar } from './mobile/MobileTabBar';
 import { Fab } from './mobile/Fab';
 import { PullToRefresh } from './mobile/PullToRefresh';
 import { useT } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -43,20 +44,15 @@ export function SiteFooter() {
       <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between gap-10">
         <div className="space-y-3 max-w-sm">
           <Wordmark />
-          <p className="text-[14px] leading-[1.6] text-[#46464f]">{OPERATOR.tagline}</p>
+          <p className="text-[14px] leading-[1.6] text-[#46464f]">{tx(OPERATOR.tagline)}</p>
           <InstallAppButton className="pt-2" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-10 text-[14px] leading-[1.6] min-w-0">
           <div className="space-y-2">
             <h4 className="font-bold text-[#7c5800]">{t('Popular routes')}</h4>
             <ul className="space-y-2 text-[#46464f]">
-              {[
-                ['colombo-to-batticaloa', 'Colombo to Batticaloa'],
-                ['colombo-to-kalmunai', 'Colombo to Kalmunai'],
-                ['colombo-to-akkaraipattu', 'Colombo to Akkaraipattu'],
-                ['colombo-to-polonnaruwa', 'Colombo to Polonnaruwa'],
-              ].map(([slug, label]) => (
-                <li key={slug}><Link className="hover:text-[#050a44]" href={`/bus/${slug}`}>{label}</Link></li>
+              {['Batticaloa', 'Kalmunai', 'Akkaraipattu', 'Polonnaruwa'].map((town) => (
+                <li key={town}><Link className="hover:text-[#050a44]" href={`/bus/colombo-to-${town.toLowerCase()}`}>{tx('{from} to {to}', { from: 'Colombo', to: town })}</Link></li>
               ))}
               <li><Link className="hover:text-[#050a44] font-semibold" href="/bus">{t('All routes')}</Link></li>
             </ul>
@@ -83,11 +79,11 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto mt-10 pt-6 border-t border-[#edeef0] flex flex-col sm:flex-row justify-between gap-3 text-[12px] font-semibold text-[#6b6d78]">
-        <p>© {new Date().getFullYear()} {OPERATOR.name}. All rights reserved.</p>
+        <p>{tx('© {year} {name}. All rights reserved.', { year: new Date().getFullYear(), name: OPERATOR.name })}</p>
         <div className="flex flex-wrap gap-x-6 gap-y-2">
           <Link className="hover:text-[#050a44]" href="/legal#terms">{t('Terms of travel')}</Link>
-          <Link className="hover:text-[#050a44]" href="/legal#privacy">Privacy</Link>
-          <Link className="hover:text-[#050a44]" href="/legal#refunds">Refund policy</Link>
+          <Link className="hover:text-[#050a44]" href="/legal#privacy">{tx('Privacy')}</Link>
+          <Link className="hover:text-[#050a44]" href="/legal#refunds">{tx('Refund policy')}</Link>
         </div>
       </div>
     </footer>

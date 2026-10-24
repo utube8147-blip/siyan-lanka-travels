@@ -6,6 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Flashlight, X } from 'lucide-react';
+import { tx } from '@/lib/i18n';
 
 type ScanAction = { label: string; run: () => Promise<ScanResult> };
 /** `action` is the main follow-up (e.g. "Cash received"); `later` an optional second choice (e.g. "Board now, collect later"). */
@@ -28,7 +29,7 @@ function beep(ok: boolean) {
   }
 }
 
-export function QrScanner({ title = 'Scan tickets', onCode, onClose, footer }: { title?: string; onCode: (text: string) => Promise<ScanResult>; onClose: () => void; footer?: React.ReactNode }) {
+export function QrScanner({ title = tx('Scan tickets'), onCode, onClose, footer }: { title?: string; onCode: (text: string) => Promise<ScanResult>; onClose: () => void; footer?: React.ReactNode }) {
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const [camera, setCamera] = useState<'starting' | 'on' | 'blocked' | 'none'>('starting');
@@ -131,20 +132,20 @@ export function QrScanner({ title = 'Scan tickets', onCode, onClose, footer }: {
         <p className="font-semibold text-[17px]">{title}</p>
         <div className="flex gap-2">
           {camera === 'on' && (
-            <button onClick={toggleTorch} aria-label="Torch" aria-pressed={torch} className={`w-11 h-11 rounded-full flex items-center justify-center ${torch ? 'bg-[#feb700] text-[#14120a]' : 'bg-white/10'}`}>
+            <button onClick={toggleTorch} aria-label={tx('Torch')} aria-pressed={torch} className={`w-11 h-11 rounded-full flex items-center justify-center ${torch ? 'bg-[#feb700] text-[#14120a]' : 'bg-white/10'}`}>
               <Flashlight className="w-5 h-5" />
             </button>
           )}
-          <button onClick={onClose} aria-label="Close" className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label={tx('Close')} className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center"><X className="w-5 h-5" /></button>
         </div>
       </div>
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
         <video ref={video} playsInline muted className={`absolute inset-0 w-full h-full object-cover ${camera === 'on' ? '' : 'hidden'}`} />
         {camera === 'on' && <div className="relative w-[70vw] max-w-72 aspect-square border-4 border-[#feb700] rounded-3xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" aria-hidden />}
-        {camera === 'starting' && <p className="text-white/70 text-[14px]">Starting camera…</p>}
+        {camera === 'starting' && <p className="text-white/70 text-[14px]">{tx('Starting camera…')}</p>}
         {(camera === 'blocked' || camera === 'none') && (
           <p className="text-white/80 text-[15px] px-8 text-center">
-            {camera === 'blocked' ? 'Camera access is blocked. Allow the camera for this site in your browser settings, or type the booking reference below.' : 'This device has no camera. Type the booking reference below.'}
+            {camera === 'blocked' ? tx('Camera access is blocked. Allow the camera for this site in your browser settings, or type the booking reference below.') : tx('This device has no camera. Type the booking reference below.')}
           </p>
         )}
         {result && (
@@ -166,8 +167,8 @@ export function QrScanner({ title = 'Scan tickets', onCode, onClose, footer }: {
       </div>
       <div className="bg-[#111216] px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+12px)] space-y-2">
         <form className="flex gap-2" onSubmit={async (e) => { e.preventDefault(); if (manual.trim()) { show(await onCode(manual)); setManual(''); } }}>
-          <input value={manual} onChange={(e) => setManual(e.target.value.toUpperCase())} placeholder="SLT-XXXXXX or seat (e.g. 5C)" aria-label="Booking reference or seat" autoCapitalize="characters" className="flex-1 h-12 rounded-xl bg-white/10 border border-white/20 px-4 text-white placeholder:text-white/40" />
-          <button className="h-12 px-5 rounded-xl bg-[#feb700] text-[#14120a] font-bold">Board</button>
+          <input value={manual} onChange={(e) => setManual(e.target.value.toUpperCase())} placeholder={tx('SLT-XXXXXX or seat (e.g. 5C)')} aria-label={tx('Booking reference or seat')} autoCapitalize="characters" className="flex-1 h-12 rounded-xl bg-white/10 border border-white/20 px-4 text-white placeholder:text-white/40" />
+          <button className="h-12 px-5 rounded-xl bg-[#feb700] text-[#14120a] font-bold">{tx('Board')}</button>
         </form>
         {footer}
       </div>

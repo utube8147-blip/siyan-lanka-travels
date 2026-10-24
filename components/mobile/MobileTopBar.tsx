@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useHideOnScroll } from '@/lib/useHideOnScroll';
 import { TAB_ROOTS, parentOf, screenTitle } from './routes';
 import { LanguageSwitcher, useT } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 function Bar() {
   const { t } = useT();
@@ -42,13 +43,13 @@ function Bar() {
     >
       <div className="h-14 px-2 flex items-center gap-1">
         {isHome ? (
-          <Link href="/" aria-label="Home" className="pl-2">
+          <Link href="/" aria-label={tx('Home')} className="pl-2">
             <Wordmark size="sm" />
           </Link>
         ) : (
           <>
             {!isRoot && (
-              <button onClick={back} aria-label="Back" className="w-10 h-10 -ml-0.5 rounded-full flex items-center justify-center hover:bg-[#f2f4f6] active:bg-[#edeef0]">
+              <button onClick={back} aria-label={tx('Back')} className="w-10 h-10 -ml-0.5 rounded-full flex items-center justify-center hover:bg-[#f2f4f6] active:bg-[#edeef0]">
                 <ChevronLeft className="w-6 h-6" />
               </button>
             )}

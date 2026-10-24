@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, MapPin, Bus, Clock, Navigation } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
+import { fetchRoadRoute } from '@/lib/routing';
+import { tx } from '@/lib/i18n';
 
 // Route map for a departure: the stops (from their map pins in Staff area →
 // Routes & timetable), the timetable, and the bus itself when the conductor
@@ -17,6 +19,8 @@ export interface RouteStop {
   lat?: number;
   lng?: number;
   status?: 'passed' | 'current' | 'upcoming';
+  /** Only shapes the road: no pin, not in the list. */
+  hidden?: boolean;
 }
 
 export interface RouteData {
@@ -50,28 +54,10 @@ const hasCoords = (s: RouteStop): s is LocatedStop =>
 
 // ---- Road routing (OSRM) ----
 // Draws the route along actual roads rather than straight lines between stops.
-// The public demo server is fine for development; for production use your own
-// OSRM instance or a hosted service (OpenRouteService, Mapbox, GraphHopper…) via NEXT_PUBLIC_ROUTING_URL.
-const ROUTING_URL = process.env.NEXT_PUBLIC_ROUTING_URL ?? 'https://router.project-osrm.org/route/v1/driving';
-const roadCache = new Map<string, LatLng[]>();
-
+// Shares lib/routing.ts (and its NEXT_PUBLIC_ROUTING_URL setting) with the route editor.
 async function fetchRoadPath(stops: LatLng[], signal: AbortSignal): Promise<LatLng[] | null> {
-  if (stops.length < 2) return null;
-  const key = stops.map(([lat, lng]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(';');
-  const hit = roadCache.get(key);
-  if (hit) return hit;
-  try {
-    const res = await fetch(`${ROUTING_URL}/${key}?overview=full&geometries=geojson`, { signal });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const coords = data?.routes?.[0]?.geometry?.coordinates as [number, number][] | undefined;
-    if (!coords?.length) return null;
-    const path = coords.map(([lng, lat]): LatLng => [lat, lng]);
-    roadCache.set(key, path);
-    return path;
-  } catch {
-    return null; // aborted or offline → keep the straight-line fallback
-  }
+  const { route } = await fetchRoadRoute(stops, signal).catch(() => ({ route: null }));
+  return route?.path ?? null; // aborted or offline → keep the straight-line fallback
 }
 
 /** Squared distance (equirectangular approximation, fine at city/country scale). */
@@ -174,7 +160,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
       const progress = route.busProgress;
 
       // Stops (drawn once)
-      located.forEach((s) => {
+      located.filter((s) => !s.hidden).forEach((s) => {
         const done = s.status === 'passed' || s.status === 'current';
         const size = s.status === 'current' ? 18 : 14;
         L.marker([s.lat, s.lng], {
@@ -258,7 +244,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
               html: `<div style="width:34px;height:34px;border-radius:9999px;background:#feb700;border:3px solid #050a44;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 0 6px rgba(254,183,0,.3)">🚌</div>`,
             }),
           })
-            .bindTooltip(`${route.busNumber} is here${route.busSeen ? ` (${route.busSeen})` : ''}`, { direction: 'top', offset: [0, -14] })
+            .bindTooltip(route.busSeen ? tx('{busNumber} is here ({seen})', { busNumber: route.busNumber, seen: route.busSeen }) : tx('{busNumber} is here', { busNumber: route.busNumber }), { direction: 'top', offset: [0, -14] })
             .addTo(routeLayer);
         }
       };
@@ -348,7 +334,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
           role="button"
-          aria-label="Drag up to expand, down to collapse"
+          aria-label={tx('Drag up to expand, down to collapse')}
         >
           <span className="block w-11 h-1.5 rounded-full bg-[#c7c5d1]" />
         </div>
@@ -362,7 +348,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
                 {route.busNumber}
               </span>
               <span className={`text-[11px] font-semibold tracking-[0.02em] ${route.busPosition ? 'text-[#006e1c]' : 'text-[#46464f]'}`}>
-                {route.busPosition ? `LIVE${route.busSeen ? ` · ${route.busSeen}` : ''}` : 'ROUTE & STOPS'}
+                {route.busPosition ? route.busSeen ? tx('LIVE · {seen}', { seen: route.busSeen }) : tx('LIVE') : tx('ROUTE & STOPS')}
               </span>
             </div>
             <h2 className="text-[17px] md:text-[20px] leading-[1.3] font-black text-[#050a44] tracking-tight">
@@ -372,7 +358,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           <button
             onClick={onClose}
             className="p-2 -mr-2 -mt-1 hover:bg-[#f2f4f6] rounded-full transition-colors"
-            aria-label="Close route map"
+            aria-label={tx('Close route map')}
           >
             <X className="w-5 h-5 text-[#191c1e]" />
           </button>
@@ -389,10 +375,8 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
             ) : (
               <div className="absolute inset-0 bg-[#f2f4f6] flex flex-col items-center justify-center gap-1 text-center px-6">
                 <MapPin className="w-5 h-5 text-[#46464f]" />
-                <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">
-                  Map unavailable for this route
-                </p>
-                <p className="text-[11px] text-[#46464f]/80">Stop locations haven&apos;t been added yet.</p>
+                <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">{tx('Map unavailable for this route')}</p>
+                <p className="text-[11px] text-[#46464f]/80">{tx('Stop locations haven\'t been added yet.')}</p>
               </div>
             )}
           </div>
@@ -404,27 +388,25 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
               <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
                 <Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
                 <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.duration}</p>
-                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Duration</p>
+                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">{tx('Duration')}</p>
               </div>
               <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
                 <Navigation className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
                 <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.distance}</p>
-                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Distance</p>
+                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">{tx('Distance')}</p>
               </div>
               <div className="bg-[#f2f4f6] rounded-xl px-2 py-2 md:px-3 md:py-3 text-center">
                 <MapPin className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#050a44] mx-auto mb-0.5 md:mb-1" />
-                <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{route.stops.length} stops</p>
-                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">Along route</p>
+                <p className="text-[12px] md:text-[13px] font-bold text-[#050a44]">{tx('{length} stops', { length: route.stops.filter((s) => !s.hidden).length })}</p>
+                <p className="text-[9px] md:text-[10px] text-[#46464f] font-medium">{tx('Along route')}</p>
               </div>
             </div>
 
             {/* Stop list */}
             <div className="px-4 py-4 md:px-6 md:py-5">
-              <p className="text-[10px] md:text-[11px] font-bold text-[#46464f] tracking-[0.06em] mb-3">
-                STOP SCHEDULE
-              </p>
+              <p className="text-[10px] md:text-[11px] font-bold text-[#46464f] tracking-[0.06em] mb-3">{tx('STOP SCHEDULE')}</p>
               <div>
-                {route.stops.map((stop, i) => (
+                {route.stops.filter((s) => !s.hidden).map((stop, i, list) => (
                   <div key={stop.id} className="flex items-start gap-3">
                     <div className="flex flex-col items-center">
                       <div
@@ -436,7 +418,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
                             : 'bg-white border-[#c7c5d1]'
                         }`}
                       />
-                      {i < route.stops.length - 1 && (
+                      {i < list.length - 1 && (
                         <div
                           className={`w-[2px] h-7 md:h-9 ${
                             stop.status === 'passed' ? 'bg-[#050a44]' : 'bg-[#edeef0]'
@@ -452,9 +434,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
                       >
                         {stop.name}
                         {stop.status === 'current' && (
-                          <span className="ml-2 text-[9px] md:text-[10px] font-bold text-[#feb700] bg-[#050a44] px-2 py-0.5 rounded-full align-middle">
-                            BUS HERE
-                          </span>
+                          <span className="ml-2 text-[9px] md:text-[10px] font-bold text-[#feb700] bg-[#050a44] px-2 py-0.5 rounded-full align-middle">{tx('BUS HERE')}</span>
                         )}
                       </p>
                       <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">{stop.time}</p>
@@ -469,15 +449,13 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
         {/* Footer */}
         <div className="px-4 py-3 md:px-6 md:py-4 border-t border-[#edeef0] flex items-center justify-between bg-white shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div>
-            <p className="text-[10px] md:text-[11px] text-[#46464f] font-medium">Departs {route.departureTime}</p>
-            <p className="text-[10px] md:text-[11px] text-[#46464f] font-medium">Arrives {route.arrivalTime}</p>
+            <p className="text-[10px] md:text-[11px] text-[#46464f] font-medium">{tx('Departs {departureTime}', { departureTime: route.departureTime })}</p>
+            <p className="text-[10px] md:text-[11px] text-[#46464f] font-medium">{tx('Arrives {arrivalTime}', { arrivalTime: route.arrivalTime })}</p>
           </div>
           <button
             onClick={onClose}
             className="px-4 py-2 md:px-5 md:py-2.5 bg-[#050a44] text-white rounded-xl text-[13px] md:text-[14px] font-bold hover:opacity-90 transition-all"
-          >
-            Close
-          </button>
+          >{tx('Close')}</button>
         </div>
       </div>
 

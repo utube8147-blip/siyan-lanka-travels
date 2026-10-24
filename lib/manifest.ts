@@ -3,6 +3,7 @@
 
 import type { Booking, StoreData } from './types';
 import type { ScanResult } from '@/components/staff/QrScanner';
+import { tx } from '@/lib/i18n-core';
 
 export interface ManifestGroup { stop: string; bookings: Booking[] }
 
@@ -67,44 +68,44 @@ export async function scanTicket(text: string, bookings: Booking[], act: Actions
   // A typed seat number ("17", "3A") finds the passenger in that seat; booking references are longer.
   const bySeat = /^[A-Z0-9]{1,4}$/.test(ref) ? bookings.find((b) => b.seats.includes(ref) && b.status !== 'cancelled') : undefined;
   const b = bySeat ?? bookings.find((x) => x.ref.toUpperCase() === ref);
-  if (!b) return { ok: false, msg: 'Not on this bus', detail: `${ref}: wrong date or departure? Check the ticket.` };
-  const who = `${b.passenger.name} · seat ${b.seats.join(', ')}`;
+  if (!b) return { ok: false, msg: tx('Not on this bus'), detail: tx('{ref}: wrong date or departure? Check the ticket.', { ref }) };
+  const who = tx('{name} · seat {seats}', { name: b.passenger.name, seats: b.seats.join(', ') });
   const where = `${b.from} → ${b.to}${b.bikes?.length ? ` · ${b.bikes.length} bike` : ''}`;
   if (b.status === 'boarded' && isDue(b))
     return {
       ok: false,
-      msg: `On board, not paid: collect LKR ${b.total.toLocaleString('en-LK')}`,
+      msg: tx('On board, not paid: collect LKR {total}', { total: b.total.toLocaleString('en-LK') }),
       detail: `${who} · ${where}`,
       action: {
-        label: `Cash received from ${b.passenger.name.split(' ')[0]}`,
+        label: tx('Cash received from {v}', { v: b.passenger.name.split(' ')[0] }),
         run: async () => {
           const p = await act.takeCash(b);
-          return p.ok ? { ok: true, msg: `✓ Paid: ${who}`, detail: where } : { ok: false, msg: p.reason ?? 'Could not record payment' };
+          return p.ok ? { ok: true, msg: tx('✓ Paid: {who}', { who }), detail: where } : { ok: false, msg: p.reason ?? tx('Could not record payment') };
         },
       },
     };
-  if (b.status === 'boarded') return { ok: true, msg: `Already on board: ${who}`, detail: where };
-  if (b.status === 'cancelled') return { ok: false, msg: 'Cancelled ticket', detail: `${who}. Don't board.` };
+  if (b.status === 'boarded') return { ok: true, msg: tx('Already on board: {who}', { who }), detail: where };
+  if (b.status === 'cancelled') return { ok: false, msg: tx('Cancelled ticket'), detail: tx('{who}. Don\'t board.', { who }) };
   if (b.status === 'held') {
     // Not paid yet. Conductors collect fares on the way, so the scan boards the
     // passenger straight away and the money stays on the "to collect" list.
     // If they do pay at the door, one tap records it.
     const r = await act.board(b);
-    if (!r.ok) return { ok: false, msg: r.reason ?? 'Could not board' };
-    const amount = `LKR ${b.total.toLocaleString('en-LK')}`;
+    if (!r.ok) return { ok: false, msg: r.reason ?? tx('Could not board') };
+    const amount = tx('LKR {total}', { total: b.total.toLocaleString('en-LK') });
     return {
       ok: true,
       msg: `✓ ${who}`,
-      detail: `${where} · ${amount} to collect on the way`,
+      detail: tx('{where} · {amount} to collect on the way', { where, amount }),
       action: {
-        label: `Paid now: ${amount} received`,
+        label: tx('Paid now: {amount} received', { amount }),
         run: async () => {
           const p = await act.takeCash(b);
-          return p.ok ? { ok: true, msg: `✓ Paid & on board: ${who}`, detail: where } : { ok: false, msg: p.reason ?? 'Could not record payment' };
+          return p.ok ? { ok: true, msg: tx('✓ Paid & on board: {who}', { who }), detail: where } : { ok: false, msg: p.reason ?? tx('Could not record payment') };
         },
       },
     };
   }
   const r = await act.board(b);
-  return r.ok ? { ok: true, msg: `✓ ${who}`, detail: where } : { ok: false, msg: r.reason ?? 'Could not board' };
+  return r.ok ? { ok: true, msg: `✓ ${who}`, detail: where } : { ok: false, msg: r.reason ?? tx('Could not board') };
 }

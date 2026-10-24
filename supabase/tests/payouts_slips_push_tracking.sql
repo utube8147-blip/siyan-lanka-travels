@@ -2,6 +2,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
 update app_settings set ladies_adjacent = false; -- the seat-beside-a-woman rule is tested in seat_overrides.sql
 update routes set flat_fare = false; -- these tests check per-stop fares; one-price routes are tested in seat_overrides.sql
@@ -25,7 +26,12 @@ reset role;
 select '--- refund payouts';
 set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
 insert into ids select 'a1', id::text from create_booking(format($q${"schedule_id":"sch-cmb-2100","date":"%s","from":"Colombo","to":"Batticaloa","seats":["2C","2D"],"passenger":{"name":"Alex A","gender":"Male","phone":"0771111111"}}$q$, (select fri from t5))::jsonb);
-select 'A drops a seat → total ' || total from modify_booking((select v::uuid from ids where k = 'a1'), array['2C']);
+select pg_temp.try('A drops a seat herself (must cancel instead)', format($q$select modify_booking('%s', array['2C'])$q$, (select v from ids where k = 'a1')));
+reset role;
+set role authenticated; select pg_temp.as_user('cccccccc-0000-0000-0000-000000000003');
+select 'staff drops a seat at the counter → total ' || total from modify_booking((select v::uuid from ids where k = 'a1'), array['2C']);
+reset role;
+set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
 select 'payout for the dropped seat: ' || kind || ' LKR ' || amount || ' ' || status from payouts where booking_id = (select v::uuid from ids where k = 'a1');
 select 'A cancels → refund ' || refund_amount from cancel_booking((select v::uuid from ids where k = 'a1'));
 select 'A''s payouts: ' || string_agg(amount || ' ' || status, ', ' order by created_at) from payouts;

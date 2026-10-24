@@ -1,5 +1,6 @@
 \set ON_ERROR_STOP 1
 \pset pager off
+update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 begin;
 insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000e1','p@x.lk'),('00000000-0000-0000-0000-0000000000e2','q@x.lk');
 insert into public.profiles (id, full_name) values ('00000000-0000-0000-0000-0000000000e1','P'),('00000000-0000-0000-0000-0000000000e2','Q') on conflict do nothing;

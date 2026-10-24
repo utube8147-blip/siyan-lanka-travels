@@ -36,12 +36,13 @@ export async function loadTimetable(): Promise<Timetable> {
     return SEED_TIMETABLE;
   }
 }
-import { formatDuration, formatTime12, fromMinutes, toMinutes } from './trips';
+import { formatDuration, formatLKR, formatTime12, fromMinutes, toMinutes } from './trips';
+import { N_, tx } from './i18n-core';
 
 export const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 export const absoluteUrl = (path = '/') => `${OPERATOR.siteUrl}${path.startsWith('/') ? path : `/${path}`}`;
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAYS = [N_('Sunday'), N_('Monday'), N_('Tuesday'), N_('Wednesday'), N_('Thursday'), N_('Friday'), N_('Saturday')];
 const SCHEMA_DAYS = WEEKDAYS.map((d) => `https://schema.org/${d}`);
 
 export interface RoutePage {
@@ -60,7 +61,7 @@ export interface RoutePage {
 export function allRoutePages(tt: Timetable = SEED_TIMETABLE): RoutePage[] {
   const pages = new Map<string, RoutePage>();
   for (const route of tt.routes.filter((r) => r.active)) {
-    const stops = route.stops;
+    const stops = route.stops.filter((s) => !s.hidden);
     for (let i = 0; i < stops.length; i++) {
       for (let j = i + 1; j < stops.length; j++) {
         const from = stops[i];
@@ -80,7 +81,7 @@ export function allRoutePages(tt: Timetable = SEED_TIMETABLE): RoutePage[] {
           fare: route.flatFare !== false ? route.stops[route.stops.length - 1].fareFromStart : to.fareFromStart - from.fareFromStart,
           durationMin: to.offsetMin - from.offsetMin,
           via: stops.slice(i + 1, j).map((s) => s.name),
-          busType: bus ? `${bus.type} luxury coach` : 'Coach',
+          busType: bus ? (bus.type === 'AC' ? N_('AC luxury coach') : N_('Non-AC coach')) : N_('Coach'),
           amenities: bus?.amenities ?? [],
           departures: schedules.map((s) => {
             const dep = toMinutes(s.departure) + from.offsetMin;
@@ -93,7 +94,7 @@ export function allRoutePages(tt: Timetable = SEED_TIMETABLE): RoutePage[] {
               arrival: formatTime12(fromMinutes(arr)),
               nextDay: Math.floor(arr / 1440) > shift,
               // Alternate-day departures don't fall on fixed weekdays.
-              days: s.everyDays && s.everyDays > 1 && s.startDate ? [s.everyDays === 2 ? 'alternate days' : `every ${s.everyDays} days`] : days.map((d) => WEEKDAYS[d]),
+              days: s.everyDays && s.everyDays > 1 && s.startDate ? [s.everyDays === 2 ? N_('alternate days') : `every ${s.everyDays} days`] : days.map((d) => WEEKDAYS[d]),
               schemaDays: days.map((d) => SCHEMA_DAYS[d]),
             };
           }),
@@ -108,7 +109,54 @@ export function findRoutePage(slug: string, tt: Timetable = SEED_TIMETABLE) {
   return allRoutePages(tt).find((p) => p.slug === slug);
 }
 
+/** A departure's running days in the language in use ("Monday, Friday", "every 3 days"). */
+export function dayList(days: string[]) {
+  return days
+    .map((x) => {
+      const every = /^every (\d+) days$/.exec(x);
+      return every ? tx('every {n} days', { n: every[1] }) : tx(x);
+    })
+    .join(', ');
+}
+
+/** In English on the server (page metadata); in the reader's language when rendered by <RouteSummary>. */
 export function routeSummary(p: RoutePage) {
   const d = p.departures[0];
-  return `${p.from} to ${p.to} by ${OPERATOR.name} ${p.busType}: ${formatDuration(p.durationMin)}, from LKR ${p.fare.toLocaleString('en-LK')}. Leaves ${d.time} on ${d.days.join(', ')}. Book your seat online.`;
+  return tx('{from} to {to} by {operator} {busType}: {duration}, from LKR {fare}. Leaves {time} on {days}. Book your seat online.', {
+    from: p.from, to: p.to, operator: OPERATOR.name, busType: tx(p.busType), duration: formatDuration(p.durationMin),
+    fare: p.fare.toLocaleString('en-LK'), time: d.time, days: dayList(d.days),
+  });
 }
+
+/** Questions on a route page: English for the structured data, translated on screen by <RouteFaqs>. */
+export function routeFaqs(p: RoutePage) {
+  const first = p.departures[0];
+  const bikeFrom = Math.min(...Object.values(OPERATOR.bikes.kinds).map((k) => k.fullRouteFee));
+  const route = { from: p.from, to: p.to };
+  return [
+    {
+      q: tx('How long is the bus from {from} to {to}?', route),
+      a: first.nextDay
+        ? tx('About {duration}. The bus leaves {from} at {time} and reaches {to} around {arrival} the next morning.', { ...route, duration: formatDuration(p.durationMin), time: first.time, arrival: first.arrival })
+        : tx('About {duration}. The bus leaves {from} at {time} and reaches {to} around {arrival}.', { ...route, duration: formatDuration(p.durationMin), time: first.time, arrival: first.arrival }),
+    },
+    {
+      q: tx('How much is the bus ticket from {from} to {to}?', route),
+      a: tx('{fare} per seat on our {busType}, plus a {fee} booking fee when you book online.', { fare: formatLKR(p.fare), busType: tx(p.busType), fee: formatLKR(OPERATOR.bookingFee) }),
+    },
+    {
+      q: tx('Which days does the {from} to {to} bus run?', route),
+      a: p.departures.map((d) => tx('{time} on {days}', { time: d.time, days: dayList(d.days) })).join('; ') + '.',
+    },
+    { q: tx('Can I choose my seat?'), a: tx('Yes. You pick your exact seat on a live seat map when you book. Seats at the front are kept for female passengers.') },
+    {
+      q: tx('Can I take a bicycle or motorbike?'),
+      a: tx('Yes, in the luggage compartment under the bus. Add it when you book and upload a photo; prices start around {min} and depend on the distance and the bike (up to {max} for a bicycle on the full route). Space is limited on each departure.', { min: formatLKR(OPERATOR.bikes.minFee), max: formatLKR(bikeFrom) }),
+    },
+    ...(p.from === 'Colombo' ? [{ q: tx('Where does the bus leave from in Colombo?'), a: `${OPERATOR.contact.address}.` }] : []),
+  ];
+}
+
+/** JSON for a <script type="application/ld+json"> tag. "<" is escaped so a
+ *  name containing "</script>" can't end the tag early. */
+export const jsonLdScript = (data: unknown) => JSON.stringify(data).replace(/</g, '\\u003c');

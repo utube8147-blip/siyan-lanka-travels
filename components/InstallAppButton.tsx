@@ -8,29 +8,30 @@
 import { useState } from 'react';
 import { Download, Share, X } from 'lucide-react';
 import { useInstall } from '@/lib/pwa';
-import { useT } from '@/lib/i18n';
+import { useT, txr } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 export function IosInstallHelp({ onClose }: { onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Install the app">
+    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={tx('Install the app')}>
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl">
-        <button onClick={onClose} aria-label="Close" className="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-[#f2f4f6] flex items-center justify-center">
+        <button onClick={onClose} aria-label={tx('Close')} className="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-[#f2f4f6] flex items-center justify-center">
           <X className="w-4 h-4 text-[#46464f]" />
         </button>
-        <h2 className="text-[17px] font-bold text-[#050a44] mb-3">Add Siyan Lanka to your Home Screen</h2>
+        <h2 className="text-[17px] font-bold text-[#050a44] mb-3">{tx('Add Siyan Lanka to your Home Screen')}</h2>
         <ol className="space-y-3 text-[14px] text-[#46464f]">
           <li className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-[#050a44] text-white text-[12px] font-bold flex items-center justify-center shrink-0">1</span>
-            Tap <Share className="w-4 h-4 text-[#050a44]" /> <strong className="text-[#050a44]">Share</strong> in Safari&apos;s toolbar
+            <span>{txr('Tap {icon} <b>Share</b> in Safari\'s toolbar', { icon: <Share className="inline w-4 h-4 text-[#050a44] align-[-3px]" />, b: (c) => <strong className="text-[#050a44]">{c}</strong> })}</span>
           </li>
           <li className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-[#050a44] text-white text-[12px] font-bold flex items-center justify-center shrink-0">2</span>
-            Choose <strong className="text-[#050a44]">Add to Home Screen</strong>
+            <span>{txr('Choose <b>Add to Home Screen</b>', { b: (c) => <strong className="text-[#050a44]">{c}</strong> })}</span>
           </li>
           <li className="flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-[#050a44] text-white text-[12px] font-bold flex items-center justify-center shrink-0">3</span>
-            Tap <strong className="text-[#050a44]">Add</strong>
+            <span>{txr('Tap <b>Add</b>', { b: (c) => <strong className="text-[#050a44]">{c}</strong> })}</span>
           </li>
         </ol>
       </div>
@@ -55,8 +56,8 @@ export function InstallAppButton({ variant = 'footer', className = '', onDone }:
       <button
         type="button"
         onClick={go}
-        aria-label="Install the app"
-        title="Install the app"
+        aria-label={tx('Install the app')}
+        title={tx('Install the app')}
         className={`w-10 h-10 rounded-full flex items-center justify-center text-[#7c5800] hover:bg-[#f2f4f6] transition-colors ${className}`}
       >
         <Download className="w-5 h-5" />

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { friendlyError, isSupabaseConfigured as DB, supabase } from './supabase/client';
 import { uuid } from './uuid';
+import { tx } from '@/lib/i18n';
 
 export interface OdoLog { id: string; busId: string; date: string; km: number; notes: string; by?: string; /** 'log' = entered here; 'fuel' / 'service' = came with an expense. */ source: 'log' | 'fuel' | 'service' }
 type Result = { ok: boolean; reason?: string };
@@ -31,7 +32,7 @@ export function useOdometer() {
       return setReady(true);
     }
     const { data, error } = await supabase().from('odometer_logs').select('*, profiles(full_name)').order('log_date', { ascending: false }).limit(1500);
-    if (error) setError("Odometer readings couldn't be loaded. If this is new, run supabase/setup.sql, then reload.");
+    if (error) setError(tx('Odometer readings couldn\'t be loaded. If this is new, run supabase/setup.sql, then reload.'));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setLogs(((data as any[]) ?? []).map((r) => ({ id: r.id, busId: r.bus_id, date: r.log_date, km: r.reading_km, notes: r.notes ?? '', by: r.profiles?.full_name ?? '', source: 'log' as const })));
     setReady(true);
@@ -41,10 +42,10 @@ export function useOdometer() {
   }, [load]);
 
   const add = async (busId: string, date: string, km: number, notes: string): Promise<Result> => {
-    if (!(km > 0)) return { ok: false, reason: 'Enter the reading on the odometer.' };
+    if (!(km > 0)) return { ok: false, reason: tx('Enter the reading on the odometer.') };
     if (!DB) {
       const earlier = logs.filter((l) => l.busId === busId && l.date < date).reduce((m, l) => Math.max(m, l.km), 0);
-      if (earlier && km < earlier) return { ok: false, reason: `The reading can't be lower than an earlier one (${earlier.toLocaleString('en-LK')} km).` };
+      if (earlier && km < earlier) return { ok: false, reason: tx('The reading can\'t be lower than an earlier one ({earlier} km).', { earlier: earlier.toLocaleString('en-LK') }) };
       // Read what is stored, not this render's copy: two readings saved one after the other (start and end of a trip) must both be kept.
       let stored: OdoLog[] = logs;
       try {
@@ -110,8 +111,8 @@ export function dailyDistance(readings: OdoLog[], busId: string): Map<string, nu
   return out;
 }
 
-const kmText = (n: number) => `${n.toLocaleString('en-LK')} km`;
-const sourceText = (r: OdoLog) => (r.source === 'fuel' ? 'the fuel log' : r.source === 'service' ? 'a service entry' : 'the reading');
+const kmText = (n: number) => tx('{n} km', { n: n.toLocaleString('en-LK') });
+const sourceText = (r: OdoLog) => (r.source === 'fuel' ? tx('the fuel log') : r.source === 'service' ? tx('a service entry') : tx('the reading'));
 /** A jump this big between two readings is almost always a typing mistake. */
 export const ODO_WARN_KM = 1500;
 /** More than this is refused (the database refuses it for daily readings too). */

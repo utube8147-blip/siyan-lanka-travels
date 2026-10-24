@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
 import { departureDate, formatTime12, getTrip } from '@/lib/trips';
 import { notify, subscribeToPush } from '@/lib/pwa';
+import { tx } from '@/lib/i18n';
 
 /** Minutes before boarding. Checked nearest-first; 'start' covers the 20 minutes after. */
 const STAGES = [
@@ -57,12 +58,12 @@ export function TripReminders() {
           continue;
         }
         const at = formatTime12(trip.departure);
-        const what = `${b.from} → ${b.to} · Seat ${b.seats.join(', ')} · ${trip.bus.regNo}.`;
+        const what = tx('{from} → {to} · Seat {seats} · {regNo}.', { from: b.from, to: b.to, seats: b.seats.join(', '), regNo: trip.bus.regNo });
         const text = {
-          '24h': [`Your trip is tomorrow at ${at}`, `${what} Your ticket is ready in My trips.`],
-          '3h': [`Your bus leaves at ${at}`, `${what} 3 hours to go. Be at the boarding point 20 minutes early.`],
-          '1h': ['Your bus leaves in 1 hour', `${what} Leaves ${b.from} at ${at}. Time to head to the boarding point.`],
-          start: ['Your trip is starting', `${what} The bus is due at ${b.from} now (${at}). Tap to see where it is.`],
+          '24h': [tx('Your trip is tomorrow at {at}', { at }), tx('{what} Your ticket is ready in My trips.', { what })],
+          '3h': [tx('Your bus leaves at {at}', { at }), tx('{what} 3 hours to go. Be at the boarding point 20 minutes early.', { what })],
+          '1h': [tx('Your bus leaves in 1 hour'), tx('{what} Leaves {from} at {at}. Time to head to the boarding point.', { what, from: b.from, at })],
+          start: [tx('Your trip is starting'), tx('{what} The bus is due at {from} now ({at}). Tap to see where it is.', { what, from: b.from, at })],
         }[stage.id];
         notify(text[0], {
           body: text[1],

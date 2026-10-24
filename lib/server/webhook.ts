@@ -17,3 +17,10 @@ export function verifyStandardWebhook(body: string, headers: Headers, secret: st
     return got.length === expected.length && timingSafeEqual(got, expected);
   });
 }
+
+/** Compares two secrets in constant time (a plain === leaks how many leading characters match). */
+export function sameSecret(a: string, b: string) {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}

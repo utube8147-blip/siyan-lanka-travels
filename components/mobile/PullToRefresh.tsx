@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RotateCw } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { tx } from '@/lib/i18n';
 
 const TRIGGER = 72;
 
@@ -60,7 +61,7 @@ export function PullToRefresh({ children }: { children: React.ReactNode }) {
         style={{ top: `calc(env(safe-area-inset-top) + ${pull - 30}px)`, opacity: pull > 8 || busy ? 1 : 0 }}
       >
         <RotateCw className={`w-5 h-5 text-[#050a44] ${busy ? 'animate-spin' : ''}`} style={{ transform: busy ? undefined : `rotate(${pull * 3}deg)` }} />
-        {busy && <span className="sr-only">Refreshing</span>}
+        {busy && <span className="sr-only">{tx('Refreshing')}</span>}
       </div>
       {children}
     </>

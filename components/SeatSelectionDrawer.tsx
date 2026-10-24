@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, useDragControls } from 'motion/react';
 
 import { formatLKR } from '@/lib/trips';
+import { tx, txn } from '@/lib/i18n';
 
 // Seat layout and taken seats come from the bus + bookings in the store
 // (see lib/trips.ts takenSeats). Seat ids: rows 1..N with A B | C D, plus a
@@ -35,6 +36,8 @@ interface SeatSelectionDrawerProps {
    * unchanged.
    */
   originalSeatCount?: number;
+  /** Changing an existing booking: the ✕ leaves without changing anything. */
+  onCancel?: () => void;
   /** Label for the footer button. Defaults to "Done". */
   confirmLabel?: string;
   /** Bus layout. */
@@ -57,6 +60,7 @@ export default function SeatSelectionDrawer({
   passengerGender,
   maxSeatsPerBooking,
   originalSeatCount,
+  onCancel,
   confirmLabel,
   layout,
   taken,
@@ -64,8 +68,9 @@ export default function SeatSelectionDrawer({
   heldSeats,
 }: SeatSelectionDrawerProps) {
   const isEditingExisting = originalSeatCount !== undefined;
-  const deltaCount = isEditingExisting ? selectedSeats.length - (originalSeatCount as number) : 0;
-  const deltaAmount = deltaCount * seatPrice;
+  // Changing seats keeps the same number of seats (the database refuses more
+  // or fewer: more seats is a new booking, fewer is cancel and rebook).
+  const swapReady = !isEditingExisting || selectedSeats.length === originalSeatCount;
 
   const seatBaseClass =
     'aspect-square w-full min-w-0 rounded-lg text-[11px] font-bold flex items-center justify-center border-[1.5px] transition-all duration-150 select-none';
@@ -119,31 +124,31 @@ export default function SeatSelectionDrawer({
   const positions = new Map<string, string>();
   seatMap.cells.forEach((row, r) => row.forEach((cell, c) => cell && positions.set(cell, seatPosition(seatMap, r, c))));
   const seatMeaning = (seatId: string) =>
-    (positions.get(seatId) && positions.get(seatId) !== 'middle' ? `${positions.get(seatId)} seat, ` : '') + seatState(seatId);
+    positions.get(seatId) === 'window' ? tx('window seat, {state}', { state: seatState(seatId) }) : positions.get(seatId) === 'aisle' ? tx('aisle seat, {state}', { state: seatState(seatId) }) : seatState(seatId);
   const seatState = (seatId: string) =>
     isBookedByFemale(seatId)
-      ? 'booked by a female passenger'
+      ? tx('booked by a female passenger')
       : isBookedByMale(seatId)
-        ? 'booked by a male passenger'
+        ? tx('booked by a male passenger')
         : RESERVED_SEATS.includes(seatId)
-          ? 'reserved, not available online'
+          ? tx('reserved, not available online')
         : PENDING_SEATS.includes(seatId)
-          ? 'being booked by another passenger right now; it may come free in a few minutes'
+          ? tx('being booked by another passenger right now; it may come free in a few minutes')
           : selectedSeats.includes(seatId)
-            ? 'selected by you (tap to remove)'
+            ? tx('selected by you (tap to remove)')
             : BESIDE_WOMAN.includes(seatId)
               ? passengerGender === 'Female'
-                ? 'beside a woman travelling alone, available to you'
-                : 'beside a woman travelling alone, kept for women'
+                ? tx('beside a woman travelling alone, available to you')
+                : tx('beside a woman travelling alone, kept for women')
             : FEMALE_ONLY_SEATS.includes(seatId)
               ? passengerGender === 'Female'
-                ? 'ladies-only seat, available to you'
-                : 'reserved for female passengers'
+                ? tx('ladies-only seat, available to you')
+                : tx('reserved for female passengers')
               : 'available';
   const explain = (seatId: string) => ({
-    onMouseEnter: () => setHint(`Seat ${seatId}: ${seatMeaning(seatId)}`),
+    onMouseEnter: () => setHint(tx('Seat {seatId}: {seatId2}', { seatId, seatId2: seatMeaning(seatId) })),
     onMouseLeave: () => setHint(null),
-    onFocus: () => setHint(`Seat ${seatId}: ${seatMeaning(seatId)}`),
+    onFocus: () => setHint(tx('Seat {seatId}: {seatId2}', { seatId, seatId2: seatMeaning(seatId) })),
     onBlur: () => setHint(null),
   });
   const bubble = (seatId: string) => (
@@ -192,8 +197,8 @@ export default function SeatSelectionDrawer({
           key={seatId}
           tabIndex={0}
           className={`${seatClass(seatId)} group relative`}
-          aria-label={`Seat ${seatId}, ${seatMeaning(seatId)}`}
-          onClick={() => setHint(`Seat ${seatId}: ${seatMeaning(seatId)}`)}
+          aria-label={tx('Seat {seatId}, {seatId2}', { seatId, seatId2: seatMeaning(seatId) })}
+          onClick={() => setHint(tx('Seat {seatId}: {seatId2}', { seatId, seatId2: seatMeaning(seatId) }))}
           {...explain(seatId)}
         >
           {seatId}
@@ -207,7 +212,7 @@ export default function SeatSelectionDrawer({
         key={seatId}
         type="button"
         className={`${seatClass(seatId)} group relative`}
-        aria-label={`Seat ${seatId}, ${seatMeaning(seatId)}`}
+        aria-label={tx('Seat {seatId}, {seatId2}', { seatId, seatId2: seatMeaning(seatId) })}
         {...explain(seatId)}
         whileTap={{ scale: 0.86 }}
         animate={selectedSeats.includes(seatId) ? 'on' : 'off'}
@@ -278,15 +283,17 @@ export default function SeatSelectionDrawer({
             </div>
             <div>
               <h2 className="text-[20px] font-bold leading-tight">
-                {isEditingExisting ? 'Change Your Seats' : 'Select Your Seat'}
+                {isEditingExisting ? tx('Change Your Seats') : tx('Select Your Seat')}
               </h2>
-              <p className="text-[12px] text-[#46464f] mt-0.5">Up to {maxSeatsPerBooking} seats per booking</p>
+              <p className="text-[12px] text-[#46464f] mt-0.5">
+                {isEditingExisting ? tx('Pick the seats you want instead. To add seats, make a new booking.') : tx('Up to {maxSeatsPerBooking} seats per booking', { maxSeatsPerBooking })}
+              </p>
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={onCancel ?? onClose}
             className="w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-[#46464f] hover:bg-[#f2f4f6] transition-colors"
-            aria-label="Close seat selection"
+            aria-label={tx('Close seat selection')}
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
@@ -301,9 +308,7 @@ export default function SeatSelectionDrawer({
                 : 'bg-[#feb700]/10 border-[#feb700]/20 text-[#6b4b00]'
             }`}
           >
-            <span className="material-symbols-outlined text-[16px]">timer</span>
-            Held for {formatTime(timeLeft)}
-          </div>
+            <span className="material-symbols-outlined text-[16px]">timer</span>{tx('Held for {time}', { time: formatTime(timeLeft) })}</div>
         )}
 
         {/* Seat map: vertical scroll only, never horizontal */}
@@ -315,13 +320,13 @@ export default function SeatSelectionDrawer({
                 <div className="w-11 h-11 rounded-xl bg-[#e7e8ea] flex flex-col items-center justify-center text-[#050a44]/40 border border-[#c7c5d1]/20">
                   <span className="material-symbols-outlined text-[18px]">sensor_door</span>
                 </div>
-                <span className="text-[8px] font-bold uppercase tracking-wider mt-1 text-[#46464f]/60">Entrance</span>
+                <span className="text-[8px] font-bold uppercase tracking-wider mt-1 text-[#46464f]/60">{tx('Entrance')}</span>
               </div>
               <div className="flex-1 mx-6 h-px bg-[#c7c5d1]/20 rounded-full"></div>
-              <span className="sr-only">Front of the bus</span>
+              <span className="sr-only">{tx('Front of the bus')}</span>
               <div className="w-11 h-11 shrink-0 rounded-full border-2 border-[#050a44]/30 flex items-center justify-center text-[#050a44] shadow-sm bg-white">
                 {/* Drawn here: the icon font has no "steering" symbol, so the word itself was showing. */}
-                <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" role="img" aria-label="Driver">
+                <svg viewBox="0 0 24 24" className="w-[22px] h-[22px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" role="img" aria-label={tx('Driver')}>
                   <circle cx="12" cy="12" r="9" />
                   <circle cx="12" cy="12" r="2.2" />
                   <path d="M3.4 10.5h6.6M14 10.5h6.6M12 14.2V21" />
@@ -366,9 +371,7 @@ export default function SeatSelectionDrawer({
           </div>
 
           {passengerGender === 'Female' && (
-            <p className="text-center text-[11px] font-medium text-pink-600 mt-4 px-2">
-              Reserved seats are available to you.
-            </p>
+            <p className="text-center text-[11px] font-medium text-pink-600 mt-4 px-2">{tx('Reserved seats are available to you.')}</p>
           )}
         </div>
 
@@ -378,7 +381,7 @@ export default function SeatSelectionDrawer({
           <div className="flex items-center justify-between gap-3 mb-4 min-h-[34px]">
           <div className="flex flex-wrap gap-2 min-w-0 flex-1">
             {selectedSeats.length === 0 ? (
-              <p className="text-[#6b6d78] italic text-sm self-center">No seats selected yet.</p>
+              <p className="text-[#6b6d78] italic text-sm self-center">{tx('No seats selected yet.')}</p>
             ) : (
               selectedSeats.map((seat) => (
                 <div
@@ -403,16 +406,12 @@ export default function SeatSelectionDrawer({
           {isEditingExisting ? (
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-semibold text-[#46464f]">
-                {deltaCount === 0 ? 'No fare change' : deltaCount > 0 ? 'Additional fare' : 'Refund due'}
-              </span>
-              <span className={`text-base font-bold ${deltaCount > 0 ? 'text-[#ba1a1a]' : deltaCount < 0 ? 'text-[#006e1c]' : 'text-black'}`}>
-                {deltaCount === 0 ? formatLKR(0) : `${deltaCount > 0 ? '+' : '-'}${formatLKR(Math.abs(deltaAmount))}`}
+                {swapReady ? tx('Same fare, no extra charge') : txn(originalSeatCount ?? 1, 'Pick {n} seat ({picked} picked)', 'Pick {n} seats ({picked} picked)', { picked: selectedSeats.length })}
               </span>
             </div>
           ) : (
             <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-semibold text-[#46464f]">
-                {selectedSeats.length} seat{selectedSeats.length !== 1 ? 's' : ''}
+              <span className="text-sm font-semibold text-[#46464f]">{txn(selectedSeats.length, '{n} seat', '{n} seats')}
               </span>
               <span className="text-base font-bold text-black">
                 {formatLKR(selectedSeats.length * seatPrice)}
@@ -422,12 +421,12 @@ export default function SeatSelectionDrawer({
 
           <button
             onClick={onClose}
-            disabled={selectedSeats.length === 0}
+            disabled={selectedSeats.length === 0 || !swapReady}
             className={`w-full h-12 bg-black text-white rounded-xl font-bold text-sm transition-all ${
-              selectedSeats.length === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[0.98]'
+              selectedSeats.length === 0 || !swapReady ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[0.98]'
             }`}
           >
-            {confirmLabel ?? (isEditingExisting ? (deltaCount > 0 ? `Pay ${formatLKR(deltaAmount)} & confirm` : 'Confirm Change') : 'Done')}
+            {confirmLabel ?? (isEditingExisting ? tx('Confirm change') : tx('Done'))}
           </button>
         </div>
       </motion.div>

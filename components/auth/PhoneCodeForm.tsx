@@ -1,12 +1,13 @@
 'use client';
-// Mobile number → 6-digit SMS code. Supabase sends the code via MessageBird
-// (set in the Supabase dashboard; README → Phone sign-in). Used for both
-// signing in and signing up.
+// Mobile number → 6-digit SMS code: how passengers sign in and sign up.
+// Supabase asks /api/auth/sms-hook to text the code (Notify.lk; README →
+// Phone sign-in).
 
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatLK, toE164LK } from '@/lib/phone';
 import { authButton, authInput } from './AuthShell';
+import { tx, txr } from '@/lib/i18n';
 
 export function PhoneCodeForm({
   mode,
@@ -52,9 +53,9 @@ export function PhoneCodeForm({
     setError(null);
     const problem = extra?.validate();
     if (problem) return setError(problem);
-    if (!toE164LK(phone)) return setError('Enter a Sri Lankan mobile number, like 077 123 4567.');
+    if (!toE164LK(phone)) return setError(tx('Enter a Sri Lankan mobile number, like 077 123 4567.'));
     setBusy(true);
-    const r = await sendPhoneCode(phone, { createUser: mode === 'signup', fullName: extra?.fullName() });
+    const r = await sendPhoneCode(phone, { createUser: mode === 'signup', fullName: extra?.fullName(), email: extra?.email() || undefined });
     setBusy(false);
     if (!r.ok) {
       setSmsDown('code' in r && r.code === 'sms_unavailable');
@@ -86,7 +87,7 @@ export function PhoneCodeForm({
         <>
           {extra?.render()}
           <label className="block">
-            <span className="text-[13px] font-semibold text-[#050a44]">Mobile number</span>
+            <span className="text-[13px] font-semibold text-[#050a44]">{tx('Mobile number')}</span>
             <div className="mt-1.5 flex gap-2">
               <span className="h-12 px-3 shrink-0 whitespace-nowrap rounded-xl bg-[#f2f4f6] border border-[#c7c5d1] flex items-center gap-1 text-[15px] font-semibold text-[#050a44]" aria-hidden>
                 🇱🇰 +94
@@ -103,23 +104,21 @@ export function PhoneCodeForm({
                 aria-describedby="phone-hint"
               />
             </div>
-            <span id="phone-hint" className="block text-[12px] text-[#6b6d78] mt-1.5">
-              We&apos;ll text you a 6-digit code.{mode === 'signup' ? ' Your number becomes your login.' : ''}
+            <span id="phone-hint" className="block text-[12px] text-[#6b6d78] mt-1.5">{mode === 'signup' ? tx("We'll text you a 6-digit code. Your number becomes your login.") : tx("We'll text you a 6-digit code.")}
             </span>
           </label>
           {error && <p role="alert" className="text-[13px] font-semibold text-[#ba1a1a]">{error}</p>}
           {smsDown && onUseEmail && (
             <button type="button" onClick={onUseEmail} className="w-full h-12 rounded-xl border border-[#050a44] text-[#050a44] text-[15px] font-semibold">
-              {mode === 'signup' ? 'Sign up with email instead' : 'Sign in with email instead'}
+              {mode === 'signup' ? tx('Sign up with email instead') : tx('Sign in with email instead')}
             </button>
           )}
-          <button className={authButton} disabled={busy}>{busy ? 'Sending code…' : 'Send code'}</button>
+          <button className={authButton} disabled={busy}>{busy ? tx('Sending code…') : tx('Send code')}</button>
         </>
       ) : (
         <>
-          <p className="text-[14px] text-[#46464f]">
-            Enter the code we sent to <b className="text-[#050a44]">{formatLK(toE164LK(phone)!)}</b>{' '}
-            <button type="button" onClick={() => { setStep('number'); setCode(''); setError(null); }} className="font-semibold text-[#050a44] underline">Change</button>
+          <p className="text-[14px] text-[#46464f]">{txr('Enter the code we sent to <b>{phone}</b>', { phone: formatLK(toE164LK(phone)!), b: (c) => <b className="text-[#050a44]">{c}</b> })}{' '}
+            <button type="button" onClick={() => { setStep('number'); setCode(''); setError(null); }} className="font-semibold text-[#050a44] underline">{tx('Change')}</button>
           </p>
           <input
             ref={codeRef}
@@ -129,17 +128,17 @@ export function PhoneCodeForm({
             pattern="\d{6}"
             maxLength={6}
             placeholder="••••••"
-            aria-label="6-digit code"
+            aria-label={tx('6-digit code')}
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
           />
-          {authMode === 'demo' && <p className="text-[12px] text-[#7c5800] font-semibold">Demo mode: no text is sent. Use 123456.</p>}
+          {authMode === 'demo' && <p className="text-[12px] text-[#7c5800] font-semibold">{tx('Demo mode: no text is sent. Use 123456.')}</p>}
           {error && <p role="alert" className="text-[13px] font-semibold text-[#ba1a1a]">{error}</p>}
           <button className={authButton} disabled={busy || code.length !== 6}>
-            {busy ? 'Checking…' : mode === 'signup' ? 'Verify & create account' : 'Verify & sign in'}
+            {busy ? tx('Checking…') : mode === 'signup' ? tx('Verify & create account') : tx('Verify & sign in')}
           </button>
           <button type="button" disabled={wait > 0 || busy} onClick={send} className="w-full text-[13px] font-semibold text-[#050a44] disabled:text-[#6b6d78]">
-            {wait > 0 ? `Resend code in ${wait}s` : 'Resend code'}
+            {wait > 0 ? tx('Resend code in {wait}s', { wait }) : tx('Resend code')}
           </button>
         </>
       )}

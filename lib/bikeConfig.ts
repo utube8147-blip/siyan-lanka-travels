@@ -5,6 +5,7 @@
 // can use the helpers too; the hook is in lib/useBikeConfig.ts.
 import { OPERATOR } from '@/config/operator';
 
+import { N_ } from '@/lib/i18n-core';
 export interface BikeKindCfg {
   /** Stable key saved on bookings, e.g. "scooter". */
   id: string;
@@ -30,12 +31,12 @@ export interface BikeConfig {
 
 /** Icons the admin can choose from. */
 export const BIKE_ICONS = [
-  { id: 'moped', label: 'Scooter' },
-  { id: 'two_wheeler', label: 'Motorbike' },
-  { id: 'pedal_bike', label: 'Bicycle' },
-  { id: 'electric_scooter', label: 'Kick scooter' },
-  { id: 'electric_bike', label: 'E-bike' },
-  { id: 'luggage', label: 'Other / cargo' },
+  { id: 'moped', label: N_('Scooter') },
+  { id: 'two_wheeler', label: N_('Motorbike') },
+  { id: 'pedal_bike', label: N_('Bicycle') },
+  { id: 'electric_scooter', label: N_('Kick scooter') },
+  { id: 'electric_bike', label: N_('E-bike') },
+  { id: 'luggage', label: N_('Other / cargo') },
 ] as const;
 
 const DEFAULTS = OPERATOR.bikes.kinds as Record<string, { label: string; icon: string; spaces: number; fullRouteFee: number }>;

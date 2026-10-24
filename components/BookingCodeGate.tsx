@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ShieldCheck, X } from 'lucide-react';
 import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
+import { tx, txr } from '@/lib/i18n';
 
 /** Must match the message raised by require_booking_code() in the database. */
 const CODE_REQUIRED = 'Confirm this booking with the code we send you.';
@@ -31,14 +32,14 @@ type Outcome = { ok: boolean; reason?: string };
 async function sendCode(phone: string): Promise<Outcome & { id?: string; label?: string; test?: boolean }> {
   const res = await fetch('/api/booking-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) }).catch(() => null);
   const j = res ? await res.json().catch(() => ({})) : {};
-  if (!res || !res.ok) return { ok: false, reason: j.error ?? "We couldn't send the text just now. Check your connection and try again." };
+  if (!res || !res.ok) return { ok: false, reason: j.error ?? tx('We couldn\'t send the text just now. Check your connection and try again.') };
   return { ok: true, id: j.id, label: j.sentTo, test: !!j.test };
 }
 
 async function checkCode(id: string, code: string): Promise<Outcome> {
   const { data, error } = await supabase().rpc('verify_booking_code', { p_id: id, p_code: code });
   if (error) return { ok: false, reason: friendlyError(error) };
-  return data === true ? { ok: true } : { ok: false, reason: "That code isn't right. Check the text message and try again." };
+  return data === true ? { ok: true } : { ok: false, reason: tx('That code isn\'t right. Check the text message and try again.') };
 }
 
 export function useBookingCode() {
@@ -89,7 +90,7 @@ export function useBookingCode() {
     async <T extends Outcome>(fn: () => Promise<T>, phone: string): Promise<T> => {
       const first = await fn();
       if (first.ok || !isSupabaseConfigured || !first.reason?.startsWith(CODE_REQUIRED)) return first;
-      if (!isLkMobile(phone)) return { ...first, reason: 'Go back and enter a mobile number to confirm this booking.' };
+      if (!isLkMobile(phone)) return { ...first, reason: tx('Go back and enter a mobile number to confirm this booking.') };
       const ok = await ask(phone);
       if (!ok) return { ...first, reason: CODE_CANCELLED };
       return fn();
@@ -100,8 +101,8 @@ export function useBookingCode() {
   const verify = async () => {
     if (!target) return;
     const digits = code.replace(/\D/g, '');
-    if (digits.length < 6) return setError('Enter the 6-digit code.');
-    if (!target.id) return setError('The code hasn\'t been sent yet. Press "Send the code again".');
+    if (digits.length < 6) return setError(tx('Enter the 6-digit code.'));
+    if (!target.id) return setError(tx('The code hasn\'t been sent yet. Press "Send the code again".'));
     setBusy(true);
     setError(null);
     const r = await checkCode(target.id, digits);
@@ -117,15 +118,16 @@ export function useBookingCode() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-[#006e1c]" />
-              <h2 id="booking-code-title" className="text-[18px] font-bold text-[#050a44]">Confirm it&apos;s you</h2>
+              <h2 id="booking-code-title" className="text-[18px] font-bold text-[#050a44]">{tx('Confirm it\'s you')}</h2>
             </div>
-            <button onClick={() => close(false)} aria-label="Cancel" className="w-9 h-9 -mt-1 -mr-1 rounded-full flex items-center justify-center text-[#46464f] hover:bg-[#f2f4f6]">
+            <button onClick={() => close(false)} aria-label={tx('Cancel')} className="w-9 h-9 -mt-1 -mr-1 rounded-full flex items-center justify-center text-[#46464f] hover:bg-[#f2f4f6]">
               <X className="w-5 h-5" />
             </button>
           </div>
           <p className="text-[14px] text-[#46464f] mt-2">
-            {target.test ? 'Test mode: no text was sent. Enter the test code for ' : 'We texted a 6-digit code to '}
-            <b className="text-[#050a44]">{target.label}</b>{target.test ? '.' : '. Enter it to confirm this booking.'}
+            {target.test
+              ? txr('Test mode: no text was sent. Enter the test code for <b>{phone}</b>.', { phone: target.label, b: (c) => <b className="text-[#050a44]">{c}</b> })
+              : txr('We texted a 6-digit code to <b>{phone}</b>. Enter it to confirm this booking.', { phone: target.label, b: (c) => <b className="text-[#050a44]">{c}</b> })}
           </p>
           <input
             autoFocus
@@ -134,19 +136,19 @@ export function useBookingCode() {
             onKeyDown={(e) => e.key === 'Enter' && verify()}
             inputMode="numeric"
             autoComplete="one-time-code"
-            aria-label="6-digit code"
+            aria-label={tx('6-digit code')}
             placeholder="••••••"
             className="mt-4 w-full h-14 rounded-2xl bg-[#f2f4f6] text-center text-[24px] font-bold tracking-[0.4em] text-[#050a44] outline-none focus:ring-2 focus:ring-[#050a44]"
           />
           {error && <p role="alert" className="mt-2 text-[13px] font-semibold text-[#ba1a1a]">{error}</p>}
           <button onClick={verify} disabled={busy || code.length < 6} className="mt-4 w-full h-12 rounded-2xl bg-[#050a44] text-white text-[15px] font-bold disabled:opacity-50">
-            {busy ? 'Checking…' : 'Confirm booking'}
+            {busy ? tx('Checking…') : tx('Confirm booking')}
           </button>
           <div className="mt-3 flex items-center justify-between text-[13px]">
             <button onClick={() => send(target.phone)} disabled={wait > 0} className="font-bold text-[#050a44] underline disabled:no-underline disabled:text-[#6b6d78]">
-              {wait > 0 ? `Send again in ${wait}s` : 'Send the code again'}
+              {wait > 0 ? tx('Send again in {wait}s', { wait }) : tx('Send the code again')}
             </button>
-            <button onClick={() => close(false)} className="font-semibold text-[#46464f]">Cancel</button>
+            <button onClick={() => close(false)} className="font-semibold text-[#46464f]">{tx('Cancel')}</button>
           </div>
         </div>
       </div>

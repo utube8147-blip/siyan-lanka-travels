@@ -1,4 +1,5 @@
 // lib/bookingView.ts
+import { tx } from '@/lib/i18n-core';
 // Converts a stored Booking into the display shape used by the ticket cards on
 // /my-bookings and /dashboard (formatted dates/times, bus label, status).
 
@@ -48,7 +49,7 @@ export function toBookingView(b: Booking, data: StoreData, now = new Date()): Bo
     id: b.id,
     bookingRef: b.ref,
     operator: OPERATOR.name,
-    travelClass: trip ? `${trip.bus.type} Coach` : 'Coach',
+    travelClass: trip ? (trip.bus.type === 'AC' ? tx('AC Coach') : tx('Non-AC Coach')) : tx('Coach'),
     from: b.from,
     to: b.to,
     date: formatDateLabel(trip ? trip.boardingDate : b.date),

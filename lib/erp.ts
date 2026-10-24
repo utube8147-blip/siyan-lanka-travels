@@ -8,9 +8,11 @@ import { bikeConfigToJson, parseBikeConfig, setBikeConfig } from './bikeConfig';
 import { useCallback, useEffect, useState } from 'react';
 import { OPERATOR } from '@/config/operator';
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
+import { fetchAllRows } from './supabase/fetchAll';
 import { addDays, genId, parseISODate, todayISO } from './trips';
 import { SEED_SCHEDULES } from './seed';
 import { asUuid, uuid } from '@/lib/uuid';
+import { tx, N_ } from '@/lib/i18n';
 
 // ------------------------------------------------------------------ types ---
 export const EXPENSE_CATEGORIES = [
@@ -21,9 +23,9 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 /** Categories regular staff may log from the road. */
 export const RUNNING_COSTS: ExpenseCategory[] = ['fuel', 'toll', 'parking', 'cleaning'];
 export const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
-  fuel: 'Fuel', service: 'Service', repair: 'Repair', tyres: 'Tyres', salary: 'Salary', toll: 'Toll',
-  parking: 'Parking', cleaning: 'Cleaning', insurance: 'Insurance', license: 'Licence', permit: 'Permit',
-  commission: 'Commission', office: 'Office', other: 'Other',
+  fuel: N_('Fuel'), service: N_('Service'), repair: N_('Repair'), tyres: N_('Tyres'), salary: N_('Salary'), toll: N_('Toll'),
+  parking: N_('Parking'), cleaning: N_('Cleaning'), insurance: N_('Insurance'), license: N_('Licence'), permit: N_('Permit'),
+  commission: N_('Commission'), office: N_('Office'), other: N_('Other'),
 };
 
 export interface Expense {
@@ -49,8 +51,8 @@ export type IncomeCategory = 'charter' | 'parcel' | 'advertising' | 'other';
 export interface Income { id: string; receivedOn: string; category: IncomeCategory; amount: number; busId?: string | null; description: string }
 export type DocumentKind = 'insurance' | 'revenue_license' | 'route_permit' | 'emission_test' | 'fitness_certificate' | 'other';
 export const DOCUMENT_LABEL: Record<DocumentKind, string> = {
-  insurance: 'Insurance', revenue_license: 'Revenue licence', route_permit: 'Route permit',
-  emission_test: 'Emission test', fitness_certificate: 'Fitness certificate', other: 'Other',
+  insurance: N_('Insurance'), revenue_license: N_('Revenue licence'), route_permit: N_('Route permit'),
+  emission_test: N_('Emission test'), fitness_certificate: N_('Fitness certificate'), other: N_('Other'),
 };
 export interface BusDocument { id: string; busId: string; kind: DocumentKind; number: string; expiresOn: string; notes: string }
 export type CrewRole = 'driver' | 'conductor' | 'cleaner' | 'mechanic' | 'office';
@@ -78,6 +80,8 @@ export interface Settings {
   resaleEnabled: boolean;
   /** Days ahead passengers can book (0 = no limit). */
   bookingWindowDays: number;
+  /** On-request stops are settled this many hours before the bus leaves its first stop. */
+  optionalStopCutoffHours: number;
   /** Ask for a one-time code on every online booking. */
   bookingOtp: boolean;
   /** Keep the seat beside a woman travelling alone for women. */
@@ -136,13 +140,13 @@ function normalizeSettings(s: Settings): Settings {
 
 const settingsFrom = (r: any): Settings => normalizeSettings({
   bookingFee: r.booking_fee, promoCode: r.promo_code ?? '', promoPercent: r.promo_percent, maxSeats: r.max_seats_per_booking,
-  cutoffMinutes: r.booking_cutoff_minutes, bookingWindowDays: r.booking_window_days ?? OPERATOR.bookingWindowDays, refundPolicy: r.refund_policy, bikes: r.bikes, resaleEnabled: !!r.resale_enabled, bookingOtp: r.booking_otp !== false, ladiesAdjacent: r.ladies_adjacent !== false, cardPayments: r.card_payments === true, payOnBus: r.pay_on_bus !== false,
+  cutoffMinutes: r.booking_cutoff_minutes, bookingWindowDays: r.booking_window_days ?? OPERATOR.bookingWindowDays, optionalStopCutoffHours: r.optional_stop_cutoff_hours ?? 3, refundPolicy: r.refund_policy, bikes: r.bikes, resaleEnabled: !!r.resale_enabled, bookingOtp: r.booking_otp !== false, ladiesAdjacent: r.ladies_adjacent !== false, cardPayments: r.card_payments === true, payOnBus: r.pay_on_bus !== false,
   paymentsMode: r.payments_mode ?? 'demo', bankDetails: r.bank_details ?? '', holdMinutesCounter: r.hold_minutes_counter ?? 120,
   holdMinutesBank: r.hold_minutes_bank ?? 1440, rewardEvery: r.reward_every ?? 10, messaging: r.messaging ?? { sms: true, whatsapp: false }, siteUrl: r.site_url ?? '',
 });
 const settingsTo = (s: Settings) => ({
   booking_fee: s.bookingFee, promo_code: s.promoCode || null, promo_percent: s.promoPercent, max_seats_per_booking: s.maxSeats,
-  booking_cutoff_minutes: s.cutoffMinutes, booking_window_days: s.bookingWindowDays, refund_policy: s.refundPolicy, bikes: s.bikes, resale_enabled: s.resaleEnabled, booking_otp: s.bookingOtp, ladies_adjacent: s.ladiesAdjacent, card_payments: s.cardPayments, pay_on_bus: s.payOnBus,
+  booking_cutoff_minutes: s.cutoffMinutes, booking_window_days: s.bookingWindowDays, optional_stop_cutoff_hours: s.optionalStopCutoffHours ?? 3, refund_policy: s.refundPolicy, bikes: s.bikes, resale_enabled: s.resaleEnabled, booking_otp: s.bookingOtp, ladies_adjacent: s.ladiesAdjacent, card_payments: s.cardPayments, pay_on_bus: s.payOnBus,
   payments_mode: s.paymentsMode, bank_details: s.bankDetails, hold_minutes_counter: s.holdMinutesCounter, hold_minutes_bank: s.holdMinutesBank,
   reward_every: s.rewardEvery, messaging: s.messaging, site_url: s.siteUrl,
 });
@@ -154,6 +158,7 @@ export const DEFAULT_SETTINGS: Settings = {
   maxSeats: OPERATOR.maxSeatsPerBooking,
   cutoffMinutes: OPERATOR.bookingCutoffMinutes,
   bookingWindowDays: OPERATOR.bookingWindowDays,
+  optionalStopCutoffHours: 3,
   refundPolicy: OPERATOR.refundPolicy.map((t) => ({ ...t })),
   bikes: {
     minFee: OPERATOR.bikes.minFee,
@@ -195,23 +200,23 @@ function demoSeed(): ErpData {
       // Sample bookings cover the last two weeks, so log running costs for the same period.
       if (d >= -14) {
         e({ spentOn: date, category: 'fuel', amount: Math.round(litres * 362), busId: 'bus-1', litres, odometerKm: odo, vendor: s.routeId.endsWith('east') ? 'Ceypetco Kadawatha' : 'Lanka IOC Batticaloa' });
-        e({ spentOn: date, category: 'toll', amount: 400, busId: 'bus-1', description: 'Expressway / ferry tolls' });
+        e({ spentOn: date, category: 'toll', amount: 400, busId: 'bus-1', description: tx('Expressway / ferry tolls') });
       }
-      if (n % 19 === 0) e({ spentOn: date, category: 'service', amount: 46_500, busId: 'bus-1', odometerKm: odo, nextDueKm: odo + 10_000, nextDueDate: addDays(date, 60), vendor: 'Lanka Ashok Leyland, Peliyagoda', description: 'Full service: oil, filters, brakes check' });
+      if (n % 19 === 0) e({ spentOn: date, category: 'service', amount: 46_500, busId: 'bus-1', odometerKm: odo, nextDueKm: odo + 10_000, nextDueDate: addDays(date, 60), vendor: 'Lanka Ashok Leyland, Peliyagoda', description: tx('Full service: oil, filters, brakes check') });
     }
     if (parseISODate(date).getDate() === 1) {
-      e({ spentOn: date, category: 'salary', amount: 90_000, description: 'Driver: Mohamed Rizvi', paymentMethod: 'bank' });
-      e({ spentOn: date, category: 'salary', amount: 62_000, description: 'Conductor: Suresh Kumar', paymentMethod: 'bank' });
-      e({ spentOn: date, category: 'salary', amount: 35_000, description: 'Cleaner: Nimal Perera', paymentMethod: 'cash' });
-      e({ spentOn: date, category: 'office', amount: 12_000, description: 'Counter rent, Bastian Mawatha', paymentMethod: 'bank' });
+      e({ spentOn: date, category: 'salary', amount: 90_000, description: tx('Driver: Mohamed Rizvi'), paymentMethod: 'bank' });
+      e({ spentOn: date, category: 'salary', amount: 62_000, description: tx('Conductor: Suresh Kumar'), paymentMethod: 'bank' });
+      e({ spentOn: date, category: 'salary', amount: 35_000, description: tx('Cleaner: Nimal Perera'), paymentMethod: 'cash' });
+      e({ spentOn: date, category: 'office', amount: 12_000, description: tx('Counter rent, Bastian Mawatha'), paymentMethod: 'bank' });
     }
   }
-  e({ spentOn: addDays(today, -33), category: 'tyres', amount: 184_000, busId: 'bus-1', vendor: 'DSI Tyres', description: '2 rear tyres', paymentMethod: 'bank' });
-  e({ spentOn: addDays(today, -18), category: 'repair', amount: 27_500, busId: 'bus-1', vendor: 'City Auto AC', description: 'AC compressor belt' });
+  e({ spentOn: addDays(today, -33), category: 'tyres', amount: 184_000, busId: 'bus-1', vendor: 'DSI Tyres', description: tx('2 rear tyres'), paymentMethod: 'bank' });
+  e({ spentOn: addDays(today, -18), category: 'repair', amount: 27_500, busId: 'bus-1', vendor: 'City Auto AC', description: tx('AC compressor belt') });
   const income: Income[] = [
-    { id: uuid(), receivedOn: addDays(today, -40), category: 'charter', amount: 115_000, busId: 'bus-1', description: 'Wedding party, Kalmunai → Kandy' },
-    { id: uuid(), receivedOn: addDays(today, -12), category: 'charter', amount: 95_000, busId: 'bus-1', description: 'School trip, Batticaloa' },
-    { id: uuid(), receivedOn: addDays(today, -6), category: 'parcel', amount: 8_400, busId: 'bus-1', description: 'Parcels Colombo → Kalmunai' },
+    { id: uuid(), receivedOn: addDays(today, -40), category: 'charter', amount: 115_000, busId: 'bus-1', description: tx('Wedding party, Kalmunai → Kandy') },
+    { id: uuid(), receivedOn: addDays(today, -12), category: 'charter', amount: 95_000, busId: 'bus-1', description: tx('School trip, Batticaloa') },
+    { id: uuid(), receivedOn: addDays(today, -6), category: 'parcel', amount: 8_400, busId: 'bus-1', description: tx('Parcels Colombo → Kalmunai') },
   ];
   const documents: BusDocument[] = [
     { id: uuid(), busId: 'bus-1', kind: 'insurance', number: 'CEY/MV/2026/88121', expiresOn: addDays(today, 41), notes: 'Ceylinco, full cover' },
@@ -272,12 +277,12 @@ export function useErp({ admin }: { admin: boolean }) {
     }
     const sb = supabase();
     const [exp, inc, docs, crew, settings, accounts] = await Promise.all([
-      sb.from('expenses').select('*').order('spent_on', { ascending: false }).limit(5000),
-      admin ? sb.from('other_income').select('*').order('received_on', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+      fetchAllRows((a, b) => sb.from('expenses').select('*').order('spent_on', { ascending: false }).order('id').range(a, b)),
+      admin ? fetchAllRows((a, b) => sb.from('other_income').select('*').order('received_on', { ascending: false }).order('id').range(a, b)) : Promise.resolve({ data: [], error: null }),
       sb.from('bus_documents').select('*').order('expires_on'),
       admin ? sb.from('crew').select('*').order('full_name') : Promise.resolve({ data: [], error: null }),
       sb.from('app_settings').select('*').maybeSingle(),
-      admin ? sb.rpc('admin_list_users') : Promise.resolve({ data: [], error: null }),
+      admin ? fetchAllRows((a, b) => sb.rpc('admin_list_users').range(a, b)) : Promise.resolve({ data: [], error: null }),
     ]);
     const err = exp.error || inc.error || docs.error || crew.error || settings.error || accounts.error;
     if (err) setError(friendlyError(err));

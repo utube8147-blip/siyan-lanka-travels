@@ -7,7 +7,8 @@ export const TAB_ROOTS = ['/', '/search', '/my-bookings', '/profile'];
 export const FOCUSED = ['/seats', '/payment', '/marketplace/buy', '/auth'];
 
 /** Screens where "Book a seat" isn't already the main thing on screen. */
-export const FAB_ROUTES = ['/my-bookings', '/profile', '/dashboard', '/marketplace', '/bus', '/legal', '/refund'];
+// Not on Profile, Legal or Refund: there it covered settings and reading text.
+export const FAB_ROUTES = ['/my-bookings', '/dashboard', '/marketplace', '/bus'];
 
 const startsWith = (path: string, base: string) => path === base || path.startsWith(`${base}/`);
 export const isFocused = (p: string) => FOCUSED.some((b) => startsWith(p, b));

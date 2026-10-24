@@ -3,6 +3,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
 update app_settings set ladies_adjacent = false; -- the seat-beside-a-woman rule is tested in seat_overrides.sql
 update routes set flat_fare = false; -- these tests check per-stop fares; one-price routes are tested in seat_overrides.sql
@@ -59,7 +60,8 @@ reset role;
 select '--- A changes seats, then cancels';
 set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
 select pg_temp.try('A moves to seat 1A (B has it)', format($q$select modify_booking('%s', array['1A','8B'])$q$, (select id from bookings where passenger_name='Alex A')));
-select 'A moves to 4A,4B,4C: total LKR ' || total from modify_booking((select id from bookings where passenger_name='Alex A'), array['4A','4B','4C']);
+select pg_temp.try('A adds a third seat for free (4A,4B,4C)', format($q$select modify_booking('%s', array['4A','4B','4C'])$q$, (select id from bookings where passenger_name='Alex A')));
+select 'A moves to 4A,4B: total LKR ' || total from modify_booking((select id from bookings where passenger_name='Alex A'), array['4A','4B']);
 select 'A cancels 2+ weeks ahead: refund LKR ' || refund_amount || ' of ' || total from cancel_booking((select id from bookings where passenger_name='Alex A'));
 reset role;
 set role anon; select pg_temp.as_user(null);

@@ -1,7 +1,8 @@
 // Push notifications without waiting for the every-minute cron.
-//  - POST {}            sends every in-app notification that hasn't been pushed
-//                       yet (a conductor's update, a booking confirmed…). The
-//                       app calls this right after it creates one.
+//  - POST {}            sends in-app notifications that haven't been pushed
+//                       yet (a conductor's update, a booking confirmed…): all
+//                       of them for staff, only their own for a passenger.
+//                       The app calls this right after it creates one.
 //  - POST {test: true}  pushes a test message to the signed-in person's own
 //                       devices and reports exactly what happened, so "why am
 //                       I not getting notifications?" has an answer.
@@ -31,6 +32,10 @@ export async function POST(req: NextRequest) {
     const r = await pushToUser(db, u.user.id, { title: 'Test from the server', body: 'Push notifications reach this device. Trip reminders will arrive the same way.', url: '/my-bookings', tag: 'server-test' });
     return NextResponse.json(r);
   }
-  const r = await pushPendingNotifications(db).catch((e) => ({ error: String(e).slice(0, 200) }));
+  // Staff screens create notifications for passengers (trip updates…), so staff
+  // send everyone's; a passenger only sends their own.
+  const { data: me } = await db.from('profiles').select('role').eq('id', u.user.id).maybeSingle();
+  const staff = ['conductor', 'staff', 'admin'].includes(me?.role ?? '');
+  const r = await pushPendingNotifications(db, staff ? {} : { onlyUsers: [u.user.id] }).catch((e) => ({ error: String(e).slice(0, 200) }));
   return NextResponse.json(r);
 }

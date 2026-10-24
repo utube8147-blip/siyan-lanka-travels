@@ -21,22 +21,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { toBookingView, type BookingView, type ViewStatus } from '@/lib/bookingView';
 import { addDays, cityCode, formatDateLabel, formatLKR, formatTime12, getTrip, refundQuote, runsOn, takenSeats, seatsBesideLoneWoman, BESIDE_WOMAN_MESSAGE } from '@/lib/trips';
-import { useT } from '@/lib/i18n';
+import { useT, txn, txr, N_ } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 type BookingStatus = ViewStatus;
 type Booking = BookingView;
 
-// Refund reference generator — mirrors genBookingRef() on /payment, but with
-// a distinct RF- prefix so refund IDs are never confused with booking refs.
-function genRefundId() {
-  return 'RF-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-}
-
 const STATUS_BADGE: Record<BookingStatus, { label: string; className: string }> = {
-  confirmed: { label: 'Confirmed', className: 'bg-[#006e1c]/10 text-[#006e1c]' },
-  pending: { label: 'Pending Approval', className: 'bg-[#feb700]/15 text-[#7c5800]' },
-  completed: { label: 'Completed', className: 'bg-[#006e1c]/10 text-[#006e1c]' },
-  cancelled: { label: 'Cancelled', className: 'bg-[#ba1a1a]/10 text-[#ba1a1a]' },
+  confirmed: { label: N_('Confirmed'), className: 'bg-[#006e1c]/10 text-[#006e1c]' },
+  pending: { label: N_('Pending Approval'), className: 'bg-[#feb700]/15 text-[#7c5800]' },
+  completed: { label: N_('Completed'), className: 'bg-[#006e1c]/10 text-[#006e1c]' },
+  cancelled: { label: N_('Cancelled'), className: 'bg-[#ba1a1a]/10 text-[#ba1a1a]' },
 };
 
 interface RescheduleOption {
@@ -84,21 +79,15 @@ function TicketActionBar({
         disabled={!booking.seatsChangeable}
         className={`${actionClass} text-[#050a44] hover:bg-[#f2f4f6]`}
       >
-        <span className="material-symbols-outlined text-[18px]">event_seat</span>
-        Seats
-      </button>
+        <span className="material-symbols-outlined text-[18px]">event_seat</span>{tx('Seats')}</button>
       <button
         onClick={onReschedule}
         disabled={!booking.reschedulable}
         className={`${actionClass} text-[#050a44] hover:bg-[#f2f4f6]`}
       >
-        <span className="material-symbols-outlined text-[18px]">edit_calendar</span>
-        Reschedule
-      </button>
+        <span className="material-symbols-outlined text-[18px]">edit_calendar</span>{tx('Reschedule')}</button>
       <button onClick={onCancel} className={`${actionClass} text-[#ba1a1a] hover:bg-[#ba1a1a]/5`}>
-        <span className="material-symbols-outlined text-[18px]">cancel</span>
-        Cancel
-      </button>
+        <span className="material-symbols-outlined text-[18px]">cancel</span>{tx('Cancel')}</button>
     </div>
   );
 }
@@ -124,30 +113,25 @@ function CancelModal({
           <span className="material-symbols-outlined text-[22px]">cancel</span>
         </div>
         <div>
-          <h3 className="text-[16px] font-bold text-[#050a44]">Cancel this trip?</h3>
-          <p className="text-[13px] text-[#46464f] mt-1.5 leading-relaxed">
-            {booking.from} → {booking.to} on {booking.date}, seat{booking.seats.length > 1 ? 's' : ''}{' '}
-            {booking.seats.join(', ')}. This can&apos;t be undone.
-          </p>
+          <h3 className="text-[16px] font-bold text-[#050a44]">{tx('Cancel this trip?')}</h3>
+          <p className="text-[13px] text-[#46464f] mt-1.5 leading-relaxed">{txn(booking.seats.length, "{from} → {to} on {date}, seat {seats}. This can't be undone.", "{from} → {to} on {date}, seats {seats}. This can't be undone.", { from: booking.from, to: booking.to, date: booking.date, seats: booking.seats.join(', ') })}</p>
           <p className="text-[13px] mt-2 font-semibold text-[#050a44]">
             {refund.amount > 0
-              ? `You'll get ${formatLKR(refund.amount)} back (${refund.percent}% of the fare; the booking fee isn't refundable).`
-              : 'This trip is too close to departure for a refund.'}
+              ? tx('You\'ll get {amount} back ({percent}% of the fare; the booking fee isn\'t refundable).', { amount: formatLKR(refund.amount), percent: refund.percent })
+              : tx('This trip is too close to departure for a refund.')}
           </p>
         </div>
         <div className="flex gap-[10px] pt-[4px]">
           <button
             onClick={onClose}
             className="flex-1 h-11 rounded-xl border border-[#c7c5d1] font-bold text-[13px] text-[#46464f] hover:bg-[#f2f4f6] transition-colors"
-          >
-            Keep Booking
-          </button>
+          >{tx('Keep Booking')}</button>
           <button
             onClick={onConfirm}
             disabled={isCancelling}
             className="flex-1 h-11 rounded-xl bg-[#ba1a1a] text-white font-bold text-[13px] hover:opacity-90 disabled:opacity-60 transition-opacity"
           >
-            {isCancelling ? 'Cancelling…' : 'Cancel Trip'}
+            {isCancelling ? tx('Cancelling…') : tx('Cancel Trip')}
           </button>
         </div>
       </div>
@@ -174,7 +158,7 @@ function RescheduleModal({
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full p-[24px] space-y-[16px]">
         <div>
-          <h3 className="text-[16px] font-bold text-[#050a44]">Reschedule your trip</h3>
+          <h3 className="text-[16px] font-bold text-[#050a44]">{tx('Reschedule your trip')}</h3>
           <p className="text-[13px] text-[#46464f] mt-1">
             {booking.from} → {booking.to} · {booking.operator}
           </p>
@@ -182,7 +166,7 @@ function RescheduleModal({
 
         <div className="space-y-[8px]">
           {options.length === 0 && (
-            <p className="text-[13px] text-[#46464f]">Your seats aren&apos;t free on the next few departures. Contact us and we&apos;ll sort it out.</p>
+            <p className="text-[13px] text-[#46464f]">{tx('Your seats aren\'t free on the next few departures. Contact us and we\'ll sort it out.')}</p>
           )}
           {options.map((opt, i) => (
             <button
@@ -198,50 +182,23 @@ function RescheduleModal({
                 <p className="text-[13px] font-bold text-[#050a44]">{opt.date}</p>
                 <p className="text-[12px] font-semibold text-[#46464f]">{opt.departureTime}</p>
               </div>
-              <span
-                className={`text-[12px] font-extrabold px-2 py-1 rounded-md ${
-                  opt.priceDelta > 0
-                    ? 'bg-[#ba1a1a]/10 text-[#ba1a1a]'
-                    : opt.priceDelta < 0
-                    ? 'bg-[#006e1c]/10 text-[#006e1c]'
-                    : 'bg-[#e1e2e4] text-[#46464f]'
-                }`}
-              >
-                {opt.priceDelta === 0 ? 'No change' : `${opt.priceDelta > 0 ? '+' : '-'}${formatLKR(Math.abs(opt.priceDelta))}`}
-              </span>
+              <span className="text-[12px] font-extrabold px-2 py-1 rounded-md bg-[#e1e2e4] text-[#46464f]">{tx('Same fare')}</span>
             </button>
           ))}
         </div>
 
-        {selectedOption && selectedOption.priceDelta !== 0 && (
-          <div
-            className={`rounded-xl px-4 py-3 text-[12px] font-semibold ${
-              selectedOption.priceDelta > 0
-                ? 'bg-[#ba1a1a]/5 text-[#93000a]'
-                : 'bg-[#006e1c]/5 text-[#005313]'
-            }`}
-          >
-            {selectedOption.priceDelta > 0
-              ? `This slot costs ${formatLKR(selectedOption.priceDelta)} more — you'll be charged the difference.`
-              : `This slot is cheaper — a ${formatLKR(Math.abs(selectedOption.priceDelta))} refund will be issued.`}
-          </div>
-        )}
 
         <div className="flex gap-[10px] pt-[4px]">
           <button
             onClick={onClose}
             className="flex-1 h-11 rounded-xl border border-[#c7c5d1] font-bold text-[13px] text-[#46464f] hover:bg-[#f2f4f6] transition-colors"
-          >
-            Back
-          </button>
+          >{tx('Back')}</button>
           <button
             onClick={() => selectedOption && onConfirm(selectedOption)}
             disabled={!selectedOption}
             className="flex-1 h-11 rounded-xl bg-[#050a44] text-white font-bold text-[13px] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
           >
-            {selectedOption && selectedOption.priceDelta > 0
-              ? `Pay ${formatLKR(selectedOption.priceDelta)} & Confirm`
-              : 'Confirm New Date'}
+            {tx('Confirm New Date')}
           </button>
         </div>
       </div>
@@ -260,13 +217,13 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
       <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden print:shadow-none print:rounded-none print:max-w-none">
         <div className="keep-navy bg-gradient-to-br from-[#1c1d22] to-[#111216] p-[24px] text-white flex items-center justify-between print:hidden">
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">E-Ticket</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">{tx('E-Ticket')}</p>
             <h3 className="text-[18px] font-bold">{booking.bookingRef}</h3>
           </div>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full flex items-center justify-center text-white/80 hover:bg-white/10"
-            aria-label="Close ticket"
+            aria-label={tx('Close ticket')}
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
@@ -291,12 +248,12 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
 
           <div className="grid grid-cols-2 gap-[16px] text-[13px]">
             <div>
-              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Date</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">{tx('Date')}</p>
               <p className="font-bold text-[#050a44]">{booking.date}</p>
             </div>
             {booking.bikes.length > 0 ? (
               <div>
-                <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Luggage compartment</p>
+                <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">{tx('Luggage compartment')}</p>
                 <p className="font-bold text-[#050a44] flex items-center gap-1">
                   <span className="material-symbols-outlined text-[16px] text-[#7c5800]">two_wheeler</span>
                   {booking.bikes.join(', ')}
@@ -304,24 +261,24 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
               </div>
             ) : (
               <div>
-                <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Operator</p>
+                <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">{tx('Operator')}</p>
                 <p className="font-bold text-[#050a44]">{booking.operator}</p>
               </div>
             )}
             <div>
-              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Seat{booking.seats.length > 1 ? 's' : ''}</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">{booking.seats.length > 1 ? tx('Seats') : tx('Seat')}</p>
               <p className="font-bold text-[#050a44]">{booking.seats.join(', ')}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Class</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">{tx('Class')}</p>
               <p className="font-bold text-[#050a44]">{booking.travelClass}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Bus</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">{tx('Bus')}</p>
               <p className="font-bold text-[#050a44]">{booking.busNumber}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">Fare Paid</p>
+              <p className="text-[10px] font-bold text-[#6b6d78] uppercase mb-0.5">{tx('Fare Paid')}</p>
               <p className="font-bold text-[#050a44]">{formatLKR(booking.totalPrice)}</p>
             </div>
           </div>
@@ -331,11 +288,11 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
           <div className="flex flex-col items-center py-[8px]">
             {qr ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={qr} alt={`Ticket QR code ${booking.bookingRef}`} width={180} height={180} className="w-[180px] h-[180px] rounded-lg" />
+              <img src={qr} alt={tx('Ticket QR code {bookingRef}', { bookingRef: booking.bookingRef })} width={180} height={180} className="w-[180px] h-[180px] rounded-lg" />
             ) : (
               <div className="w-[180px] h-[180px] rounded-lg skeleton" />
             )}
-            <p className="text-[11px] text-[#46464f] mt-1">Show this to the conductor when you board</p>
+            <p className="text-[11px] text-[#46464f] mt-1">{tx('Show this to the conductor when you board')}</p>
           </div>
           <p className="text-center text-[11px] font-bold text-[#46464f] tracking-widest">{booking.bookingRef}</p>
         </div>
@@ -345,9 +302,7 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
             onClick={() => window.print()}
             className="w-full h-12 bg-[#050a44] text-white rounded-xl font-bold text-[13px] hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
           >
-            <span className="material-symbols-outlined text-[18px]">print</span>
-            Print / Save Ticket
-          </button>
+            <span className="material-symbols-outlined text-[18px]">print</span>{tx('Print / Save Ticket')}</button>
         </div>
       </div>
 
@@ -362,214 +317,6 @@ function TicketModal({ booking, onClose }: { booking: Booking; onClose: () => vo
           }
         }
       `}</style>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Card/wallet helpers — same formatting rules as /payment/page.tsx, so the
-// settlement modal below feels identical to the original checkout.
-// ---------------------------------------------------------------------------
-function formatCardNumber(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 16);
-  return digits.replace(/(.{4})/g, '$1 ').trim();
-}
-
-function formatExpiry(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-}
-
-type PaySettleMethod = 'card' | 'wallet';
-
-// ---------------------------------------------------------------------------
-// Settlement modal — any time managing a booking creates money owed (a
-// pricier reschedule slot, extra seats), it gets collected here before the
-// change takes effect. Refunds don't need this; only charges do — those are
-// routed to /refund instead (see confirmCancel / confirmReschedule / confirmSeatChange).
-// ---------------------------------------------------------------------------
-function PaymentSettleModal({
-  amount,
-  reason,
-  contactPhone,
-  onSuccess,
-  onClose,
-}: {
-  amount: number;
-  reason: string;
-  contactPhone?: string;
-  onSuccess: () => void;
-  onClose: () => void;
-}) {
-  const [method, setMethod] = useState<PaySettleMethod>('card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvv, setCvv] = useState('');
-  const [wallet, setWallet] = useState<'ezcash' | 'mcash' | 'frimi' | ''>('');
-  const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState('');
-
-  const cardValid =
-    cardNumber.replace(/\s/g, '').length === 16 &&
-    cardName.trim().length > 1 &&
-    /^\d{2}\/\d{2}$/.test(expiry) &&
-    cvv.length === 3;
-  const walletValid = wallet !== '';
-  const canPay = method === 'card' ? cardValid : walletValid;
-
-  const handlePay = () => {
-    setError('');
-    if (!canPay) {
-      setError(method === 'card' ? 'Fill in all card details correctly.' : 'Select a wallet provider to continue.');
-      return;
-    }
-    setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      onSuccess();
-    }, 1400);
-  };
-
-  return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => !processing && onClose()} />
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
-        <div className="px-[24px] pt-[24px] pb-[16px] border-b border-[#e1e2e4]">
-          <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide">{reason}</p>
-          <div className="flex items-baseline justify-between mt-1">
-            <h3 className="text-[16px] font-bold text-[#050a44]">Additional fare due</h3>
-            <span className="text-[22px] font-extrabold text-[#050a44]">{formatLKR(amount)}</span>
-          </div>
-        </div>
-
-        <div className="px-[24px] py-[20px] space-y-[16px]">
-          <div className="flex p-1 bg-[#f2f4f6] rounded-xl border border-[#e1e2e4]/60">
-            <button
-              onClick={() => setMethod('card')}
-              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
-                method === 'card' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
-              }`}
-            >
-              Card
-            </button>
-            <button
-              onClick={() => setMethod('wallet')}
-              className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
-                method === 'wallet' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
-              }`}
-            >
-              Mobile Wallet
-            </button>
-          </div>
-
-          {method === 'card' ? (
-            <div className="space-y-[12px]">
-              <div>
-                <label className="text-[11px] font-bold text-[#46464f] px-1">Card number</label>
-                <input
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                  placeholder="1234 5678 9012 3456"
-                  inputMode="numeric"
-                  className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-[#46464f] px-1">Name on card</label>
-                <input
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value)}
-                  placeholder="As printed on card"
-                  className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-[12px]">
-                <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1">Expiry</label>
-                  <input
-                    value={expiry}
-                    onChange={(e) => setExpiry(formatExpiry(e.target.value))}
-                    placeholder="MM/YY"
-                    inputMode="numeric"
-                    className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1">CVV</label>
-                  <input
-                    value={cvv}
-                    onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                    placeholder="123"
-                    inputMode="numeric"
-                    type="password"
-                    className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
-                  />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-[8px]">
-              {(
-                [
-                  { id: 'ezcash', label: 'eZ Cash' },
-                  { id: 'mcash', label: 'mCash' },
-                  { id: 'frimi', label: 'FriMi' },
-                ] as const
-              ).map((w) => (
-                <button
-                  key={w.id}
-                  onClick={() => setWallet(w.id)}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border text-left transition-colors ${
-                    wallet === w.id ? 'border-[#050a44] bg-[#050a44]/5' : 'border-[#e1e2e4] hover:bg-[#f2f4f6]'
-                  }`}
-                >
-                  <span className="text-sm font-bold">{w.label}</span>
-                  <span
-                    className={`w-4 h-4 rounded-full border-2 ${
-                      wallet === w.id ? 'border-[#050a44] bg-[#050a44]' : 'border-[#c7c5d1]'
-                    }`}
-                  />
-                </button>
-              ))}
-              {wallet && (
-                <p className="text-[11px] text-[#6b6d78] mt-[8px] px-1">
-                  You'll receive a payment prompt on {contactPhone || 'your registered number'} to confirm.
-                </p>
-              )}
-            </div>
-          )}
-
-          {error && <p className="text-[11px] font-medium text-[#ba1a1a] text-center">{error}</p>}
-        </div>
-
-        <div className="px-[24px] pb-[24px] flex gap-[10px]">
-          <button
-            onClick={onClose}
-            disabled={processing}
-            className="flex-1 h-11 rounded-xl border border-[#c7c5d1] font-bold text-[13px] text-[#46464f] hover:bg-[#f2f4f6] disabled:opacity-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handlePay}
-            disabled={processing}
-            className={`flex-1 h-11 rounded-xl bg-black text-white font-bold text-[13px] flex items-center justify-center gap-2 transition-all ${
-              processing ? 'opacity-70 cursor-wait' : 'hover:opacity-90'
-            }`}
-          >
-            {processing ? (
-              <>
-                <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
-                Processing…
-              </>
-            ) : (
-              `Pay ${formatLKR(amount)}`
-            )}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -610,16 +357,10 @@ export default function MyBookingsPage() {
   const [toast, setToast] = useState<string | null>(null);
   const pub = usePublicSettings();
 
-  // Any change that costs the passenger more money is held here until it's
-  // actually paid — nothing gets applied to the booking until settlement
-  // succeeds. Refunds (cancellation, a cheaper reschedule, dropping a seat)
-  // skip this and instead hand off to /refund once applied, so the passenger
-  // gets the same confirmation surface every time money comes back to them.
-  const [settlement, setSettlement] = useState<{
-    amount: number;
-    reason: string;
-    commit: () => void;
-  } | null>(null);
+  // Seat and date changes never cost more or less: the booking keeps the
+  // fare that was paid (the database works out the total), and a passenger
+  // keeps the same number of seats. Adding seats is a new booking; dropping
+  // one is cancel and rebook, so the refund rules apply.
 
   const upcoming = bookings.filter((b) => b.status === 'confirmed' || b.status === 'pending');
   const tripsRef = useStaggerIn<HTMLDivElement>(ready && upcoming.length > 0);
@@ -641,7 +382,7 @@ export default function MyBookingsPage() {
       if (!sch || !sch.active || !runsOn(sch, iso)) continue;
       const taken = takenSeats(data.bookings, raw.scheduleId, iso, raw.id);
       if (raw.seats.some((s) => taken.has(s))) continue;
-      out.push({ date: formatDateLabel(iso), isoDate: iso, departureTime: formatTime12(trip.departure), priceDelta: (trip.fare - raw.fare) * raw.seats.length });
+      out.push({ date: formatDateLabel(iso), isoDate: iso, departureTime: formatTime12(trip.departure), priceDelta: 0 });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -660,24 +401,8 @@ export default function MyBookingsPage() {
   // Sends the passenger to the shared refund confirmation page. Every refund
   // path (cancel, cheaper reschedule, fewer seats) funnels through here so
   // the amount, reference, and status tracker always look the same.
-  const goToRefund = (
-    booking: Booking,
-    amount: number,
-    reason: 'cancelled' | 'rescheduled' | 'seats-changed',
-    extra?: { newDate?: string; newSeats?: string }
-  ) => {
-    const qs = new URLSearchParams({
-      ref: booking.bookingRef,
-      from: booking.from,
-      to: booking.to,
-      date: booking.date,
-      operator: booking.operator,
-      amount: amount.toFixed(2),
-      reason,
-      refundId: genRefundId(),
-      ...(extra?.newDate ? { newDate: extra.newDate } : {}),
-      ...(extra?.newSeats ? { newSeats: extra.newSeats } : {}),
-    });
+  const goToRefund = (booking: Booking, amount: number) => {
+    const qs = new URLSearchParams({ ref: booking.bookingRef, from: booking.from, to: booking.to, date: booking.date, amount: amount.toFixed(2) });
     router.push(`/refund?${qs.toString()}`);
   };
 
@@ -692,45 +417,19 @@ export default function MyBookingsPage() {
       setCancellingId(null);
       setCancelTarget(null);
       if (!res.ok) {
-        setToast(res.reason ?? 'Could not cancel.');
+        setToast(res.reason ?? tx('Could not cancel.'));
         return;
       }
-      goToRefund(booking, refund.amount, 'cancelled');
+      goToRefund(booking, refund.amount);
     }, 900);
   };
 
-  const confirmReschedule = (option: RescheduleOption) => {
+  const confirmReschedule = async (option: RescheduleOption) => {
     if (!rescheduleTarget) return;
-    const booking = rescheduleTarget;
-    const id = booking.id;
-    const newDate = option.date;
-    const newDeparture = option.departureTime;
-    const delta = option.priceDelta;
-
-    void newDeparture;
-    const applyChange = async () => {
-      const res = await updateBooking(id, { date: option.isoDate, total: booking.totalPrice + delta });
-      if (!res.ok) setToast(res.reason ?? 'Could not reschedule.');
-    };
-
+    const id = rescheduleTarget.id;
     setRescheduleTarget(null);
-
-    if (delta > 0) {
-      setSettlement({
-        amount: delta,
-        reason: `Reschedule to ${newDate}`,
-        commit: () => {
-          applyChange();
-          setToast(`Rescheduled to ${newDate} — ${formatLKR(delta)} charged.`);
-        },
-      });
-    } else if (delta < 0) {
-      applyChange();
-      goToRefund(booking, Math.abs(delta), 'rescheduled', { newDate });
-    } else {
-      applyChange();
-      setToast(`Rescheduled to ${newDate}.`);
-    }
+    const res = await updateBooking(id, { date: option.isoDate });
+    setToast(res.ok ? tx('Moved to {date}.', { date: option.date }) : res.reason ?? tx('Could not move the booking.'));
   };
 
   const openSeatChange = (booking: Booking) => {
@@ -738,38 +437,14 @@ export default function MyBookingsPage() {
     setDraftSeats(booking.seats);
   };
 
-  const confirmSeatChange = () => {
+  const confirmSeatChange = async () => {
     if (!seatChangeTarget) return;
-    if (draftSeats.length === 0) return; // never leave a booking with no seats
-
     const booking = seatChangeTarget;
-    const id = booking.id;
-    const newSeats = draftSeats;
-    const delta = (draftSeats.length - booking.seats.length) * booking.seatPrice;
-
-    const applyChange = async () => {
-      const res = await updateBooking(id, { seats: newSeats, total: booking.totalPrice + delta });
-      if (!res.ok) setToast(res.reason ?? 'Could not change seats.');
-    };
-
     setSeatChangeTarget(null);
-
-    if (delta > 0) {
-      setSettlement({
-        amount: delta,
-        reason: `Seat change (${newSeats.join(', ')})`,
-        commit: () => {
-          applyChange();
-          setToast(`Seats updated — ${formatLKR(delta)} charged.`);
-        },
-      });
-    } else if (delta < 0) {
-      applyChange();
-      goToRefund(booking, Math.abs(delta), 'seats-changed', { newSeats: newSeats.join(',') });
-    } else {
-      applyChange();
-      setToast('Seats updated.');
-    }
+    // Same seats, or a different number of seats (not allowed): nothing to do.
+    if (draftSeats.length !== booking.seats.length || draftSeats.every((s) => booking.seats.includes(s))) return;
+    const res = await updateBooking(booking.id, { seats: draftSeats });
+    setToast(res.ok ? tx('Seats changed to {draftSeats}.', { draftSeats: draftSeats.join(', ') }) : res.reason ?? tx('Could not change seats.'));
   };
 
   // The booking whose seats are being changed, and the seats kept for women on its trip.
@@ -785,7 +460,9 @@ export default function MyBookingsPage() {
       setTimeout(() => setToast(null), 5000);
       return;
     }
-    setDraftSeats((prev) => (prev.includes(seatId) ? prev.filter((s) => s !== seatId) : [...prev, seatId]));
+    // Keep the same number of seats: tapping a new seat when all are picked swaps out the first one.
+    const keep = seatChangeTarget?.seats.length ?? 1;
+    setDraftSeats((prev) => (prev.includes(seatId) ? prev.filter((s) => s !== seatId) : [...(prev.length >= keep ? prev.slice(1) : prev), seatId]));
   };
 
   if (!ready) return <StoreLoading />;
@@ -817,26 +494,24 @@ export default function MyBookingsPage() {
                 <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-[#ffd54a]">
                   {OPERATOR.name}
                 </span>
-                <h1 className="hidden md:block text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Your Journeys</h1>
-                <p className="text-white/70 text-[14px] md:text-[15px]">
-                  Change seats, move to another day or cancel. Show the ticket to the conductor when you board.
-                </p>
+                <h1 className="hidden md:block text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">{tx('Your Journeys')}</h1>
+                <p className="text-white/70 text-[14px] md:text-[15px]">{tx('Change seats, move to another day or cancel. Show the ticket to the conductor when you board.')}</p>
                 <div className="flex gap-[12px] pt-[8px] justify-center md:justify-start">
                   <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
-                    <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Upcoming</span>
-                    <span className="text-[18px] font-bold">{upcoming.length} Trips</span>
+                    <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">{tx('Upcoming')}</span>
+                    <span className="text-[18px] font-bold">{tx('{length} Trips', { length: upcoming.length })}</span>
                   </div>
                   {REWARDS_ENABLED && authMode === 'demo' && (
 <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/15">
-                    <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">Rewards</span>
-                    <span className="text-[18px] font-bold">{(rewardsPoints / 1000).toFixed(1)}k pts</span>
+                    <span className="block text-[10px] uppercase tracking-widest text-[#ffd54a] font-bold">{tx('Rewards')}</span>
+                    <span className="text-[18px] font-bold">{tx('{toFixed}k pts', { toFixed: (rewardsPoints / 1000).toFixed(1) })}</span>
                   </div>
 )}
                 </div>
               </div>
               <div className="relative hidden md:block w-full md:w-80 h-40 md:h-48 rounded-xl overflow-hidden shadow-xl border-4 border-white/10 flex-shrink-0">
                 <img
-                  alt="Siyan Lanka coach interior"
+                  alt={tx('Siyan Lanka coach interior')}
                   className="w-full h-full object-cover"
                   src="/brand/interior.png"
                 />
@@ -856,18 +531,16 @@ export default function MyBookingsPage() {
                 {t('Upcoming Journeys')}
               </h2>
               {upcoming.length > 0 && (
-                <button className="text-[#050a44] font-bold text-[12px] hover:underline">View All</button>
+                <button className="text-[#050a44] font-bold text-[12px] hover:underline">{tx('View All')}</button>
               )}
             </div>
 
             {upcoming.length === 0 ? (
               <div className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm p-[32px] text-center">
                 <p className="text-[13px] text-[#46464f]">
-                  {user ? 'No upcoming trips on this account.' : 'Sign in to see trips booked with your account.'}
+                  {user ? tx('No upcoming trips on this account.') : tx('Sign in to see trips booked with your account.')}
                 </p>
-                <Link href="/search" className="inline-block mt-4 px-5 py-2.5 bg-[#050a44] text-white rounded-xl text-[13px] font-bold">
-                  Book a seat
-                </Link>
+                <Link href="/search" className="inline-block mt-4 px-5 py-2.5 bg-[#050a44] text-white rounded-xl text-[13px] font-bold">{tx('Book a seat')}</Link>
               </div>
             ) : (
               <div ref={tripsRef} className="grid grid-cols-1 md:grid-cols-2 gap-x-[16px] gap-y-[28px]">
@@ -885,7 +558,7 @@ export default function MyBookingsPage() {
                           <span
                             className={`px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider ${STATUS_BADGE[booking.status].className}`}
                           >
-                            {STATUS_BADGE[booking.status].label}
+                            {tx(STATUS_BADGE[booking.status].label)}
                           </span>
                           <span className="text-[#6b6d78] text-[11px] font-mono tracking-wide">{booking.bookingRef}</span>
                         </div>
@@ -920,8 +593,7 @@ export default function MyBookingsPage() {
                           <div className="flex items-center gap-2 min-w-[200px] flex-1">
                             <OperatorBadge operator={booking.operator} />
                             <div className="min-w-0">
-                              <p className="text-[12px] text-[#46464f] font-medium whitespace-nowrap">
-                                {booking.date} · Seat{booking.seats.length > 1 ? 's' : ''} {booking.seats.join(', ')}
+                              <p className="text-[12px] text-[#46464f] font-medium whitespace-nowrap">{txn(booking.seats.length, '{date} · Seat {seats}', '{date} · Seats {seats}', { date: booking.date, seats: booking.seats.join(', ') })}
                               </p>
                               <p className="text-[12px] text-[#050a44] font-bold truncate">{booking.travelClass}</p>
                             </div>
@@ -933,16 +605,12 @@ export default function MyBookingsPage() {
                             <button
                               disabled
                               className="bg-[#f2f4f6] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
-                            >
-                              Ticket Pending
-                            </button>
+                            >{tx('Ticket Pending')}</button>
                           ) : isCancelling ? (
                             <button
                               disabled
                               className="bg-[#e1e2e4] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
-                            >
-                              Cancelling…
-                            </button>
+                            >{tx('Cancelling…')}</button>
                           ) : (
                             <>
                             <TripBell bookingId={booking.id} size="sm" className="flex-1 sm:flex-none" />
@@ -950,15 +618,11 @@ export default function MyBookingsPage() {
                               href={`/track?ref=${booking.bookingRef}`}
                               className="flex-1 sm:flex-none h-[38px] justify-center bg-[#feb700] text-[#14120a] px-2 sm:px-3 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
                             >
-                              <span className="material-symbols-outlined text-[14px]">my_location</span>
-                              Track
-                            </a>
+                              <span className="material-symbols-outlined text-[14px]">my_location</span>{tx('Track')}</a>
                             <button
                               onClick={() => setTicketTarget(booking)}
                               className="flex-1 sm:flex-none h-[38px] justify-center bg-[#050a44] text-white px-2 sm:px-4 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
-                            >
-                              View Ticket
-                              <span className="material-symbols-outlined text-[14px]">confirmation_number</span>
+                            >{tx('View Ticket')}<span className="material-symbols-outlined text-[14px]">confirmation_number</span>
                             </button>
                             </>
                           )}
@@ -999,31 +663,23 @@ export default function MyBookingsPage() {
           {REWARDS_ENABLED && <LoyaltyCard />}
           {REWARDS_ENABLED && authMode === 'demo' && (
           <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-[12px] relative overflow-hidden">
-            <h4 className="font-bold text-[#050a44] text-[14px]">{OPERATOR.shortName} Rewards</h4>
-            <p className="text-[12px] text-[#46464f]">
-              You're only <span className="font-bold text-[#050a44]">{pointsToNextReward} pts</span> away from a free Gold-class upgrade!
-            </p>
+            <h4 className="font-bold text-[#050a44] text-[14px]">{tx('{shortName} Rewards', { shortName: OPERATOR.shortName })}</h4>
+            <p className="text-[12px] text-[#46464f]">{txr("You're only <b>{points} pts</b> away from a free Gold-class upgrade!", { points: pointsToNextReward, b: (c) => <span className="font-bold text-[#050a44]">{c}</span> })}</p>
             <div className="w-full bg-[#f2f4f6] h-2 rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-[#feb700] to-[#ffe08a]"
                 style={{ width: `${rewardsProgress}%` }}
               />
             </div>
-            <button className="text-[#7c5800] text-[11px] font-extrabold uppercase tracking-widest hover:underline">
-              Explore Perks →
-            </button>
+            <button className="text-[#7c5800] text-[11px] font-extrabold uppercase tracking-widest hover:underline">{tx('Explore Perks →')}</button>
           </div>
           )}
 
 
           <div className="bg-[#f2f4f6] rounded-2xl p-[20px] border border-[#e1e2e4] space-y-[8px]">
             <h4 className="font-bold text-[#050a44] text-[14px] flex items-center gap-2">
-              <span className="material-symbols-outlined text-[16px]">support_agent</span>
-              Need Help?
-            </h4>
-            <p className="text-[11px] text-[#46464f] leading-relaxed">
-              Contact us about changes, lost items or group bookings.
-            </p>
+              <span className="material-symbols-outlined text-[16px]">support_agent</span>{tx('Need Help?')}</h4>
+            <p className="text-[11px] text-[#46464f] leading-relaxed">{tx('Contact us about changes, lost items or group bookings.')}</p>
             <div className="pt-[4px] space-y-1">
               {OPERATOR.contact.phone ? (
                 <a className="text-[#050a44] font-bold text-[13px] block" href={OPERATOR.contact.phoneHref}>{OPERATOR.contact.phone}</a>
@@ -1069,22 +725,12 @@ export default function MyBookingsPage() {
           passengerGender={seatChangeGender as Gender}
           maxSeatsPerBooking={OPERATOR.maxSeatsPerBooking}
           originalSeatCount={seatChangeTarget.seats.length}
+          onCancel={() => setSeatChangeTarget(null)}
         />
       )}
 
       {ticketTarget && <TicketModal booking={ticketTarget} onClose={() => setTicketTarget(null)} />}
 
-      {settlement && (
-        <PaymentSettleModal
-          amount={settlement.amount}
-          reason={settlement.reason}
-          onSuccess={() => {
-            settlement.commit();
-            setSettlement(null);
-          }}
-          onClose={() => setSettlement(null)}
-        />
-      )}
 
       <style jsx global>{`
         @keyframes fadeIn {

@@ -19,7 +19,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, Crosshair, Share2, Eye, Eye
 import { useStore } from '@/lib/store';
 import { km } from '@/lib/extras';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
-import { compressPhoto, formatDuration, formatTime12, genId, routeLabel } from '@/lib/trips';
+import { compressPhoto, formatDuration, formatTime12, genId, routeLabel, dateLocale } from '@/lib/trips';
 import { uuid } from '@/lib/uuid';
 import type { Route, RouteStop } from '@/lib/types';
 import { fetchRoadRoute, type RoadRoute } from '@/lib/routing';
@@ -44,7 +44,9 @@ import {
 import { Button, Card, PageHeader, inputClass, useToast } from '@/components/admin/ui';
 import { ShareRouteDialog } from '@/components/admin/ShareRouteDialog';
 import { GoogleMapsLinks } from '@/components/GoogleMapsLinks';
+import { tx, txn } from '@/lib/i18n';
 
+import { fmtDate } from '@/lib/dates';
 const RouteEditorMap = dynamic(() => import('@/components/admin/RouteEditorMap').then((m) => m.RouteEditorMap), {
   ssr: false,
   loading: () => <div className="h-full min-h-[420px] rounded-2xl skeleton" />,
@@ -134,7 +136,7 @@ export default function RouteEditorPage() {
     return (
       <>
         <BackLink />
-        <Card className="p-6 text-[14px] text-[#46464f]">{isNew || saved ? 'Loading…' : 'This route no longer exists.'}</Card>
+        <Card className="p-6 text-[14px] text-[#46464f]">{isNew || saved ? tx('Loading…') : tx('This route no longer exists.')}</Card>
       </>
     );
   }
@@ -147,10 +149,10 @@ export default function RouteEditorPage() {
       onSave={async (r) => {
         const res = await saveRoute(r);
         if (!res.ok) {
-          toast(res.reason ?? 'Could not save', 'error');
+          toast(res.reason ?? tx('Could not save'), 'error');
           return false;
         }
-        toast(`${routeLabel(r)} saved`, 'ok');
+        toast(tx('{r} saved', { r: routeLabel(r) }), 'ok');
         if (isNew) router.replace(`/admin/routes/${r.id}`);
         return true;
       }}
@@ -163,8 +165,7 @@ export default function RouteEditorPage() {
 function BackLink() {
   return (
     <Link href="/admin/routes" className="inline-flex items-center gap-1.5 text-[13px] font-bold text-[#050a44] mb-3 hover:underline">
-      <ArrowLeft className="w-4 h-4" /> Routes &amp; timetable
-    </Link>
+      <ArrowLeft className="w-4 h-4" />{' '}{tx('Routes & timetable')}</Link>
   );
 }
 
@@ -190,7 +191,9 @@ function Editor({
   const [price, setPrice] = useState(route.stops[route.stops.length - 1]?.fareFromStart ?? 0);
   const [selected, setSelected] = useState<number | null>(null);
   const [pickFor, setPickFor] = useState<number | null>(null); // stop waiting for a map click
-  const [clickAdds, setClickAdds] = useState(true);
+  // What a click on the map does: add a stop (asks for a name), add a hidden shaping point (straight in), or nothing.
+  const [clickMode, setClickMode] = useState<'stop' | 'point' | 'none'>('stop');
+  const clickAdds = clickMode !== 'none';
   const [busFactor, setBusFactor] = useState(1.1);
   const [dwell, setDwell] = useState(2);
   const [gps, setGps] = useState<GpsFile | null>(null);
@@ -367,19 +370,19 @@ function Editor({
    * Adds a stop at position `at` (0 = new first stop, stops.length = new last stop),
    * with a time and fare between its neighbours.
    */
-  const insertStop = (lat: number, lng: number, name: string, at: number) => {
+  const insertStop = (lat: number, lng: number, name: string, at: number, hidden = false) => {
     const p = stops;
     const prev = p[at - 1];
     const next = p[at];
     let n: RouteStop[];
     if (at === 0) {
       // New start: it leaves at 0:00, everything else is 30 min later.
-      n = [{ name, offsetMin: 0, fareFromStart: 0, lat, lng }, ...p.map((s) => ({ ...s, offsetMin: s.offsetMin + 30 }))];
+      n = [{ name, offsetMin: 0, fareFromStart: 0, lat, lng }, ...p.map((s) => ({ ...s, offsetMin: s.offsetMin + 30 }))]; // the first stop is never hidden
     } else {
       const offsetMin = next ? Math.round((prev.offsetMin + next.offsetMin) / 2) : prev.offsetMin + 30;
       const fareFromStart = next ? Math.round((prev.fareFromStart + next.fareFromStart) / 2 / 10) * 10 : prev.fareFromStart + 100;
       n = [...p];
-      n.splice(at, 0, { name, offsetMin, fareFromStart, lat, lng });
+      n.splice(at, 0, { name, offsetMin, fareFromStart, lat, lng, ...(hidden && next ? { hidden: true } : {}) });
     }
     change(() => n);
     setSelected(at);
@@ -390,7 +393,7 @@ function Editor({
   const [pending, setPending] = useState<{ lat: number; lng: number; name: string; at: number; best: number } | null>(null);
   const propose = async (lat: number, lng: number, name: string | null) => {
     const best = bestAt(lat, lng);
-    setPending({ lat: round(lat), lng: round(lng), name: name ?? 'New stop', at: best, best });
+    setPending({ lat: round(lat), lng: round(lng), name: name ?? tx('New stop'), at: best, best });
     if (name == null) {
       const found = await placeName(lat, lng);
       if (found) setPending((cur) => (cur && cur.lat === round(lat) && cur.lng === round(lng) && cur.name === 'New stop' ? { ...cur, name: uniqueName(stops, found) } : cur));
@@ -398,7 +401,7 @@ function Editor({
   };
   const confirmPending = () => {
     if (!pending) return;
-    insertStop(pending.lat, pending.lng, uniqueName(stops, pending.name.trim() || 'New stop'), pending.at);
+    insertStop(pending.lat, pending.lng, uniqueName(stops, pending.name.trim() || tx('New stop')), pending.at);
     setPending(null);
   };
   useEffect(() => {
@@ -415,7 +418,13 @@ function Editor({
       setPickFor(null);
       return;
     }
-    if (!clickAdds) return;
+    if (clickMode === 'none') return;
+    if (clickMode === 'point') {
+      // Shaping point: goes straight in where it fits best, between two stops, with no questions.
+      const at = Math.max(1, Math.min(stops.length - 1, bestAt(lat, lng)));
+      insertStop(round(lat), round(lng), uniqueName(stops, `Point ${stops.filter((x) => x.hidden).length + 1}`), at, true);
+      return;
+    }
     propose(lat, lng, null);
   };
 
@@ -425,7 +434,7 @@ function Editor({
     setSearching(false);
     setResults(r.places);
     if (r.error) toast(r.error, 'error');
-    else if (!r.places.length) toast('No place found with that name. Try a nearby town, or pick it on the map.', 'error');
+    else if (!r.places.length) toast(tx('No place found with that name. Try a nearby town, or pick it on the map.'), 'error');
   };
   const choosePlace = (pl: Place) => {
     if (searchFor === 'new') propose(pl.lat, pl.lng, uniqueName(stops, pl.name));
@@ -494,7 +503,7 @@ function Editor({
     if (
       departures.length > 0 &&
       !window.confirm(
-        `This route has ${departures.length} departure${departures.length === 1 ? '' : 's'} in the timetable. Saving it reversed changes the direction those buses run, for passengers who already booked too.\n\nTo run the other direction as well, use "Create return route" on the Routes & timetable page instead.\n\nReverse this route anyway? (You can undo it, and nothing changes until you save.)`,
+        txn(departures.length, 'This route has {n} departure in the timetable. Saving it reversed changes the direction those buses run, for passengers who already booked too.\n\nTo run the other direction as well, use "Create return route" on the Routes & timetable page instead.\n\nReverse this route anyway? (You can undo it, and nothing changes until you save.)', 'This route has {n} departures in the timetable. Saving it reversed changes the direction those buses run, for passengers who already booked too.\n\nTo run the other direction as well, use "Create return route" on the Routes & timetable page instead.\n\nReverse this route anyway? (You can undo it, and nothing changes until you save.)'),
       )
     )
       return;
@@ -503,24 +512,24 @@ function Editor({
       return [...p].reverse().map((s) => ({ ...s, offsetMin: last.offsetMin - s.offsetMin, fareFromStart: last.fareFromStart - s.fareFromStart }));
     });
     setSelected(null);
-    toast('Route reversed. Undo brings it back.', 'ok');
+    toast(tx('Route reversed. Undo brings it back.'), 'ok');
   };
 
   const fillTimes = () => {
     if (!roadOffsets) return;
     change((p) => p.map((s, i) => ({ ...s, offsetMin: roadOffsets[i] })));
-    toast('Times filled from the road estimate', 'ok');
+    toast(tx('Times filled from the road estimate'), 'ok');
   };
 
   // ---- GPS file ----
   const loadGps = async (file: File) => {
     const parsed = parseGpsFile(file.name, await file.text());
-    if (!parsed) return toast('No GPS points found in that file. Use the CSV or GPX from GPS trip log, or any GPX track.', 'error');
+    if (!parsed) return toast(tx('No GPS points found in that file. Use the CSV or GPX from GPS trip log, or any GPX track.'), 'error');
     gpsAbort.current?.abort();
     setGps(parsed);
     setGpsShown(true);
     setGpsLoads((n) => n + 1);
-    toast(`Loaded ${parsed.line.length.toLocaleString()} points from ${file.name}`, 'ok');
+    toast(tx('Loaded {length} points from {name}', { length: parsed.line.length.toLocaleString(), name: file.name }), 'ok');
     // Gaps of more than 2 km still in the file (e.g. exported before they were filled, or from another app): fill them with the likely road.
     const total = countJumps(parsed);
     setGpsFill(total ? { done: 0, total, filling: true } : null);
@@ -556,16 +565,16 @@ function Editor({
   const saveDraft = async () => {
     if (!savedRoute) return;
     const current = plans.find((p) => p.id === planId);
-    const name = window.prompt('Name this draft', current?.name ?? `Draft ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`);
+    const name = window.prompt(tx('Name this draft'), current?.name ?? `${tx('Draft')} ${fmtDate(new Date(), { day: 'numeric', month: 'short' })}`);
     if (name == null) return;
-    const r = await savePlan({ id: current && current.name === name ? current.id : undefined, name: name.trim() || 'Draft', routeId: savedRoute.id, stops: finalRoute().stops, notes: '' });
-    if (!r.ok || !r.plan) return toast(r.reason ?? 'Could not save the draft', 'error');
+    const r = await savePlan({ id: current && current.name === name ? current.id : undefined, name: name.trim() || tx('Draft'), routeId: savedRoute.id, stops: finalRoute().stops, notes: '' });
+    if (!r.ok || !r.plan) return toast(r.reason ?? tx('Could not save the draft'), 'error');
     setPlans((ps) => [r.plan!, ...ps.filter((p) => p.id !== r.plan!.id)]);
     setPlanId(r.plan.id);
-    toast('Draft saved. The live route is unchanged.', 'ok');
+    toast(tx('Draft saved. The live route is unchanged.'), 'ok');
   };
   const openDraft = (id: string) => {
-    if (dirty && !window.confirm('Open this version? Changes not saved here will be lost.')) return;
+    if (dirty && !window.confirm(tx('Open this version? Changes not saved here will be lost.'))) return;
     setPlanId(id);
     const src = id ? plans.find((p) => p.id === id)?.stops : savedRoute?.stops;
     if (!src) return;
@@ -577,36 +586,33 @@ function Editor({
   };
   const removeDraft = async () => {
     const p = plans.find((x) => x.id === planId);
-    if (!p || !window.confirm(`Delete the draft "${p.name}"?`)) return;
+    if (!p || !window.confirm(tx('Delete the draft "{name}"?', { name: p.name }))) return;
     const r = await deletePlan(p.id);
-    if (!r.ok) return toast(r.reason ?? 'Could not delete', 'error');
+    if (!r.ok) return toast(r.reason ?? tx('Could not delete'), 'error');
     setPlans((ps) => ps.filter((x) => x.id !== p.id));
     setPlanId('');
-    toast('Draft deleted', 'ok');
+    toast(tx('Draft deleted'), 'ok');
   };
 
-  const title = savedRoute ? `Edit ${routeLabel(savedRoute)}` : 'New route';
+  const title = savedRoute ? tx('Edit {savedRoute}', { savedRoute: routeLabel(savedRoute) }) : tx('New route');
 
   return (
     <>
       <BackLink />
       <PageHeader
         title={title}
-        description="Find stops by name or place them on the map. The road route updates as you go, next to the saved route, so you can try changes and see the distance and time before saving."
+        description={tx('Find stops by name or place them on the map. The road route updates as you go, next to the saved route, so you can try changes and see the distance and time before saving.')}
         actions={
           <>
             {savedRoute && (
-              <Button variant="secondary" onClick={() => setSharing(true)} title="A private link to a read-only page with this route as it is now">
-                <Share2 className="w-4 h-4" /> Share
-              </Button>
+              <Button variant="secondary" onClick={() => setSharing(true)} title={tx('A private link to a read-only page with this route as it is now')}>
+                <Share2 className="w-4 h-4" />{' '}{tx('Share')}</Button>
             )}
             {savedRoute && (
-              <Button variant="secondary" onClick={saveDraft}>
-                Save as draft
-              </Button>
+              <Button variant="secondary" onClick={saveDraft}>{tx('Save as draft')}</Button>
             )}
             <Button variant="gold" disabled={problems.length > 0 || saving} onClick={save}>
-              {saving ? 'Saving…' : 'Save route'}
+              {saving ? tx('Saving…') : tx('Save route')}
             </Button>
           </>
         }
@@ -614,10 +620,10 @@ function Editor({
 
       {/* Summary: as edited vs saved */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <Stat label="Road distance" value={edited.fresh && edited.road ? `${edited.road.distanceKm.toFixed(1)} km${allPinned ? '' : '*'}` : edited.loading ? '…' : '—'} sub={savedRoute && edited.fresh && edited.road && savedRoad.road && savedPinned && allPinned ? `${signed(edited.road!.distanceKm - savedRoad.road.distanceKm, 'km', 1)} vs saved` : allPinned ? 'by road' : `*through pinned stops · ${unpinned} without a pin`} />
-        <Stat label="Bus time (road estimate)" value={editedTime != null ? dur(editedTime) : '—'} sub={savedTime != null && editedTime != null ? `${signed(editedTime - savedTime, 'min')} vs saved` : `road × ${busFactor} + ${dwell} min a stop`} />
-        <Stat label="Timetable end to end" value={dur(stops[stops.length - 1]?.offsetMin ?? 0)} sub={editedTime != null ? `${signed((stops[stops.length - 1]?.offsetMin ?? 0) - editedTime, 'min')} vs road estimate` : 'from the times below'} />
-        <Stat label="Stops" value={String(stops.length)} sub={savedRoute ? (changedFromSaved ? `${signed(stops.length - savedRoute.stops.length, 'vs saved')}` : 'same as saved') : 'new route'} />
+        <Stat label={tx('Road distance')} value={edited.fresh && edited.road ? `${edited.road.distanceKm.toFixed(1)} km${allPinned ? '' : '*'}` : edited.loading ? '…' : '—'} sub={savedRoute && edited.fresh && edited.road && savedRoad.road && savedPinned && allPinned ? tx('{d} vs saved', { d: signed(edited.road!.distanceKm - savedRoad.road.distanceKm, 'km', 1) }) : allPinned ? tx('by road') : tx('*through pinned stops · {n} without a pin', { n: unpinned })} />
+        <Stat label={tx('Bus time (road estimate)')} value={editedTime != null ? dur(editedTime) : '—'} sub={savedTime != null && editedTime != null ? `${signed(editedTime - savedTime, 'min')} vs saved` : `road × ${busFactor} + ${dwell} min a stop`} />
+        <Stat label={tx('Timetable end to end')} value={dur(stops[stops.length - 1]?.offsetMin ?? 0)} sub={editedTime != null ? tx('{d} vs road estimate', { d: signed((stops[stops.length - 1]?.offsetMin ?? 0) - editedTime, 'min') }) : tx('from the times below')} />
+        <Stat label={tx('Stops')} value={String(stops.length)} sub={savedRoute ? (changedFromSaved ? signed(stops.length - savedRoute.stops.length, tx('vs saved')) : tx('same as saved')) : tx('new route')} />
       </div>
       {(edited.error || savedRoad.error) && (
         <p role="alert" className="mb-4 rounded-xl bg-[#ba1a1a]/10 border border-[#ba1a1a]/25 text-[#93000a] text-[13px] font-semibold px-4 py-2.5">{edited.error ?? savedRoad.error}</p>
@@ -629,27 +635,24 @@ function Editor({
           {savedRoute && (
             <Card className="p-4 flex flex-wrap items-end gap-3">
               <label className="block flex-1 min-w-[200px]">
-                <span className="text-[12px] font-bold text-[#46464f] px-1">Version</span>
+                <span className="text-[12px] font-bold text-[#46464f] px-1">{tx('Version')}</span>
                 <select className={`${inputClass} mt-1`} value={planId} onChange={(e) => openDraft(e.target.value)}>
-                  <option value="">Live route{changedFromSaved && !planId ? ' (edited)' : ''}</option>
+                  <option value="">{tx('Live route')}{changedFromSaved && !planId ? tx(' (edited)') : ''}</option>
                   {plans.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      Draft: {p.name} ({p.stops.length} stops)
-                    </option>
+                    <option key={p.id} value={p.id}>{tx('Draft: {name} ({length} stops)', { name: p.name, length: p.stops.length })}</option>
                   ))}
                 </select>
               </label>
               {planId && (
                 <Button variant="danger" onClick={removeDraft}>
-                  <Trash2 className="w-4 h-4" /> Delete draft
-                </Button>
+                  <Trash2 className="w-4 h-4" />{' '}{tx('Delete draft')}</Button>
               )}
-              <p className="w-full text-[12px] text-[#6b6d78]">Drafts keep ideas without changing the live route. Open one and press &ldquo;Save route&rdquo; to make it live.</p>
+              <p className="w-full text-[12px] text-[#6b6d78]">{tx('Drafts keep ideas without changing the live route. Open one and press “Save route” to make it live.')}</p>
             </Card>
           )}
 
           <Card className="p-4 space-y-3">
-            <p className="text-[13px] font-bold text-[#050a44]">Ticket price</p>
+            <p className="text-[13px] font-bold text-[#050a44]">{tx('Ticket price')}</p>
             <div className="flex gap-2">
               {([true, false] as const).map((f) => (
                 <button
@@ -659,51 +662,47 @@ function Editor({
                   onClick={() => { if (flat !== f) record(); setFlat(f); setDirty(true); }}
                   className={`flex-1 min-h-10 px-2 py-1.5 rounded-lg text-[13px] font-bold border ${flat === f ? 'bg-[#050a44] text-white border-[#050a44]' : 'bg-white border-[#c7c5d1] text-[#46464f]'}`}
                 >
-                  {f ? 'One price for the whole route' : 'Price by distance (per stop)'}
+                  {f ? tx('One price for the whole route') : tx('Price by distance (per stop)')}
                 </button>
               ))}
             </div>
             {flat ? (
               <label className="flex flex-wrap items-center gap-3">
-                <span className="text-[12px] font-bold text-[#46464f]">Price per seat (LKR)</span>
-                <input type="number" min={0} step={50} className={`${inputClass} !w-36`} value={price} onChange={(e) => { record('price'); setPrice(Math.max(0, Number(e.target.value))); setDirty(true); }} aria-label="Ticket price" />
+                <span className="text-[12px] font-bold text-[#46464f]">{tx('Price per seat (LKR)')}</span>
+                <input type="number" min={0} step={50} className={`${inputClass} !w-36`} value={price} onChange={(e) => { record('price'); setPrice(Math.max(0, Number(e.target.value))); setDirty(true); }} aria-label={tx('Ticket price')} />
               </label>
             ) : (
-              <p className="text-[12px] text-[#46464f]">Each stop&apos;s fare from the first stop is set below. A passenger pays the difference between their two stops.</p>
+              <p className="text-[12px] text-[#46464f]">{tx('Each stop\'s fare from the first stop is set below. A passenger pays the difference between their two stops.')}</p>
             )}
           </Card>
 
           <Card className="overflow-hidden">
             <div className="px-4 py-3 border-b border-[#edeef0] flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-[16px] font-semibold text-[#050a44]">Stops</h2>
-                <p className="text-[12px] text-[#6b6d78]">&ldquo;Arrives after&rdquo; is the time from leaving the first stop.</p>
+                <h2 className="text-[16px] font-semibold text-[#050a44]">{tx('Stops')}</h2>
+                <p className="text-[12px] text-[#6b6d78]">{tx('“Arrives after” is the time from leaving the first stop.')}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" variant="secondary" disabled={stops.length < 2} onClick={reverseStops} title="Last stop first: turn this route round (undoable)">
-                  <ArrowUpDown className="w-3.5 h-3.5" /> Reverse order
-                </Button>
-                <label className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#050a44]" title="When you add, move, remove or reorder stops, every stop's time is set from the road estimate (undo brings the old times back)">
-                  <input type="checkbox" className="w-4 h-4 accent-[#050a44]" checked={autoTimes} onChange={(e) => { setAutoTimes(e.target.checked); if (e.target.checked) retime.current = true; }} />
-                  Times follow the road
-                </label>
+                <Button size="sm" variant="secondary" disabled={stops.length < 2} onClick={reverseStops} title={tx('Last stop first: turn this route round (undoable)')}>
+                  <ArrowUpDown className="w-3.5 h-3.5" />{' '}{tx('Reverse order')}</Button>
+                <label className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#050a44]" title={tx('When you add, move, remove or reorder stops, every stop\'s time is set from the road estimate (undo brings the old times back)')}>
+                  <input type="checkbox" className="w-4 h-4 accent-[#050a44]" checked={autoTimes} onChange={(e) => { setAutoTimes(e.target.checked); if (e.target.checked) retime.current = true; }} />{tx('Times follow the road')}</label>
                 {!autoTimes && (
-                  <Button size="sm" variant="secondary" disabled={!roadOffsets} onClick={fillTimes} title={roadOffsets ? '' : 'The first and last stops need a map pin'}>
-                    <Wand2 className="w-3.5 h-3.5" /> Fill times from road
-                  </Button>
+                  <Button size="sm" variant="secondary" disabled={!roadOffsets} onClick={fillTimes} title={roadOffsets ? '' : tx('The first and last stops need a map pin')}>
+                    <Wand2 className="w-3.5 h-3.5" />{' '}{tx('Fill times from road')}</Button>
                 )}
               </div>
             </div>
             {departures.length > 0 && (
               <div className="px-4 py-2 border-b border-[#edeef0] flex flex-wrap items-center gap-2 text-[12px] text-[#46464f]">
-                <span className="font-bold">Clock times for the</span>
-                <select className={`${inputClass} !w-auto !py-1`} value={clockDep} onChange={(e) => setClockDep(e.target.value)} aria-label="Departure for clock times">
+                <span className="font-bold">{tx('Clock times for the')}</span>
+                <select className={`${inputClass} !w-auto !py-1`} value={clockDep} onChange={(e) => setClockDep(e.target.value)} aria-label={tx('Departure for clock times')}>
                   {departures.filter((d, i, a) => a.indexOf(d) === i).map((d) => (
                     <option key={d} value={d}>{formatTime12(d)}</option>
                   ))}
-                  <option value="">(no clock times)</option>
+                  <option value="">{tx('(no clock times)')}</option>
                 </select>
-                <span>departure</span>
+                <span>{tx('departure')}</span>
               </div>
             )}
             <ol ref={listRef}>
@@ -717,7 +716,7 @@ function Editor({
                   <li key={i} data-stop={i}>
                     {i > 0 && (
                       <div className="pl-[30px] py-1 text-[11px] font-semibold text-[#6b6d78] tabular-nums border-l-2 border-dashed border-[#c7c5d1] ml-[27px]">
-                        {leg ? `${leg.km.toFixed(1)} km · ${dur(leg.min * busFactor)} by road` : edited.loading ? 'working out the road…' : ''}
+                        {leg ? tx('{km} km · {dur} by road', { km: leg.km.toFixed(1), dur: dur(leg.min * busFactor) }) : edited.loading ? tx('working out the road…') : ''}
                       </div>
                     )}
                     <div className={`px-4 py-3 ${selected === i ? 'bg-[#feb700]/10' : ''}`} onFocus={() => setSelected(i)}>
@@ -725,15 +724,15 @@ function Editor({
                         <button
                           type="button"
                           onClick={() => setSelected(i)}
-                          aria-label={`Show stop ${i + 1} on the map`}
+                          aria-label={tx('Show stop {v} on the map', { v: i + 1 })}
                           className={`mt-1.5 w-7 h-7 shrink-0 rounded-full border-[3px] text-[11px] font-extrabold inline-flex items-center justify-center ${end ? 'bg-[#050a44] text-white keep-navy' : 'bg-white text-[#050a44]'} ${selected === i ? 'border-[#feb700]' : 'border-[#050a44]'}`}
                         >
                           {i + 1}
                         </button>
                         <div className="flex-1 min-w-0 space-y-2">
                           <div className="flex gap-1.5">
-                            <input aria-label={`Stop ${i + 1} name`} className={inputClass} value={s.name} placeholder="Stop name, e.g. Kegalle" onChange={(e) => update(i, { name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && openSearch(i)} />
-                            <Button variant="secondary" aria-label="Find this place on the map" title="Find on the map" onClick={() => openSearch(i)}>
+                            <input aria-label={tx('Stop {v} name', { v: i + 1 })} className={inputClass} value={s.name} placeholder={tx('Stop name, e.g. Kegalle')} onChange={(e) => update(i, { name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && openSearch(i)} />
+                            <Button variant="secondary" aria-label={tx('Find this place on the map')} title={tx('Find on the map')} onClick={() => openSearch(i)}>
                               <Search className="w-4 h-4" />
                             </Button>
                           </div>
@@ -744,46 +743,68 @@ function Editor({
                                 <MapPin className="inline w-3.5 h-3.5 -mt-0.5" /> {s.lat.toFixed(5)}, {s.lng!.toFixed(5)}
                               </a>
                             ) : (
-                              <span className="font-semibold text-[#7c5800]">No map pin: search or pick on the map</span>
+                              <span className="font-semibold text-[#7c5800]">{tx('No map pin: search or pick on the map')}</span>
                             )}
                             <button type="button" className={`font-bold underline ${pickFor === i ? 'text-[#ba1a1a]' : 'text-[#050a44]'}`} onClick={() => setPickFor(pickFor === i ? null : i)}>
-                              <Crosshair className="inline w-3.5 h-3.5 -mt-0.5" /> {pickFor === i ? 'Click the map… (cancel)' : 'Pick on map'}
+                              <Crosshair className="inline w-3.5 h-3.5 -mt-0.5" /> {pickFor === i ? tx('Click the map… (cancel)') : tx('Pick on map')}
                             </button>
-                            {fromGps != null && fromGps > 0.3 && fromGps < 15 && <span className="font-semibold text-[#ba1a1a]">{fromGps.toFixed(1)} km from the road driven</span>}
+                            {fromGps != null && fromGps > 0.3 && fromGps < 15 && <span className="font-semibold text-[#ba1a1a]">{tx('{fromGps} km from the road driven', { fromGps: fromGps.toFixed(1) })}</span>}
                           </div>
                           <div className="flex flex-wrap items-end gap-3">
                             <label className="block">
-                              <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Arrives after (h:mm)</span>
-                              <DurationInput label={`Stop ${i + 1} time from start`} minutes={s.offsetMin} disabled={i === 0} onChange={(m) => update(i, { offsetMin: m })} />
+                              <span className="block text-[11px] font-bold text-[#686873] mb-0.5">{tx('Arrives after (h:mm)')}</span>
+                              <DurationInput label={tx('Stop {v} time from start', { v: i + 1 })} minutes={s.offsetMin} disabled={i === 0} onChange={(m) => update(i, { offsetMin: m })} />
                             </label>
                             {!flat && (
                               <label className="block">
-                                <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Fare from start (LKR)</span>
-                                <input aria-label={`Stop ${i + 1} fare`} type="number" min={0} step={10} className={`${inputClass} !w-32`} value={s.fareFromStart} disabled={i === 0} onChange={(e) => update(i, { fareFromStart: Number(e.target.value) })} />
+                                <span className="block text-[11px] font-bold text-[#686873] mb-0.5">{tx('Fare from start (LKR)')}</span>
+                                <input aria-label={tx('Stop {v} fare', { v: i + 1 })} type="number" min={0} step={10} className={`${inputClass} !w-32`} value={s.fareFromStart} disabled={i === 0} onChange={(e) => update(i, { fareFromStart: Number(e.target.value) })} />
                               </label>
                             )}
                             {est != null && i > 0 && (
-                              <p className={`text-[11px] text-[#6b6d78] pb-2 transition-opacity ${estStale ? 'opacity-40' : ''}`} aria-live="polite">
-                                Road estimate <b className="text-[#050a44] tabular-nums">{hmm(est)}</b>
-                                {clockDep && <> · arrives <b className="text-[#050a44] tabular-nums">≈ {clock(clockDep, est)}</b></>}
-                                {s.lat == null && ' (no pin: between its neighbours)'}
-                                {off != null && Math.abs(off) >= 15 && <span className={`font-semibold ${off < 0 ? 'text-[#ba1a1a]' : 'text-[#7c5800]'}`}> ({signed(off, 'min')} vs timetable)</span>}
-                                {estStale && ' · updating…'}
+                              <p className={`text-[11px] text-[#6b6d78] pb-2 transition-opacity ${estStale ? 'opacity-40' : ''}`} aria-live="polite">{tx('Road estimate')}{' '}<b className="text-[#050a44] tabular-nums">{hmm(est)}</b>
+                                {clockDep && <>{tx('· arrives')}{' '}<b className="text-[#050a44] tabular-nums">≈ {clock(clockDep, est)}</b></>}
+                                {s.lat == null && tx(' (no pin: between its neighbours)')}
+                                {off != null && Math.abs(off) >= 15 && <span className={`font-semibold ${off < 0 ? 'text-[#ba1a1a]' : 'text-[#7c5800]'}`}>{tx('({off} vs timetable)', { off: signed(off, 'min') })}</span>}
+                                {estStale && tx(' · updating…')}
                               </p>
                             )}
                           </div>
+                          {i > 0 && i < stops.length - 1 && (
+                            <label className="flex items-center gap-2 px-2 py-1 text-[12px] font-bold text-[#46464f] cursor-pointer">
+                              <input type="checkbox" checked={!!s.hidden} onChange={(e) => update(i, { hidden: e.target.checked || undefined, ...(e.target.checked ? { optional: undefined, minSeats: undefined } : {}) })} className="accent-[#050a44]" />
+                              Hide from passengers (only shapes the road)
+                            </label>
+                          )}
+                          {i > 0 && i < stops.length - 1 && !s.hidden && (
+                            <div className={`rounded-lg px-2 py-1.5 mb-1 ${s.optional ? 'bg-[#f5f3ff] border border-[#ddd6fe]' : ''}`}>
+                              <label className="flex items-center gap-2 text-[12px] font-bold text-[#4c1d95] cursor-pointer">
+                                <input type="checkbox" checked={!!s.optional} onChange={(e) => update(i, { optional: e.target.checked || undefined, minSeats: e.target.checked ? s.minSeats ?? 4 : undefined })} className="accent-[#7c3aed]" />
+                                On request (detour)
+                              </label>
+                              {s.optional && (
+                                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-[#46464f]">
+                                  Only if at least
+                                  <input type="number" min={1} max={60} aria-label={`Seats needed for ${s.name || `stop ${i + 1}`}`} value={s.minSeats ?? 4}
+                                    onChange={(e) => update(i, { minSeats: Math.max(1, Math.min(60, Number(e.target.value) || 1)) })}
+                                    className="w-16 h-8 px-2 rounded-md border border-[#c7c5d1] text-[13px] font-bold text-[#050a44]" />
+                                  seats are booked to or from here. Otherwise those passengers are moved to the nearest main stop and told.
+                                </p>
+                              )}
+                            </div>
+                          )}
                           <details>
-                            <summary className="text-[11px] font-bold text-[#7c5800] cursor-pointer">Where to wait{s.landmark ? ' ✓' : ''}</summary>
+                            <summary className="text-[11px] font-bold text-[#7c5800] cursor-pointer">{tx('Where to wait')}{s.landmark ? ' ✓' : ''}</summary>
                             <div className="space-y-1.5 mt-1.5">
-                              <input aria-label={`Stop ${i + 1} landmark`} className={inputClass} placeholder="Landmark, e.g. Clock tower roundabout" value={s.landmark ?? ''} onChange={(e) => update(i, { landmark: e.target.value })} />
-                              <input aria-label={`Stop ${i + 1} notes`} className={inputClass} placeholder="Notes, e.g. wait under the bus shelter" value={s.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value })} />
+                              <input aria-label={tx('Stop {v} landmark', { v: i + 1 })} className={inputClass} placeholder={tx('Landmark, e.g. Clock tower roundabout')} value={s.landmark ?? ''} onChange={(e) => update(i, { landmark: e.target.value })} />
+                              <input aria-label={tx('Stop {v} notes', { v: i + 1 })} className={inputClass} placeholder={tx('Notes, e.g. wait under the bus shelter')} value={s.notes ?? ''} onChange={(e) => update(i, { notes: e.target.value })} />
                               <div className="flex items-center gap-2">
                                 {s.photo && (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img src={s.photo} alt="" className="w-12 h-12 rounded object-cover border border-[#e1e2e4]" />
                                 )}
                                 <label className="text-[12px] font-bold text-[#050a44] underline cursor-pointer">
-                                  {s.photo ? 'Replace photo' : 'Add photo of the spot'}
+                                  {s.photo ? tx('Replace photo') : tx('Add photo of the spot')}
                                   <input type="file" accept="image/*" className="sr-only" onChange={async (e) => { const f = e.target.files?.[0]; if (f) update(i, { photo: await uploadStopPhoto(f) }); }} />
                                 </label>
                               </div>
@@ -791,13 +812,13 @@ function Editor({
                           </details>
                         </div>
                         <div className="flex flex-col">
-                          <Button size="sm" variant="ghost" aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
+                          <Button size="sm" variant="ghost" aria-label={tx('Move up')} disabled={i === 0} onClick={() => move(i, -1)}>
                             <ArrowUp className="w-4 h-4" />
                           </Button>
-                          <Button size="sm" variant="ghost" aria-label="Move down" disabled={i === stops.length - 1} onClick={() => move(i, 1)}>
+                          <Button size="sm" variant="ghost" aria-label={tx('Move down')} disabled={i === stops.length - 1} onClick={() => move(i, 1)}>
                             <ArrowDown className="w-4 h-4" />
                           </Button>
-                          <Button size="sm" variant="ghost" aria-label="Remove stop" disabled={stops.length <= 2} onClick={() => removeStop(i)}>
+                          <Button size="sm" variant="ghost" aria-label={tx('Remove stop')} disabled={stops.length <= 2} onClick={() => removeStop(i)}>
                             <Trash2 className="w-4 h-4 text-[#ba1a1a]" />
                           </Button>
                         </div>
@@ -809,12 +830,11 @@ function Editor({
             </ol>
             <div className="px-4 py-3 border-t border-[#edeef0] space-y-2">
               {searchFor === 'new' ? (
-                <SearchBox query={query} setQuery={setQuery} run={runSearch} searching={searching} results={results} choose={choosePlace} close={() => setSearchFor(null)} placeholder="Town or place to add as a stop" autoFocus />
+                <SearchBox query={query} setQuery={setQuery} run={runSearch} searching={searching} results={results} choose={choosePlace} close={() => setSearchFor(null)} placeholder={tx('Town or place to add as a stop')} autoFocus />
               ) : (
                 <div className="flex flex-wrap gap-2">
                   <Button variant="secondary" size="sm" onClick={() => openSearch('new')}>
-                    <Search className="w-4 h-4" /> Add a stop by name
-                  </Button>
+                    <Search className="w-4 h-4" />{' '}{tx('Add a stop by name')}</Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -823,19 +843,16 @@ function Editor({
                       change((p) => [...p, { name: '', offsetMin: last.offsetMin + 30, fareFromStart: last.fareFromStart + 100 }]);
                     }}
                   >
-                    <Plus className="w-4 h-4" /> Empty stop at the end
-                  </Button>
+                    <Plus className="w-4 h-4" />{' '}{tx('Empty stop at the end')}</Button>
                 </div>
               )}
-              <p className="text-[11px] text-[#686873]">A stop found by name or clicked on the map goes where it fits best on the way. Times are hours:minutes from the first stop, e.g. 2:05.</p>
+              <p className="text-[11px] text-[#686873]">{tx('A stop found by name or clicked on the map goes where it fits best on the way. Times are hours:minutes from the first stop, e.g. 2:05.')}</p>
             </div>
           </Card>
 
           <Card className="p-4 space-y-3">
             <label className="flex items-center gap-2 text-[13px] font-semibold text-[#050a44]">
-              <input type="checkbox" checked={active} onChange={(e) => { setActive(e.target.checked); setDirty(true); }} className="w-4 h-4 accent-[#050a44]" />
-              Route is open for booking
-            </label>
+              <input type="checkbox" checked={active} onChange={(e) => { setActive(e.target.checked); setDirty(true); }} className="w-4 h-4 accent-[#050a44]" />{tx('Route is open for booking')}</label>
             {problems.length > 0 ? (
               <ul className="text-[12px] font-semibold text-[#ba1a1a] space-y-0.5">
                 {problems.slice(0, 5).map((p) => (
@@ -843,7 +860,7 @@ function Editor({
                 ))}
               </ul>
             ) : (
-              <p className="text-[12px] text-[#1f7a3a] font-semibold">Ready to save.{dirty ? ' You have unsaved changes.' : ''}</p>
+              <p className="text-[12px] text-[#1f7a3a] font-semibold">{tx('Ready to save.')}{dirty ? tx(' You have unsaved changes.') : ''}</p>
             )}
           </Card>
         </div>
@@ -852,26 +869,25 @@ function Editor({
         <div className="xl:sticky xl:top-4 space-y-3 min-w-0 order-1 xl:order-2">
           <Card className="p-3">
             <div className="flex flex-wrap items-center gap-2 px-1 pb-2">
-              <div className="inline-flex p-0.5 rounded-lg bg-[#f2f4f6] border border-[#e1e2e4]" role="group" aria-label="Clicking the map">
-                {([true, false] as const).map((v) => (
-                  <button key={String(v)} type="button" aria-pressed={clickAdds === v} onClick={() => setClickAdds(v)} className={`px-3 h-8 rounded-md text-[12px] font-bold ${clickAdds === v ? 'bg-[#050a44] text-white keep-navy' : 'text-[#050a44]'}`}>
-                    {v ? 'Click adds a stop' : 'Click does nothing'}
+              <div className="inline-flex p-0.5 rounded-lg bg-[#f2f4f6] border border-[#e1e2e4]" role="group" aria-label={tx('Clicking the map')}>
+                {(['stop', 'point', 'none'] as const).map((v) => (
+                  <button key={v} type="button" aria-pressed={clickMode === v} onClick={() => setClickMode(v)} className={`px-3 h-8 rounded-md text-[12px] font-bold ${clickMode === v ? 'bg-[#050a44] text-white keep-navy' : 'text-[#050a44]'}`}
+                    title={v === 'point' ? 'Each click adds a hidden point that makes the road go that way. Passengers never see it.' : undefined}>
+                    {v === 'stop' ? 'Click adds a stop' : v === 'point' ? 'Click adds a hidden point' : 'Click does nothing'}
                   </button>
                 ))}
               </div>
-              <div className="inline-flex gap-1" role="group" aria-label="Undo and redo">
-                <Button size="sm" variant="secondary" disabled={!past.current.length} onClick={undo} title="Undo (Ctrl+Z)" aria-label="Undo">
-                  <Undo2 className="w-3.5 h-3.5" /> Undo
-                </Button>
-                <Button size="sm" variant="secondary" disabled={!future.current.length} onClick={redo} title="Redo (Ctrl+Shift+Z or Ctrl+Y)" aria-label="Redo">
-                  <Redo2 className="w-3.5 h-3.5" /> Redo
-                </Button>
+              <div className="inline-flex gap-1" role="group" aria-label={tx('Undo and redo')}>
+                <Button size="sm" variant="secondary" disabled={!past.current.length} onClick={undo} title={tx('Undo (Ctrl+Z)')} aria-label={tx('Undo')}>
+                  <Undo2 className="w-3.5 h-3.5" />{' '}{tx('Undo')}</Button>
+                <Button size="sm" variant="secondary" disabled={!future.current.length} onClick={redo} title={tx('Redo (Ctrl+Shift+Z or Ctrl+Y)')} aria-label={tx('Redo')}>
+                  <Redo2 className="w-3.5 h-3.5" />{' '}{tx('Redo')}</Button>
               </div>
               {savedRoute && changedFromSaved && (
                 <Button
                   size="sm"
                   variant="ghost"
-                  title="Back to the saved route (can be undone)"
+                  title={tx('Back to the saved route (can be undone)')}
                   onClick={() => {
                     record();
                     setStops(structuredClone(savedRoute.stops));
@@ -881,25 +897,23 @@ function Editor({
                     setDirty(false);
                   }}
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Back to saved
-                </Button>
+                  <RotateCcw className="w-3.5 h-3.5" />{' '}{tx('Back to saved')}</Button>
               )}
               <GoogleMapsLinks stops={stops} />
               <Button size="sm" variant="secondary" onClick={() => fileInput.current?.click()}>
-                <FileUp className="w-3.5 h-3.5" /> {gps ? 'Change GPS file' : 'Load GPS file'}
+                <FileUp className="w-3.5 h-3.5" /> {gps ? tx('Change GPS file') : tx('Load GPS file')}
               </Button>
               {gps && (
                 <>
-                  <Button size="sm" variant="secondary" onClick={() => setGpsShown((v) => !v)} aria-pressed={!gpsShown} title={gpsShown ? 'Hide the GPS track (keep it loaded)' : 'Show the GPS track again'}>
-                    {gpsShown ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />} {gpsShown ? 'Hide GPS' : 'Show GPS'}
+                  <Button size="sm" variant="secondary" onClick={() => setGpsShown((v) => !v)} aria-pressed={!gpsShown} title={gpsShown ? tx('Hide the GPS track (keep it loaded)') : tx('Show the GPS track again')}>
+                    {gpsShown ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />} {gpsShown ? tx('Hide GPS') : tx('Show GPS')}
                   </Button>
-                  <Button size="sm" variant="danger" onClick={removeGps} title="Remove the GPS track from the map. Your stops stay where you put them.">
-                    <X className="w-3.5 h-3.5" /> Remove GPS
-                  </Button>
+                  <Button size="sm" variant="danger" onClick={removeGps} title={tx('Remove the GPS track from the map. Your stops stay where you put them.')}>
+                    <X className="w-3.5 h-3.5" />{' '}{tx('Remove GPS')}</Button>
                 </>
               )}
               <input ref={fileInput} type="file" accept=".gpx,.csv,application/gpx+xml,text/csv" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) loadGps(f); e.target.value = ''; }} />
-              {(edited.loading || savedRoad.loading) && <Loader2 className="w-4 h-4 animate-spin text-[#6b6d78]" aria-label="Updating the road route" />}
+              {(edited.loading || savedRoad.loading) && <Loader2 className="w-4 h-4 animate-spin text-[#6b6d78]" aria-label={tx('Updating the road route')} />}
             </div>
             {pending && (
               <PendingPanel
@@ -911,9 +925,8 @@ function Editor({
               />
             )}
             {pickFor != null && (
-              <p className="mx-1 mb-2 rounded-lg bg-[#feb700]/20 px-3 py-2 text-[12px] font-bold text-[#050a44]">
-                Click the map to place {stops[pickFor]?.name || `stop ${pickFor + 1}`}.{' '}
-                <button className="underline" onClick={() => setPickFor(null)}>Cancel</button>
+              <p className="mx-1 mb-2 rounded-lg bg-[#feb700]/20 px-3 py-2 text-[12px] font-bold text-[#050a44]">{tx('Click the map to place')}{' '}{stops[pickFor]?.name || tx('stop {v}', { v: pickFor + 1 })}.{' '}
+                <button className="underline" onClick={() => setPickFor(null)}>{tx('Cancel')}</button>
               </p>
             )}
             <RouteEditorMap
@@ -949,29 +962,26 @@ function Editor({
               className="h-[420px] xl:h-[calc(100vh-260px)] xl:min-h-[480px]"
             />
             <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 pt-2 text-[12px] text-[#46464f]">
-              <span><i className="inline-block w-5 h-1.5 align-middle rounded bg-[#1f7a3a] mr-1" />Route as edited</span>
-              {changedFromSaved && <span><i className="inline-block w-5 align-middle border-t-[3px] border-dashed border-[#6b6d78] mr-1" />Saved route</span>}
+              <span><i className="inline-block w-5 h-1.5 align-middle rounded bg-[#1f7a3a] mr-1" />{tx('Route as edited')}</span>
+              {changedFromSaved && <span><i className="inline-block w-5 align-middle border-t-[3px] border-dashed border-[#6b6d78] mr-1" />{tx('Saved route')}</span>}
               {gps && (
                 <span className="inline-flex items-center gap-1">
-                  <i className="inline-block w-5 h-1 align-middle rounded bg-[#feb700] mr-1" />
-                  Road driven: {gps.name} · {lineLengthKm(gps.line).toFixed(1)} km{gpsShown ? '' : ' (hidden)'}
-                  {gps.est.some(Boolean) && <span className="inline-flex items-center"><i className="inline-block w-4 align-middle border-t-[3px] border-dotted border-[#ba1a1a] mx-1" />estimated road in gaps</span>}
-                  {gpsFill?.filling && <span className="text-[#6b6d78]"> · filling gaps over 2 km… {gpsFill.done}/{gpsFill.total}</span>}
-                  <button aria-label="Remove GPS file" onClick={removeGps} className="ml-0.5"><X className="w-3.5 h-3.5" /></button>
+                  <i className="inline-block w-5 h-1 align-middle rounded bg-[#feb700] mr-1" />{tx('Road driven: {name} · {toFixed} km', { name: gps.name, toFixed: lineLengthKm(gps.line).toFixed(1) })}{gpsShown ? '' : tx(' (hidden)')}
+                  {gps.est.some(Boolean) && <span className="inline-flex items-center"><i className="inline-block w-4 align-middle border-t-[3px] border-dotted border-[#ba1a1a] mx-1" />{tx('estimated road in gaps')}</span>}
+                  {gpsFill?.filling && <span className="text-[#6b6d78]">{tx('· filling gaps over 2 km… {done}/{total}', { done: gpsFill.done, total: gpsFill.total })}</span>}
+                  <button aria-label={tx('Remove GPS file')} onClick={removeGps} className="ml-0.5"><X className="w-3.5 h-3.5" /></button>
                 </span>
               )}
               <label className="inline-flex items-center gap-1.5 font-semibold text-[#050a44]">
-                <input type="checkbox" className="w-3.5 h-3.5 accent-[#050a44]" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
-                Map follows the list
-              </label>
-              <span className="text-[#6b6d78]">Scroll or swipe to move the map · pinch or Ctrl+scroll to zoom · drag a pin to move a stop.</span>
+                <input type="checkbox" className="w-3.5 h-3.5 accent-[#050a44]" checked={follow} onChange={(e) => setFollow(e.target.checked)} />{tx('Map follows the list')}</label>
+              <span className="text-[#6b6d78]">{tx('Scroll or swipe to move the map · pinch or Ctrl+scroll to zoom · drag a pin to move a stop.')}</span>
             </div>
           </Card>
           <Card className="p-4 grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Bus vs car time</span>
+              <span className="block text-[11px] font-bold text-[#686873] mb-0.5">{tx('Bus vs car time')}</span>
               <SettingNumber
-                label="Bus vs car time"
+                label={tx('Bus vs car time')}
                 value={busFactor}
                 min={0.5}
                 max={3}
@@ -982,12 +992,12 @@ function Editor({
                   setBusFactor(v);
                 }}
               />
-              <span className="block text-[11px] text-[#686873] mt-0.5">Road times are car times; a bus is slower. With &ldquo;Times follow the road&rdquo; on, changing this re-times the stops.</span>
+              <span className="block text-[11px] text-[#686873] mt-0.5">{tx('Road times are car times; a bus is slower. With “Times follow the road” on, changing this re-times the stops.')}</span>
             </label>
             <label className="block">
-              <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Stop time (min)</span>
+              <span className="block text-[11px] font-bold text-[#686873] mb-0.5">{tx('Stop time (min)')}</span>
               <SettingNumber
-                label="Stop time in minutes"
+                label={tx('Stop time in minutes')}
                 value={dwell}
                 min={0}
                 max={30}
@@ -997,7 +1007,7 @@ function Editor({
                   setDwell(v);
                 }}
               />
-              <span className="block text-[11px] text-[#686873] mt-0.5">At each stop on the way. Also re-times the stops.</span>
+              <span className="block text-[11px] text-[#686873] mt-0.5">{tx('At each stop on the way. Also re-times the stops.')}</span>
             </label>
           </Card>
         </div>
@@ -1005,7 +1015,7 @@ function Editor({
       {sharing && savedRoute && (
         <ShareRouteDialog
           routeId={savedRoute.id}
-          defaultTitle={plans.find((x) => x.id === planId)?.name ?? `${stops[0]?.name || 'Start'} → ${stops[stops.length - 1]?.name || 'End'}${changedFromSaved ? ' (proposed)' : ''}`}
+          defaultTitle={plans.find((x) => x.id === planId)?.name ?? `${stops[0]?.name || tx('Start')} → ${stops[stops.length - 1]?.name || tx('End')}${changedFromSaved ? ` (${tx('proposed')})` : ''}`}
           stops={stops}
           path={edited.fresh && allPinned ? edited.road?.path ?? null : null}
           distanceKm={edited.fresh && allPinned ? edited.road?.distanceKm ?? null : null}
@@ -1048,42 +1058,37 @@ function PendingPanel({
     if (b) return km(p, b);
     return null;
   })();
-  const label = (s: RouteStop, i: number) => `${i + 1}. ${s.name || `Stop ${i + 1}`}`;
+  const label = (s: RouteStop, i: number) => `${i + 1}. ${s.name || tx('Stop {n}', { n: i + 1 })}`;
   return (
-    <div className="mx-1 mb-2 rounded-xl border-2 border-[#feb700] bg-[#feb700]/10 p-3 space-y-2" role="dialog" aria-label="Add this place as a stop">
+    <div className="mx-1 mb-2 rounded-xl border-2 border-[#feb700] bg-[#feb700]/10 p-3 space-y-2" role="dialog" aria-label={tx('Add this place as a stop')}>
       <div className="flex flex-wrap items-end gap-2">
         <label className="block flex-1 min-w-[160px]">
-          <span className="block text-[11px] font-bold text-[#686873] mb-0.5">New stop</span>
-          <input className={inputClass} value={pending.name} onChange={(e) => onChange({ name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && onAdd()} aria-label="New stop name" />
+          <span className="block text-[11px] font-bold text-[#686873] mb-0.5">{tx('New stop')}</span>
+          <input className={inputClass} value={pending.name} onChange={(e) => onChange({ name: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && onAdd()} aria-label={tx('New stop name')} />
         </label>
         <label className="block flex-1 min-w-[200px]">
-          <span className="block text-[11px] font-bold text-[#686873] mb-0.5">Comes after</span>
-          <select className={inputClass} value={pending.at} onChange={(e) => onChange({ at: Number(e.target.value) })} aria-label="Comes after">
-            <option value={0}>Nothing: the new first stop</option>
+          <span className="block text-[11px] font-bold text-[#686873] mb-0.5">{tx('Comes after')}</span>
+          <select className={inputClass} value={pending.at} onChange={(e) => onChange({ at: Number(e.target.value) })} aria-label={tx('Comes after')}>
+            <option value={0}>{tx('Nothing: the new first stop')}</option>
             {stops.map((s, i) => (
               <option key={i} value={i + 1}>
                 {label(s, i)}
-                {i === stops.length - 1 ? ' (becomes the new last stop)' : ''}
-                {i + 1 === pending.best ? '  ★ best fit' : ''}
+                {i === stops.length - 1 ? tx(' (becomes the new last stop)') : ''}
+                {i + 1 === pending.best ? tx('  ★ best fit') : ''}
               </option>
             ))}
           </select>
         </label>
       </div>
       <p className="text-[12px] text-[#46464f]">
-        {prev ? <>After <b className="text-[#050a44]">{prev.name || 'the stop before'}</b></> : <b className="text-[#050a44]">New first stop</b>}
-        {next ? <> and before <b className="text-[#050a44]">{next.name || 'the next stop'}</b></> : prev ? <>, as the <b className="text-[#050a44]">new last stop</b></> : null}
-        {extra != null && <> · adds about <b className="text-[#050a44] tabular-nums">{extra.toFixed(1)} km</b> in a straight line</>}
-        {pending.at !== pending.best && <> · <button type="button" className="font-bold underline text-[#050a44]" onClick={() => onChange({ at: pending.best })}>use best fit</button></>}
-        . Drag the gold pin to adjust the spot.
-      </p>
+        {prev ? <>{tx('After')}{' '}<b className="text-[#050a44]">{prev.name || tx('the stop before')}</b></> : <b className="text-[#050a44]">{tx('New first stop')}</b>}
+        {next ? <>{tx('and before')}{' '}<b className="text-[#050a44]">{next.name || tx('the next stop')}</b></> : prev ? <>{tx(', as the')}{' '}<b className="text-[#050a44]">{tx('new last stop')}</b></> : null}
+        {extra != null && <>{tx('· adds about')}{' '}<b className="text-[#050a44] tabular-nums">{tx('{extra} km', { extra: extra.toFixed(1) })}</b>{' '}{tx('in a straight line')}</>}
+        {pending.at !== pending.best && <> · <button type="button" className="font-bold underline text-[#050a44]" onClick={() => onChange({ at: pending.best })}>{tx('use best fit')}</button></>}{tx('. Drag the gold pin to adjust the spot.')}</p>
       <div className="flex gap-2">
         <Button size="sm" variant="gold" onClick={onAdd}>
-          <Plus className="w-3.5 h-3.5" /> Add stop
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
+          <Plus className="w-3.5 h-3.5" />{' '}{tx('Add stop')}</Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>{tx('Cancel')}</Button>
       </div>
     </div>
   );
@@ -1107,7 +1112,7 @@ function SearchBox({
   results,
   choose,
   close,
-  placeholder = 'Search a town or place',
+  placeholder = tx('Search a town or place'),
   autoFocus,
 }: {
   query: string;
@@ -1123,11 +1128,10 @@ function SearchBox({
   return (
     <div className="rounded-xl border border-[#c7c5d1] bg-white p-2 space-y-1.5">
       <div className="flex gap-1.5">
-        <input className={inputClass} value={query} placeholder={placeholder} autoFocus={autoFocus} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') run(); if (e.key === 'Escape') close(); }} aria-label="Place to search" />
+        <input className={inputClass} value={query} placeholder={placeholder} autoFocus={autoFocus} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') run(); if (e.key === 'Escape') close(); }} aria-label={tx('Place to search')} />
         <Button size="sm" className="!h-[42px]" disabled={searching || !query.trim()} onClick={run}>
-          {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Search
-        </Button>
-        <Button size="sm" variant="ghost" className="!h-[42px]" aria-label="Close search" onClick={close}>
+          {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}{' '}{tx('Search')}</Button>
+        <Button size="sm" variant="ghost" className="!h-[42px]" aria-label={tx('Close search')} onClick={close}>
           <X className="w-4 h-4" />
         </Button>
       </div>
@@ -1194,7 +1198,7 @@ function SettingNumber({ value, onChange, min, max, label }: { value: number; on
         }}
         onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
       />
-      {bad && <span className="block text-[11px] font-semibold text-[#ba1a1a] mt-0.5">Enter a number from {min} to {max}</span>}
+      {bad && <span className="block text-[11px] font-semibold text-[#ba1a1a] mt-0.5">{tx('Enter a number from {min} to {max}', { min, max })}</span>}
     </>
   );
 }

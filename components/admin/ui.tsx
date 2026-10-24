@@ -4,6 +4,7 @@
 
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { tx, N_ } from '@/lib/i18n';
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) {
   return (
@@ -85,7 +86,7 @@ export function Modal({
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#edeef0]">
           <h2 className="text-[17px] font-bold text-[#050a44]">{title}</h2>
-          <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#f2f4f6]">
+          <button onClick={onClose} aria-label={tx('Close')} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#f2f4f6]">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -143,11 +144,11 @@ export function useToast() {
   return { toast: (text: string, tone: 'ok' | 'error' = 'ok') => setMsg({ text, tone }), Toast };
 }
 
-export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const WEEKDAYS = [N_('Sun'), N_('Mon'), N_('Tue'), N_('Wed'), N_('Thu'), N_('Fri'), N_('Sat')];
 
 export function formatDays(days: number[]) {
-  if (days.length === 7) return 'Daily';
-  return [...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => WEEKDAYS[d]).join(', ');
+  if (days.length === 7) return tx('Daily');
+  return [...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => tx(WEEKDAYS[d])).join(', ');
 }
 
 /**

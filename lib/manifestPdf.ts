@@ -17,7 +17,10 @@ import { OPERATOR } from '@/config/operator';
 import type { Booking, StoreData } from './types';
 import { isDue, manifestFor } from './manifest';
 import { busSeatMap, layoutSegments, type SeatCell } from './seatLayout';
-import { formatDateLabel, formatTime12, getTrip } from './trips';
+import { formatTime12, getTrip, parseISODate } from './trips';
+
+// The PDF font (Helvetica) has Latin letters only, so the manifest is always in English.
+const formatDateLabel = (iso: string, withYear = true) => parseISODate(iso).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', ...(withYear ? { year: 'numeric' } : {}) });
 
 const NAVY: [number, number, number] = [5, 10, 68];
 const GREY: [number, number, number] = [110, 110, 120];

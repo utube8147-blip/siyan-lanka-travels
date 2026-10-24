@@ -1,14 +1,19 @@
 'use client';
 // Sign-in state.
-// - Supabase mode (keys set): real email + password accounts via Supabase
-//   Auth; role comes from the profiles table ('staff' can open /admin).
+// - Passengers sign in with their mobile number and a texted code. An email
+//   address is optional and only used to send them their e-ticket; it is kept
+//   on the profile (profiles.email), not as a second way to sign in.
+// - Staff (office, conductors, super admins) sign in with email + password.
+//   The owner adds them from Staff area → Accounts (an invite email lets them
+//   set a password) and they can reset it from the staff sign-in page.
 // - Demo mode (no keys): a pretend user so the site can be clicked through.
 
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from 'react';
-import { forgetPushSubscription } from '@/lib/pwa';
+import { clearPageCache, forgetPushSubscription } from '@/lib/pwa';
 import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase, friendlyError } from '@/lib/supabase/client';
 import { toE164LK } from '@/lib/phone';
+import { tx } from '@/lib/i18n';
 
 /**
  * 'operator' = staff (operations: departures, bookings, fleet, timetable).
@@ -31,7 +36,7 @@ export type MockUser = {
 export type AppUser = MockUser;
 
 export type LoginParams = { identifier?: string; email?: string; phone?: string; role?: UserRole; fullName?: string };
-type Result = { ok: true; needsEmailConfirmation?: boolean } | { ok: false; reason: string; code?: 'sms_unavailable' };
+type Result = { ok: true } | { ok: false; reason: string; code?: 'sms_unavailable' };
 
 type AuthContextValue = {
   mode: 'supabase' | 'demo';
@@ -41,10 +46,14 @@ type AuthContextValue = {
   /** Demo mode only: pretend sign-in. */
   login: (params?: LoginParams) => void;
   signIn: (email: string, password: string) => Promise<Result>;
-  signUp: (p: { email: string; password: string; fullName: string; phone?: string }) => Promise<Result>;
+  /** Staff: email a link that opens /auth/reset to choose a new password. */
   resetPassword: (email: string) => Promise<Result>;
+  /** Signed in from a reset or invite link: set the new password. */
+  updatePassword: (password: string) => Promise<Result>;
+  /** Passenger: change their name and the (optional) email for e-tickets. */
+  saveProfile: (p: { fullName: string; email: string }) => Promise<Result>;
   /** Text a 6-digit code to a Sri Lankan mobile. createUser=false for sign-in only. */
-  sendPhoneCode: (phone: string, opts?: { createUser?: boolean; fullName?: string }) => Promise<Result>;
+  sendPhoneCode: (phone: string, opts?: { createUser?: boolean; fullName?: string; email?: string }) => Promise<Result>;
   /** Check the code; signs the person in (and finishes sign-up). */
   verifyPhoneCode: (phone: string, code: string, opts?: { fullName?: string; email?: string }) => Promise<Result>;
   logout: () => Promise<void>;
@@ -57,6 +66,8 @@ const DEMO_USER: AppUser = {
   role: 'passenger',
   user_metadata: { full_name: 'Alex Ham', avatar_url: '' },
 };
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 const DEMO_KEY = 'mock-auth-user';
@@ -74,15 +85,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const u = session.user;
-    const { data: prof } = await supabase().from('profiles').select('full_name, phone, role').eq('id', u.id).maybeSingle();
+    // profiles.email (migration 35) holds the e-ticket address; older databases don't have it yet.
+    const first = await supabase().from('profiles').select('full_name, phone, role, email').eq('id', u.id).maybeSingle();
+    const prof = first.error ? (await supabase().from('profiles').select('full_name, phone, role').eq('id', u.id).maybeSingle()).data : first.data;
+    const p = prof as { full_name?: string | null; phone?: string | null; role?: string | null; email?: string | null } | null;
     setUserState({
       id: u.id,
-      // Phone sign-ups: the address given at sign-up counts even before it's confirmed.
-      email: u.email || u.new_email || '',
-      phone: prof?.phone ?? u.phone ?? '',
-      role: prof?.role === 'admin' ? 'admin' : prof?.role === 'staff' ? 'operator' : prof?.role === 'conductor' ? 'conductor' : 'passenger',
+      email: p?.email || u.email || '',
+      phone: p?.phone || u.phone || '',
+      role: p?.role === 'admin' ? 'admin' : p?.role === 'staff' ? 'operator' : p?.role === 'conductor' ? 'conductor' : 'passenger',
       user_metadata: {
-        full_name: prof?.full_name || (u.user_metadata?.full_name as string) || (u.email ?? 'Traveller').split('@')[0],
+        full_name: p?.full_name || (u.user_metadata?.full_name as string) || (u.email ?? '').split('@')[0] || '',
         avatar_url: '',
       },
     });
@@ -126,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = (params: LoginParams = {}) => {
     if (mode === 'supabase') return; // real accounts only
     const { identifier, email, phone, role = 'passenger' } = params;
-    const fullName = params.fullName || (role === 'admin' ? 'Owner (super admin)' : role === 'operator' ? 'Operations Desk' : role === 'conductor' ? 'Suresh (conductor)' : DEMO_USER.user_metadata.full_name);
+    const fullName = params.fullName || (role === 'admin' ? tx('Owner (super admin)') : role === 'operator' ? tx('Operations Desk') : role === 'conductor' ? tx('Suresh (conductor)') : DEMO_USER.user_metadata.full_name);
     const looksLikeEmail = (identifier ?? '').includes('@');
     setDemoUser({
       id: role === 'admin' ? 'mock-admin-1' : role === 'operator' ? 'mock-staff-1' : role === 'conductor' ? 'mock-conductor-1' : DEMO_USER.id,
@@ -143,69 +156,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { ok: true };
     }
     const { error } = await supabase().auth.signInWithPassword({ email: email.trim(), password });
-    if (error) return { ok: false, reason: error.message === 'Invalid login credentials' ? 'Wrong email or password.' : friendlyError(error) };
+    if (error) return { ok: false, reason: error.message === 'Invalid login credentials' ? tx('Wrong email or password.') : friendlyError(error) };
     return { ok: true };
-  };
-
-  const signUp = async ({ email, password, fullName, phone }: { email: string; password: string; fullName: string; phone?: string }): Promise<Result> => {
-    if (mode === 'demo') {
-      login({ email, phone, fullName });
-      return { ok: true };
-    }
-    const { data, error } = await supabase().auth.signUp({
-      email: email.trim(),
-      password,
-      options: { data: { full_name: fullName, phone: phone ?? '' }, emailRedirectTo: `${window.location.origin}/dashboard` },
-    });
-    if (error) return { ok: false, reason: friendlyError(error) };
-    // With "Confirm email" on (Supabase default) there's no session until they click the link.
-    return { ok: true, needsEmailConfirmation: !data.session };
   };
 
   const resetPassword = async (email: string): Promise<Result> => {
     if (mode === 'demo') return { ok: true };
-    const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/auth/login` });
+    const { error } = await supabase().auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/auth/reset` });
     return error ? { ok: false, reason: friendlyError(error) } : { ok: true };
   };
 
-  const sendPhoneCode = async (phone: string, opts: { createUser?: boolean; fullName?: string } = {}): Promise<Result> => {
+  const updatePassword = async (password: string): Promise<Result> => {
+    if (password.length < 8) return { ok: false, reason: tx('Use at least 8 characters.') };
+    if (mode === 'demo') return { ok: true };
+    const { error } = await supabase().auth.updateUser({ password });
+    return error ? { ok: false, reason: friendlyError(error) } : { ok: true };
+  };
+
+  const saveProfile = async ({ fullName, email }: { fullName: string; email: string }): Promise<Result> => {
+    const name = fullName.trim();
+    const mail = email.trim().toLowerCase();
+    if (name.length < 2) return { ok: false, reason: tx('Please enter your name.') };
+    if (mail && !EMAIL_RE.test(mail)) return { ok: false, reason: tx('Check the email address, or leave it empty.') };
+    if (mode === 'demo') {
+      if (user) setDemoUser({ ...user, email: mail, user_metadata: { ...user.user_metadata, full_name: name } });
+      return { ok: true };
+    }
+    if (!user) return { ok: false, reason: tx('Please sign in.') };
+    const { error } = await supabase().from('profiles').update({ full_name: name, email: mail }).eq('id', user.id);
+    if (error) return { ok: false, reason: friendlyError(error) };
+    setUserState({ ...user, email: mail, user_metadata: { ...user.user_metadata, full_name: name } });
+    return { ok: true };
+  };
+
+  const sendPhoneCode = async (phone: string, opts: { createUser?: boolean; fullName?: string; email?: string } = {}): Promise<Result> => {
     const e164 = toE164LK(phone);
-    if (!e164) return { ok: false, reason: 'Enter a Sri Lankan mobile number, like 077 123 4567.' };
+    if (!e164) return { ok: false, reason: tx('Enter a Sri Lankan mobile number, like 077 123 4567.') };
     if (mode === 'demo') return { ok: true };
     const { error } = await supabase().auth.signInWithOtp({
       phone: e164,
-      options: { shouldCreateUser: opts.createUser ?? false, channel: 'sms', data: opts.fullName ? { full_name: opts.fullName, phone: e164 } : undefined },
+      options: { shouldCreateUser: opts.createUser ?? false, channel: 'sms', data: opts.fullName ? { full_name: opts.fullName, phone: e164, ...(opts.email ? { email: opts.email.trim().toLowerCase() } : {}) } : undefined },
     });
     if (!error) return { ok: true };
-    if (/signups not allowed|user not found/i.test(error.message)) return { ok: false, reason: 'No account with this number yet. Sign up first, it takes a minute.' };
+    if (/signups not allowed|user not found/i.test(error.message)) return { ok: false, reason: tx('No account with this number yet. Sign up first, it takes a minute.') };
     if (/unsupported phone provider|phone.*(disabled|not enabled)|sms|provider|twilio|vonage|messagebird/i.test(error.message)) {
       // Supabase couldn't send the text: Phone provider off or SMS provider not set up (README → Phone sign-in).
-      console.warn('[phone sign-in] Supabase could not send the SMS:', error.message, '→ Supabase → Authentication → Sign In / Providers → Phone: turn on, provider MessageBird, add the access key + originator (README → Phone sign-in).');
-      return { ok: false, reason: "We can't send text codes right now. Please use email instead, or try again later.", code: 'sms_unavailable' };
+      console.warn('[phone sign-in] Supabase could not send the SMS:', error.message, '→ Supabase → Authentication → Sign In / Providers → Phone must be on, and Authentication → Hooks → Send SMS must point to /api/auth/sms-hook (README → Phone sign-in).');
+      return { ok: false, reason: tx('We can\'t send text codes right now. Please use email instead, or try again later.'), code: 'sms_unavailable' };
     }
-    if (/rate|too many|seconds/i.test(error.message)) return { ok: false, reason: 'Please wait a minute before asking for another code.' };
+    if (/rate|too many|seconds/i.test(error.message)) return { ok: false, reason: tx('Please wait a minute before asking for another code.') };
     return { ok: false, reason: friendlyError(error) };
   };
 
   const verifyPhoneCode = async (phone: string, code: string, opts: { fullName?: string; email?: string } = {}): Promise<Result> => {
     const e164 = toE164LK(phone);
-    if (!e164) return { ok: false, reason: 'Check the mobile number.' };
+    if (!e164) return { ok: false, reason: tx('Check the mobile number.') };
     const token = code.replace(/\D/g, '');
-    if (token.length !== 6) return { ok: false, reason: 'Enter the 6-digit code from the text message.' };
+    if (token.length !== 6) return { ok: false, reason: tx('Enter the 6-digit code from the text message.') };
     if (mode === 'demo') {
-      if (token !== '123456') return { ok: false, reason: 'Wrong code. (Demo mode: the code is 123456.)' };
+      if (token !== '123456') return { ok: false, reason: tx('Wrong code. (Demo mode: the code is 123456.)') };
       login({ phone: e164, identifier: e164, fullName: opts.fullName, email: opts.email });
       return { ok: true };
     }
     const { data, error } = await supabase().auth.verifyOtp({ phone: e164, token, type: 'sms' });
-    if (error) return { ok: false, reason: /expired|invalid/i.test(error.message) ? 'That code is wrong or has expired. Ask for a new one.' : friendlyError(error) };
-    // Keep the profile in step (name from sign-up, number from the verified phone).
+    if (error) return { ok: false, reason: /expired|invalid/i.test(error.message) ? tx('That code is wrong or has expired. Ask for a new one.') : friendlyError(error) };
+    // Keep the profile in step (name from sign-up, number from the verified
+    // phone, and the optional e-ticket email — kept on the profile, so it
+    // never becomes a second way to sign in).
     const uid = data.user?.id;
     if (uid) {
       const patch: Record<string, string> = { phone: e164 };
       if (opts.fullName) patch.full_name = opts.fullName;
-      await supabase().from('profiles').update(patch).eq('id', uid);
-      if (opts.email) await supabase().auth.updateUser({ email: opts.email }).catch(() => undefined);
+      const mail = (opts.email ?? '').trim().toLowerCase();
+      if (mail && EMAIL_RE.test(mail)) patch.email = mail;
+      const { error: upErr } = await supabase().from('profiles').update(patch).eq('id', uid);
+      if (upErr && patch.email) {
+        delete patch.email; // database without migration 35: save the rest
+        await supabase().from('profiles').update(patch).eq('id', uid);
+      }
       await applySession(data.session);
     }
     return { ok: true };
@@ -215,12 +243,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (mode === 'supabase') {
       await forgetPushSubscription(); // this browser stops getting this account's reminders
       await supabase().auth.signOut();
-    } else setDemoUser(null);
+      await clearPageCache(); // pages this account opened shouldn't show offline for the next person
+    } else {
+      setDemoUser(null);
+      await clearPageCache();
+    }
     setUserState(null);
   };
 
   return (
-    <AuthContext.Provider value={{ mode, user, isLoggedIn: !!user, isLoading, login, signIn, signUp, resetPassword, sendPhoneCode, verifyPhoneCode, logout }}>
+    <AuthContext.Provider value={{ mode, user, isLoggedIn: !!user, isLoading, login, signIn, resetPassword, updatePassword, saveProfile, sendPhoneCode, verifyPhoneCode, logout }}>
       {children}
     </AuthContext.Provider>
   );

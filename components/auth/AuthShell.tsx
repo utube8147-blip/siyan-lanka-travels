@@ -2,6 +2,7 @@
 // Shared frame for the passenger sign-in / sign-up pages.
 import Link from 'next/link';
 import { Wordmark } from '@/components/Wordmark';
+import { tx } from '@/lib/i18n';
 
 export function AuthShell({ title, subtitle, children, footer }: { title: string; subtitle: string; children: React.ReactNode; footer: React.ReactNode }) {
   return (
@@ -19,8 +20,8 @@ export function AuthShell({ title, subtitle, children, footer }: { title: string
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/interior.png" alt="" className="absolute inset-0 w-full h-full object-cover opacity-40" />
         <div className="relative z-10 text-white max-w-md p-8">
-          <h2 className="text-[34px] font-semibold leading-tight">Your journey starts here.</h2>
-          <p className="text-[17px] text-white/80 mt-3 leading-relaxed">Tickets on your phone, seat changes in a tap, and texts when your bus is on its way.</p>
+          <h2 className="text-[34px] font-semibold leading-tight">{tx('Your journey starts here.')}</h2>
+          <p className="text-[17px] text-white/80 mt-3 leading-relaxed">{tx('Tickets on your phone, seat changes in a tap, and texts when your bus is on its way.')}</p>
         </div>
       </div>
     </div>

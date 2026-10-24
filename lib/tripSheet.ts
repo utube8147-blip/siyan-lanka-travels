@@ -10,9 +10,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { friendlyError, isSupabaseConfigured as DB, supabase } from './supabase/client';
 import { todayISO } from './trips';
 import { uuid } from './uuid';
+import { tx, N_ } from '@/lib/i18n';
 
 export type RoadCostKind = 'toll' | 'parking' | 'cleaning' | 'other';
-export const ROAD_COST_LABEL: Record<RoadCostKind | 'fuel', string> = { fuel: 'Fuel', toll: 'Highway toll', parking: 'Parking', cleaning: 'Cleaning', other: 'Other' };
+export const ROAD_COST_LABEL: Record<RoadCostKind | 'fuel', string> = { fuel: N_('Fuel'), toll: N_('Highway toll'), parking: N_('Parking'), cleaning: N_('Cleaning'), other: N_('Other') };
 
 /** A cost already saved against the trip. */
 export interface SavedCost {
@@ -51,7 +52,7 @@ export function costProblems(d: TripSheetDraft): string[] {
     if (typeof f.odometerKm === 'number' && typeof d.end === 'number' && f.odometerKm > d.end) out.push(`Fuel${n}: the reading at the pump is higher than the reading at the end.`);
   });
   d.costs.forEach((c) => {
-    if (!(typeof c.amount === 'number' && c.amount > 0)) out.push(`${ROAD_COST_LABEL[c.kind]}: enter the amount.`);
+    if (!(typeof c.amount === 'number' && c.amount > 0)) out.push(`${tx(ROAD_COST_LABEL[c.kind])}: enter the amount.`);
     if (c.kind === 'other' && c.note.trim().length < 3) out.push('Other cost: say what it was for.');
   });
   return out;
@@ -93,7 +94,7 @@ export function useTripSheet(scheduleId: string | null, date: string, busId: str
 
   /** Saves one cost against this trip. */
   const add = async (c: { category: RoadCostKind | 'fuel'; amount: number; litres?: number | null; odometerKm?: number | null; vendor?: string; description?: string; fromCash: boolean; /** Whose trip cash it came out of, when the office is typing it in for a conductor. */ takingsOf?: string | null }): Promise<Result> => {
-    if (!scheduleId) return { ok: false, reason: 'No trip chosen.' };
+    if (!scheduleId) return { ok: false, reason: tx('No trip chosen.') };
     if (!DB) {
       const row: SavedCost = { id: uuid(), category: c.category, amount: c.amount, litres: c.litres ?? null, odometerKm: c.odometerKm ?? null, vendor: c.vendor ?? '', description: c.description ?? '', fromTakings: c.fromCash, mine: true, by: '' };
       try {

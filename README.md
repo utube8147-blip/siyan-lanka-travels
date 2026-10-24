@@ -96,8 +96,19 @@ Same pages, two layouts, switched at the `md` breakpoint (768px):
   blank pages.
 
 ## Phone sign-in (MessageBird, through Supabase)
-Passengers sign up and sign in with their mobile number and a 6-digit text
-code (email + password is still offered). **Supabase sends the codes itself
+**Passengers sign in with their mobile number** and a 6-digit text code. At
+sign-up they give their name, mobile and (optionally) an email address: the
+email is only used to send the e-ticket, never to sign in. (Older accounts that
+were made with an email can still use the small "Sign in with email" link.)
+**Staff sign in with email and password** at `/staff/login`: a super admin
+adds them in Staff area → Accounts & roles → *Add a staff member*, which emails
+them a link to choose their password (`/auth/reset`). "Forgot password?" on the
+staff sign-in sends the same kind of link.
+
+In Supabase → Authentication → URL Configuration add
+`https://your-domain/auth/reset` (and `http://localhost:3000/auth/reset`) to
+**Redirect URLs**, or the invite and reset links won't open the app.
+ **Supabase sends the codes itself
 via MessageBird**; there's no MessageBird code or key in this app, and it
 works on `localhost` too.
 
@@ -648,6 +659,15 @@ A full page with the stops on one side and a live map on the other.
   search a second, so searches run only when you press Search). For heavy use,
   run your own OSRM / Nominatim or use a paid service.
 
+### Hidden points (shaping the road)
+To make the road follow the exact way the bus goes, add as many points as you
+like: pick **Click adds a hidden point** above the map and click along the
+road (or tick *Hide from passengers* on any stop in the list). Hidden points
+shape the road line, the distance and the time, and the conductor's map, but
+passengers never see them: not in search, the stop lists, the maps or the
+route pages, and the database won't take a booking to or from one. The first
+and last stops can't be hidden.
+
 ### Sharing a route plan
 
 - **Share** (route editor header) makes a private link,
@@ -674,12 +694,70 @@ Supabase → SQL Editor (also in `setup.sql`). It is safe to run again, and also
 updates the `route_plans` table if an earlier version of this update was run.
 
 ## Languages
-English, Tamil and Sinhala (switcher in the header and Profile). Strings live
-in `lib/i18n.tsx`; anything untranslated shows in English. **Have a native
-speaker review the Tamil and Sinhala before launch.**
+The passenger site and the conductor app are in **English, Tamil and Sinhala**
+(switcher in the header, Profile, and the conductor app's header). The **staff
+area (`/admin`) is English only**, whatever language is picked.
+
+- In code, text is written in English and wrapped: `tx('Seat {n}', { n })`,
+  `txn(count, '{n} seat', '{n} seats')` for plurals, `txr('… <b>{x}</b> …', { … })`
+  for text with links or bold, `N_('…')` for labels kept in a constant, and
+  `<Tx k="…" />` in server pages. Dates go through `fmtDate` (`lib/dates.ts`),
+  which spells Sinhala month and day names itself because Chrome has none.
+- Translations live in `i18n/messages/*.mjs` (English → [Tamil, Sinhala]).
+  `npm run i18n` builds `lib/i18n-ta.ts` / `lib/i18n-si.ts` (also done by
+  `npm run build`); each pack downloads only when that language is picked, and
+  holds only text the passenger site and conductor app use.
+- `npm run i18n:check` lists any text without both translations (and
+  placeholders that don't match). Run it before every release.
+- Messages from the database (e.g. "Seat 3A was just booked by someone else")
+  are translated too: `friendlyError` matches them against the packs.
+- Texts (SMS) and push notifications from the server are in English.
+- **Have a native speaker review the Tamil and Sinhala before launch.**
 
 ## Conductor page & passenger list
-**Boarding and money are two separate jobs** (two tabs on the conductor page):
+The conductor app (`/conductor`, phone first) has a bottom bar with three tabs:
+**Board** (scan tickets, the passenger list, share location, update
+passengers, trip sheet PDF), **Cash** (who still owes, seat by seat; the cash
+they should be holding; links to log the odometer and count the cash) and
+**Map** (below).
+
+### Map tab
+- **Tonight's stops**: only stops where someone gets on or off (plus the first
+  and last), with ↑ getting on / ↓ getting off, the timetable time and the
+  distance from the bus. Move stops up or down, or tap *Nearest drop-off
+  first* to order them from where the bus is; the road and the time are
+  redrawn, and *Open in Google Maps* navigates through them in that order. The
+  order is kept on that phone for that trip; *Route order* undoes it.
+- **Road reports** (crowd-sourced): tap **Report** → traffic police,
+  checkpoint, accident, roadworks, flooding, vehicle stopped, other, with an
+  optional note. It is placed where the bus is (or tap the map). Every
+  conductor sees it on their map within 30 seconds and gets a warning, with a
+  vibration, when their bus comes within 3 km (and a phone notification if
+  they turned alerts on and the app is in the background). Reports go after
+  2 hours; *Still there* keeps one for another hour, *Gone* clears it (the
+  reporter's or the office's vote, or two others). The same thing reported
+  again near the same spot counts as a confirmation. The office sees them in
+  Staff area → **Road reports** and can clear them.
+- **Office routes**: the layers button lays any route from Routes & timetable,
+  or one of its drafts, over the map for comparison.
+- **On-request stops** for the trip: how many seats are booked and whether the
+  detour is going.
+
+### On-request (optional) stops
+In Routes & timetable → Edit route, tick **On request (detour)** on a stop
+and set how many seats are needed (to or from that stop). Passengers can book
+it; search results and the seat page say it is on request, how many have
+booked so far and the deadline. At the cut-off (Settings → *On-request stops
+decided*, default 3 hours before the bus leaves its first stop) the message
+dispatcher settles each trip:
+- enough seats → the detour runs and the conductor's map includes it;
+- not enough → those passengers are moved to the nearest main stop (by time
+  on the route, keeping their direction), get a notification and a text, and
+  the stop can't be booked for that trip any more. Their seat and fare stay
+  the same.
+The dispatcher (`/api/messages/dispatch`) must be running on its cron for this.
+
+**Boarding and money are two separate jobs** (Board and Cash tabs):
 - **Boarding**: scan the ticket or tap **Board**. Nobody is asked for money
   at the door: an unpaid passenger is simply on board and stays on the
   to-collect list. (If they do pay at the door, the scan result has a
@@ -749,6 +827,22 @@ the office adds those.
   carry a real QR code with the booking reference, made on the phone.
 
 ## Staff area & roles
+**Seven places, one job each** (big coloured icon + one word; the pages are tabs inside them):
+
+| Menu | Tabs | Who |
+|---|---|---|
+| 🏠 Today | what needs doing as big cards with a number (bank slips to check, coming to pay at the counter, money to pay back, cash not counted, road reports, bus papers & service), then the buses coming up | everyone |
+| 🎫 Trips | Seats (seat map, sell, board) · Bookings · Where it went (GPS log) · Road reports | everyone |
+| 💵 Money | Count cash · Spent · Pay back | everyone |
+| 🚌 Buses | Buses · Routes & times · Service & papers (owner) · Odometer | everyone |
+| 📊 Reports | Money in & out · Charts | owner |
+| 👥 People | Crew & pay · Sign-ins · Branches | owner |
+| ⚙️ Settings | | owner |
+
+On phones the four daily places are a bottom bar; the owner's three are in the ☰ menu.
+Red numbers on the menu are work waiting. Old addresses (`/admin/payouts`,
+`/admin/departures`…) still work: they open the matching tab.
+
 - **Entrance:** `https://your-domain/staff/login`. It isn't linked anywhere on
   the customer site (share it with staff yourself) and is hidden from Google.
   Anyone who opens `/admin` without staff access is sent to this page, never
@@ -927,7 +1021,7 @@ browser). To connect a real database:
 1. **Create a project** at supabase.com (region: Mumbai / `ap-south-1` is
    closest to Sri Lanka).
 2. **Run the SQL**: open `supabase/setup.sql`, paste the whole file into
-   Supabase → SQL Editor → **Run**. It sets up everything (all five
+   Supabase → SQL Editor → **Run**. It sets up everything (all the
    migrations + starting data) and is **safe to run again**: existing
    tables, functions, rules and data are skipped or updated, so it also
    repairs a project where only some migrations ran. (The separate files in
@@ -982,16 +1076,20 @@ Changing prices or rules later: the database copy lives in the
 step with `config/operator.ts`, which the pages use for display.
 
 ## Going live — still to do
-1. **Card payments:** PayHere keys + Settings → Payments → PayHere. Until then
-   online card bookings are confirmed without taking money. The card forms on
-   the payment page, the "settle the difference" step in My trips and the
-   resale checkout are placeholders that the gateway replaces.
-2. **Charging for changes:** a change that costs more (extra seat, dearer day)
-   updates the total but doesn't collect the difference yet; do this with the
-   gateway. Changes that cost less already create a refund.
+1. **Card payments:** PayHere keys + Settings → Payments → PayHere. The
+   database refuses to open card payments while Payments is on Demo.
+2. **Changing a booking:** passengers can move to another date or swap seats
+   at the same fare. Adding or dropping seats is a new booking or a
+   cancellation (the database refuses a seat-count change from a passenger);
+   office staff can still change the seat count at the counter.
 3. `SUPABASE_SECRET_KEY`, `CRON_SECRET` and the every-minute cron (messages,
    push, releasing expired holds).
 4. Push keys (see Notifications) and SMS provider keys (see Messages).
 5. Hotline in `config/operator.ts`; legal text and Tamil / Sinhala wording
    reviewed.
-6. Run `supabase/setup.sql` again after each update (safe to re-run).
+6. Run `supabase/setup.sql` again after each update (safe to re-run). This
+   update adds migration 35 (security fixes, the e-ticket email on profiles)
+   and 36 (road reports, on-request stops, route drafts for conductors).
+7. Add `https://your-domain/auth/reset` to Supabase's Redirect URLs (staff
+   invites and password resets).
+8. `npm run lint` and `npm run i18n:check` should pass before deploying.

@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { Wifi, WifiOff } from 'lucide-react';
+import { tx } from '@/lib/i18n';
 
 export function OfflineIndicator() {
   const [state, setState] = useState<'online' | 'offline' | 'back'>('online');
@@ -32,7 +33,7 @@ export function OfflineIndicator() {
       }`}
     >
       {state === 'offline' ? <WifiOff className="w-4 h-4" /> : <Wifi className="w-4 h-4" />}
-      {state === 'offline' ? "You're offline. Saved tickets still work." : 'Back online'}
+      {state === 'offline' ? tx('You\'re offline. Saved tickets still work.') : tx('Back online')}
     </div>
   );
 }

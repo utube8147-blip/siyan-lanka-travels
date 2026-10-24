@@ -2,6 +2,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 update routes set flat_fare = false;
 update app_settings set ladies_adjacent = false;
 create or replace function pg_temp.as_user(u text) returns void language sql as $$ select set_config('request.jwt.claim.sub', coalesce(u,''), false) $$;

@@ -24,16 +24,21 @@ type Note = { id: string; user_id: string; title: string; body: string; url: str
  * back, seat sold…) to each of that passenger's browsers. Subscriptions the
  * browser has dropped are deleted. Each notification is pushed once.
  */
-export async function pushPendingNotifications(db: SupabaseClient) {
+export async function pushPendingNotifications(db: SupabaseClient, opts: { onlyUsers?: string[]; reminders?: boolean } = {}) {
   const out = { reminders: 0, pushed: 0, no_device: 0, failed: 0 };
   if (!configure()) return { ...out, skipped: 'VAPID keys not set' };
 
-  const due = await db.rpc('queue_trip_reminders', { p_hours: 3 });
-  out.reminders = (due.data as number | null) ?? 0;
+  // Timed reminders are queued by the cron only (opts.reminders), not by every app request.
+  if (opts.reminders) {
+    const due = await db.rpc('queue_trip_reminders', { p_hours: 3 });
+    out.reminders = (due.data as number | null) ?? 0;
+  }
 
   // Only fresh ones: a reminder that is hours late is worse than none.
   const since = new Date(Date.now() - 6 * 3600_000).toISOString();
-  const { data: notes } = await db.from('notifications').select('id, user_id, title, body, url, tag').is('pushed_at', null).gte('created_at', since).order('created_at').limit(100);
+  let q = db.from('notifications').select('id, user_id, title, body, url, tag').is('pushed_at', null).gte('created_at', since);
+  if (opts.onlyUsers) q = q.in('user_id', opts.onlyUsers.length ? opts.onlyUsers : ['00000000-0000-0000-0000-000000000000']);
+  const { data: notes } = await q.order('created_at').limit(100);
   const list = (notes ?? []) as Note[];
   if (list.length === 0) return out;
 

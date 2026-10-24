@@ -12,6 +12,7 @@ import { useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatTime12, listRuns, routeLabel, todayISO } from '@/lib/trips';
 import { deleteGpsPoints, downloadCsv, downloadGpx, fillJumps, findGaps, findJumps, findStops, loadGpsPoints, loadGpsTrips, summarise, type Fill, type GpsPoint, type GpsTripSummary } from '@/lib/gpsLog';
 import { Button, Card, Field, PageHeader, inputClass, useToast } from '@/components/admin/ui';
+import { tx, txn } from '@/lib/i18n';
 
 const GpsRouteMap = dynamic(() => import('@/components/admin/GpsRouteMap').then((m) => m.GpsRouteMap), {
   ssr: false,
@@ -20,7 +21,7 @@ const GpsRouteMap = dynamic(() => import('@/components/admin/GpsRouteMap').then(
 
 const hm = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 const hms = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-const dur = (m: number) => (m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)} h ${Math.round(m % 60)} min`);
+const dur = (m: number) => (m < 60 ? tx('{m} min', { m: Math.round(m) }) : tx('{floor} h {round} min', { floor: Math.floor(m / 60), round: Math.round(m % 60) }));
 
 export default function GpsLogPage() {
   const { data } = useStore();
@@ -134,12 +135,12 @@ export default function GpsLogPage() {
   const tableRows = showAll ? points : points.slice(-100);
   const tableOffset = showAll ? 0 : Math.max(0, points.length - 100);
   const remove = async (ids?: (number | string)[]) => {
-    const what = ids ? `${ids.length} selected point${ids.length === 1 ? '' : 's'}` : `ALL ${points.length.toLocaleString()} GPS points of this trip`;
-    if (!window.confirm(`Delete ${what}? This can't be undone.`)) return;
+    const what = ids ? txn(ids.length, '{n} selected point', '{n} selected points') : tx('ALL {length} GPS points of this trip', { length: points.length.toLocaleString() });
+    if (!window.confirm(tx('Delete {what}? This can\'t be undone.', { what }))) return;
     setDeleting(true);
     const r = await deleteGpsPoints(scheduleId, date, ids);
     setDeleting(false);
-    toast(r.ok ? `Deleted ${r.deleted ?? 0} point${r.deleted === 1 ? '' : 's'}` : r.reason ?? 'Could not delete', r.ok ? 'ok' : 'error');
+    toast(r.ok ? txn(r.deleted ?? 0, 'Deleted {n} point', 'Deleted {n} points') : r.reason ?? tx('Could not delete'), r.ok ? 'ok' : 'error');
     if (r.ok) {
       setSelected(new Set());
       setFocus(null);
@@ -167,23 +168,21 @@ export default function GpsLogPage() {
   return (
     <>
       <PageHeader
-        title="GPS trip log"
-        description="Every position the conductor's phone sent during a trip, kept in full. See the exact road the bus took, where it stopped and where the signal dropped."
+        title={tx('GPS trip log')}
+        description={tx('Every position the conductor\'s phone sent during a trip, kept in full. See the exact road the bus took, where it stopped and where the signal dropped.')}
         actions={
           <>
             <Button variant="secondary" disabled={loading} onClick={() => { loadTrips(); loadPoints(); }}>
-              <RefreshCw className="w-4 h-4" /> Refresh
-            </Button>
-            <Button variant="secondary" disabled={points.length === 0 || filling} title={filling ? 'Wait until the gaps are filled with the road, so the file includes them' : ''} onClick={() => downloadCsv(fileName, points, fills)}>
+              <RefreshCw className="w-4 h-4" />{' '}{tx('Refresh')}</Button>
+            <Button variant="secondary" disabled={points.length === 0 || filling} title={filling ? tx('Wait until the gaps are filled with the road, so the file includes them') : ''} onClick={() => downloadCsv(fileName, points, fills)}>
               <Download className="w-4 h-4" /> CSV
             </Button>
-            <Button variant="secondary" disabled={points.length === 0 || filling} title={filling ? 'Wait until the gaps are filled with the road, so the file includes them' : ''} onClick={() => downloadGpx(fileName, points, fills)}>
+            <Button variant="secondary" disabled={points.length === 0 || filling} title={filling ? tx('Wait until the gaps are filled with the road, so the file includes them') : ''} onClick={() => downloadGpx(fileName, points, fills)}>
               <Download className="w-4 h-4" /> GPX
             </Button>
             {isAdmin && (
               <Button variant="danger" disabled={points.length === 0 || deleting} onClick={() => remove()}>
-                <Trash2 className="w-4 h-4" /> Delete trip&apos;s GPS
-              </Button>
+                <Trash2 className="w-4 h-4" />{' '}{tx('Delete trip\'s GPS')}</Button>
             )}
           </>
         }
@@ -192,17 +191,17 @@ export default function GpsLogPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-6">
         <Card className="p-5 space-y-4 self-start">
-          <Field label="Day the trip left">
+          <Field label={tx('Day the trip left')}>
             <div className="flex gap-2">
-              <Button variant="secondary" aria-label="Previous day" onClick={() => setDate(addDays(date, -1))}>‹</Button>
+              <Button variant="secondary" aria-label={tx('Previous day')} onClick={() => setDate(addDays(date, -1))}>‹</Button>
               <input type="date" max={today} className={inputClass} value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
-              <Button variant="secondary" aria-label="Next day" disabled={date >= today} onClick={() => setDate(addDays(date, 1))}>›</Button>
+              <Button variant="secondary" aria-label={tx('Next day')} disabled={date >= today} onClick={() => setDate(addDays(date, 1))}>›</Button>
             </div>
           </Field>
           <div>
-            <p className="text-[12px] font-bold text-[#46464f] px-1 mb-1.5">Trip</p>
+            <p className="text-[12px] font-bold text-[#46464f] px-1 mb-1.5">{tx('Trip')}</p>
             {trips.length === 0 ? (
-              <p className="text-[13px] text-[#46464f] px-1">{loading ? 'Loading…' : 'No trips on this day.'}</p>
+              <p className="text-[13px] text-[#46464f] px-1">{loading ? tx('Loading…') : tx('No trips on this day.')}</p>
             ) : (
               <ul className="space-y-2">
                 {trips.map((t) => {
@@ -215,11 +214,11 @@ export default function GpsLogPage() {
                         className={`w-full text-left rounded-xl border px-3 py-2.5 transition-colors ${on ? 'bg-[#050a44] border-[#050a44] text-white keep-navy' : 'bg-white border-[#e1e2e4] hover:bg-[#f2f4f6]'}`}
                       >
                         <p className={`text-[13px] font-bold ${on ? 'text-white' : 'text-[#050a44]'}`}>
-                          {t.departure ? formatTime12(t.departure) : 'Trip'} · {t.label}
+                          {t.departure ? formatTime12(t.departure) : tx('Trip')} · {t.label}
                         </p>
                         <p className={`text-[12px] ${on ? 'text-white/80' : 'text-[#6b6d78]'}`}>
                           {t.bus ? `${t.bus} · ` : ''}
-                          {t.summary ? `${t.summary.points.toLocaleString()} points, ${hm(t.summary.firstAt)}–${hm(t.summary.lastAt)}` : 'No GPS recorded'}
+                          {t.summary ? tx('{points} points, {firstAt}–{lastAt}', { points: t.summary.points.toLocaleString(), firstAt: hm(t.summary.firstAt), lastAt: hm(t.summary.lastAt) }) : tx('No GPS recorded')}
                         </p>
                       </button>
                     </li>
@@ -228,24 +227,20 @@ export default function GpsLogPage() {
               </ul>
             )}
           </div>
-          <p className="text-[12px] text-[#6b6d78]">
-            Points are recorded while the conductor has &ldquo;Share location&rdquo; on. A new point is saved once the bus is 100 m or more from the last one; while it stands or crawls, that point just shows how long it was there. Overnight trips are listed under the day they left.
-            <br />
-            <br />
-            To plan a route with a trip&apos;s real road, download its GPX or CSV here and load it in Routes &amp; timetable → Edit route.
-          </p>
+          <p className="text-[12px] text-[#6b6d78]">{tx('Points are recorded while the conductor has “Share location” on. A new point is saved once the bus is 100 m or more from the last one; while it stands or crawls, that point just shows how long it was there. Overnight trips are listed under the day they left.')}<br />
+            <br />{tx('To plan a route with a trip\'s real road, download its GPX or CSV here and load it in Routes & timetable → Edit route.')}</p>
         </Card>
 
         <div className="space-y-6 min-w-0">
           {scheduleId && (
             <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-6 gap-3">
               {[
-                ['Distance', `${stats.distance.toFixed(1)} km${stats.filledKm ? '*' : ''}`],
-                ['First → last point', points.length ? `${hm(points[0].at)} → ${hm(points[points.length - 1].at)}` : '—'],
-                ['Time', points.length > 1 ? dur(stats.totalMin) : '—'],
-                ['Avg moving speed', stats.avgMoving ? `${Math.round(stats.avgMoving)} km/h` : '—'],
-                ['Top speed', stats.maxSpeed ? `${Math.round(stats.maxSpeed)} km/h` : '—'],
-                ['Points', points.length.toLocaleString()],
+                [tx('Distance'), `${stats.distance.toFixed(1)} km${stats.filledKm ? '*' : ''}`],
+                [tx('First → last point'), points.length ? `${hm(points[0].at)} → ${hm(points[points.length - 1].at)}` : '—'],
+                [tx('Time'), points.length > 1 ? dur(stats.totalMin) : '—'],
+                [tx('Avg moving speed'), stats.avgMoving ? `${Math.round(stats.avgMoving)} km/h` : '—'],
+                [tx('Top speed'), stats.maxSpeed ? `${Math.round(stats.maxSpeed)} km/h` : '—'],
+                [tx('Points'), points.length.toLocaleString()],
               ].map(([k, v]) => (
                 <Card key={k} className="px-4 py-3">
                   <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b6d78]">{k}</p>
@@ -256,22 +251,21 @@ export default function GpsLogPage() {
           )}
 
           <Card className="p-3">
-            {live && <p className="px-2 pb-2 text-[12px] font-bold text-[#050a44]"><span className="inline-block w-2 h-2 rounded-full bg-[#feb700] mr-1.5 align-middle" />Trip still sending: updates every 30 seconds</p>}
+            {live && <p className="px-2 pb-2 text-[12px] font-bold text-[#050a44]"><span className="inline-block w-2 h-2 rounded-full bg-[#feb700] mr-1.5 align-middle" />{tx('Trip still sending: updates every 30 seconds')}</p>}
             <GpsRouteMap points={points} routeStops={route?.stops ?? []} stops={stops} gaps={gaps} focus={focus} fills={fills} className="h-[460px] md:h-[560px]" />
             {jumps.length > 0 && (
               <p className="px-2 pt-2 text-[12px] text-[#46464f]">
                 <span className="inline-block w-5 align-middle border-t-[3px] border-dotted border-[#ba1a1a] mr-1.5" />
                 {filling
-                  ? `Finding the likely road for ${jumps.length} gap${jumps.length === 1 ? '' : 's'} over 2 km… (${filled.length} done)`
-                  : `${filled.length} of ${jumps.length} gap${jumps.length === 1 ? '' : 's'} over 2 km filled with the likely road (dotted red, estimated${stats.filledKm ? `: ${stats.filledKm.toFixed(1)} km of the distance*` : ''}).`}
-                {!filling && filled.length < jumps.length && ' The rest stay straight lines: no sensible road was found, or the routing server could not be reached.'}
-                {' '}Exports include these estimated points, marked as such.
-              </p>
+                  ? txn(jumps.length, 'Finding the likely road for {n} gap over 2 km… ({done} done)', 'Finding the likely road for {n} gaps over 2 km… ({done} done)', { done: filled.length })
+                  : (stats.filledKm ? txn(jumps.length, '{filled} of {n} gap over 2 km filled with the likely road (dotted red, estimated: {km} km of the distance*).', '{filled} of {n} gaps over 2 km filled with the likely road (dotted red, estimated: {km} km of the distance*).', { filled: filled.length, km: stats.filledKm.toFixed(1) }) : txn(jumps.length, '{filled} of {n} gap over 2 km filled with the likely road (dotted red, estimated).', '{filled} of {n} gaps over 2 km filled with the likely road (dotted red, estimated).', { filled: filled.length }))}
+                {!filling && filled.length < jumps.length && tx(' The rest stay straight lines: no sensible road was found, or the routing server could not be reached.')}
+                {' '}{tx('Exports include these estimated points, marked as such.')}</p>
             )}
             {points.length > 1 ? (
               <div className="px-2 pt-3">
                 <label className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] font-bold text-[#46464f]">
-                  <span className="shrink-0">Replay</span>
+                  <span className="shrink-0">{tx('Replay')}</span>
                   <input
                     type="range"
                     min={0}
@@ -279,15 +273,15 @@ export default function GpsLogPage() {
                     value={focus ?? 0}
                     onChange={(e) => setFocus(Number(e.target.value))}
                     className="flex-1 min-w-0 accent-[#050a44]"
-                    aria-label="Move through the trip"
+                    aria-label={tx('Move through the trip')}
                   />
                   <span className="tabular-nums text-[#050a44] w-full sm:w-[150px] sm:text-right">
-                    {focus != null ? `${hms(points[focus].at)}${points[focus].speedKmh != null ? ` · ${Math.round(points[focus].speedKmh!)} km/h` : ''}` : 'drag to replay'}
+                    {focus != null ? `${hms(points[focus].at)}${points[focus].speedKmh != null ? ` · ${Math.round(points[focus].speedKmh!)} km/h` : ''}` : tx('drag to replay')}
                   </span>
                 </label>
               </div>
             ) : (
-              scheduleId && !loading && <p className="px-2 pt-3 text-[13px] text-[#46464f]"><MapPinned className="inline w-4 h-4 mr-1 -mt-0.5" />No GPS points for this trip. They appear once the conductor turns on &ldquo;Share location&rdquo;.</p>
+              scheduleId && !loading && <p className="px-2 pt-3 text-[13px] text-[#46464f]"><MapPinned className="inline w-4 h-4 mr-1 -mt-0.5" />{tx('No GPS points for this trip. They appear once the conductor turns on “Share location”.')}</p>
             )}
           </Card>
 
@@ -295,11 +289,11 @@ export default function GpsLogPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="overflow-hidden self-start">
                 <div className="px-5 py-4 border-b border-[#edeef0]">
-                  <h2 className="text-[16px] font-semibold text-[#050a44]">Stops ({stops.length})</h2>
-                  <p className="text-[12px] text-[#6b6d78]">Places the bus stood still for 3 minutes or more. Tap one to see it on the map.</p>
+                  <h2 className="text-[16px] font-semibold text-[#050a44]">{tx('Stops ({length})', { length: stops.length })}</h2>
+                  <p className="text-[12px] text-[#6b6d78]">{tx('Places the bus stood still for 3 minutes or more. Tap one to see it on the map.')}</p>
                 </div>
                 {stops.length === 0 ? (
-                  <p className="p-5 text-[13px] text-[#46464f]">None.</p>
+                  <p className="p-5 text-[13px] text-[#46464f]">{tx('None.')}</p>
                 ) : (
                   <ul className="divide-y divide-[#edeef0] max-h-[320px] overflow-y-auto">
                     {stops.map((s) => (
@@ -315,11 +309,11 @@ export default function GpsLogPage() {
               </Card>
               <Card className="overflow-hidden self-start">
                 <div className="px-5 py-4 border-b border-[#edeef0]">
-                  <h2 className="text-[16px] font-semibold text-[#050a44]">Signal gaps ({gaps.length})</h2>
-                  <p className="text-[12px] text-[#6b6d78]">3 minutes or more with no position: no signal, the phone locked or sharing turned off. Shown dashed red on the map.</p>
+                  <h2 className="text-[16px] font-semibold text-[#050a44]">{tx('Signal gaps ({length})', { length: gaps.length })}</h2>
+                  <p className="text-[12px] text-[#6b6d78]">{tx('3 minutes or more with no position: no signal, the phone locked or sharing turned off. Shown dashed red on the map.')}</p>
                 </div>
                 {gaps.length === 0 ? (
-                  <p className="p-5 text-[13px] text-[#46464f]">None.</p>
+                  <p className="p-5 text-[13px] text-[#46464f]">{tx('None.')}</p>
                 ) : (
                   <ul className="divide-y divide-[#edeef0] max-h-[320px] overflow-y-auto">
                     {gaps.map((g) => (
@@ -330,7 +324,7 @@ export default function GpsLogPage() {
                             {dur(g.minutes)}
                             {(() => {
                               const f = fills.find((x) => points[x.to - 1]?.at === g.from);
-                              return f ? <span className="block text-[11px] font-medium text-[#6b6d78]">{f.roadKm != null ? `≈ ${f.roadKm.toFixed(1)} km by road (filled)` : `${f.straightKm.toFixed(1)} km straight`}</span> : null;
+                              return f ? <span className="block text-[11px] font-medium text-[#6b6d78]">{f.roadKm != null ? tx('≈ {roadKm} km by road (filled)', { roadKm: f.roadKm.toFixed(1) }) : tx('{straightKm} km straight', { straightKm: f.straightKm.toFixed(1) })}</span> : null;
                             })()}
                           </span>
                         </button>
@@ -346,16 +340,15 @@ export default function GpsLogPage() {
             <Card className="overflow-hidden">
               <div className="px-5 py-4 border-b border-[#edeef0] flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-[16px] font-semibold text-[#050a44]">All points</h2>
-                  <p className="text-[12px] text-[#6b6d78]">{showAll ? `All ${points.length.toLocaleString()}` : `Latest ${tableRows.length} of ${points.length.toLocaleString()}`}. Tap a row to see it on the map.</p>
+                  <h2 className="text-[16px] font-semibold text-[#050a44]">{tx('All points')}</h2>
+                  <p className="text-[12px] text-[#6b6d78]">{showAll ? tx('All {length}', { length: points.length.toLocaleString() }) : tx('Latest {length} of {length2}', { length: tableRows.length, length2: points.length.toLocaleString() })}{tx('. Tap a row to see it on the map.')}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {isAdmin && selected.size > 0 && (
                     <Button size="sm" variant="danger" disabled={deleting} onClick={() => remove([...selected])}>
-                      <Trash2 className="w-3.5 h-3.5" /> Delete {selected.size} selected
-                    </Button>
+                      <Trash2 className="w-3.5 h-3.5" />{' '}{tx('Delete {size} selected', { size: selected.size })}</Button>
                   )}
-                  {points.length > 100 && <Button size="sm" variant="secondary" onClick={() => setShowAll((v) => !v)}>{showAll ? 'Show latest 100' : 'Show all'}</Button>}
+                  {points.length > 100 && <Button size="sm" variant="secondary" onClick={() => setShowAll((v) => !v)}>{showAll ? tx('Show latest 100') : tx('Show all')}</Button>}
                 </div>
               </div>
               <div className="max-h-[420px] overflow-auto">
@@ -366,18 +359,18 @@ export default function GpsLogPage() {
                         <th className="pl-5 py-2 w-8">
                           <input
                             type="checkbox"
-                            aria-label="Select all shown points"
+                            aria-label={tx('Select all shown points')}
                             className="accent-[#050a44]"
                             checked={allVisibleSelected}
                             onChange={() => setSelected(allVisibleSelected ? new Set() : new Set(tableRows.map((p) => p.id)))}
                           />
                         </th>
                       )}
-                      <th className="px-5 py-2 font-bold">Time</th>
-                      <th className="px-3 py-2 font-bold">Latitude, longitude</th>
-                      <th className="px-3 py-2 font-bold text-right">Speed</th>
-                      <th className="px-3 py-2 font-bold text-right">Accuracy</th>
-                      <th className="px-5 py-2 font-bold text-right">Map</th>
+                      <th className="px-5 py-2 font-bold">{tx('Time')}</th>
+                      <th className="px-3 py-2 font-bold">{tx('Latitude, longitude')}</th>
+                      <th className="px-3 py-2 font-bold text-right">{tx('Speed')}</th>
+                      <th className="px-3 py-2 font-bold text-right">{tx('Accuracy')}</th>
+                      <th className="px-5 py-2 font-bold text-right">{tx('Map')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#edeef0]">
@@ -387,20 +380,18 @@ export default function GpsLogPage() {
                         <tr key={p.id} onClick={() => setFocus(i)} className={`cursor-pointer hover:bg-[#f2f4f6] ${focus === i ? 'bg-[#feb700]/15' : ''}`}>
                           {isAdmin && (
                             <td className="pl-5 py-2" onClick={(e) => e.stopPropagation()}>
-                              <input type="checkbox" aria-label={`Select point at ${hms(p.at)}`} className="accent-[#050a44]" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
+                              <input type="checkbox" aria-label={tx('Select point at {at}', { at: hms(p.at) })} className="accent-[#050a44]" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
                             </td>
                           )}
                           <td className="px-5 py-2 tabular-nums font-semibold text-[#050a44]">
                             {hms(p.at)}
-                            {p.until && <span className="block text-[11px] font-medium text-[#6b6d78]">here until {hm(p.until)}</span>}
+                            {p.until && <span className="block text-[11px] font-medium text-[#6b6d78]">{tx('here until {until}', { until: hm(p.until) })}</span>}
                           </td>
                           <td className="px-3 py-2 tabular-nums text-[#46464f]">{p.lat.toFixed(6)}, {p.lng.toFixed(6)}</td>
                           <td className="px-3 py-2 tabular-nums text-right text-[#46464f]">{p.speedKmh != null ? `${Math.round(p.speedKmh)} km/h` : '—'}</td>
                           <td className="px-3 py-2 tabular-nums text-right text-[#46464f]">{p.accuracyM != null ? `±${Math.round(p.accuracyM)} m` : '—'}</td>
                           <td className="px-5 py-2 text-right">
-                            <a href={`https://maps.google.com/?q=${p.lat},${p.lng}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[12px] font-bold text-[#050a44] underline">
-                              Google Maps
-                            </a>
+                            <a href={`https://maps.google.com/?q=${p.lat},${p.lng}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[12px] font-bold text-[#050a44] underline">{tx('Google Maps')}</a>
                           </td>
                         </tr>
                       );
@@ -414,7 +405,7 @@ export default function GpsLogPage() {
       </div>
       <p className="mt-6 text-[12px] text-[#6b6d78]">
         {formatDateLabel(date)}
-        {isAdmin ? ' · Admins can delete a whole trip’s GPS or tick single points (e.g. a bad GPS jump) and delete them.' : ''}
+        {isAdmin ? tx(' · Admins can delete a whole trip’s GPS or tick single points (e.g. a bad GPS jump) and delete them.') : ''}
       </p>
       <Toast />
     </>

@@ -18,19 +18,20 @@ import { useResaleEnabled } from '@/lib/resale';
 import { Wordmark } from './Wordmark';
 import { ThemeToggle } from './ThemeToggle';
 import { InstallAppButton } from './InstallAppButton';
-import { LanguageSwitcher, useT } from '@/lib/i18n';
+import { LanguageSwitcher, useT, N_ } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 // Desktop/tablet header (md and up). Phones use components/mobile/* instead:
 // a slim top bar and a bottom tab bar, like a native app.
 // Header links = where you go to travel. Account things live only in the
 // avatar menu, so nothing appears twice.
 const BASE_LINKS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/search', label: 'Book', icon: Search },
-  { href: '/my-bookings', label: 'My trips', icon: Ticket },
+  { href: '/dashboard', label: N_('Dashboard'), icon: LayoutDashboard },
+  { href: '/search', label: N_('Book'), icon: Search },
+  { href: '/my-bookings', label: N_('My trips'), icon: Ticket },
 ];
 
-const RESALE_LINK = { href: '/marketplace', label: 'Resale', icon: Store };
+const RESALE_LINK = { href: '/marketplace', label: N_('Resale'), icon: Store };
 
 export function TopNav() {
   const { t } = useT();
@@ -74,7 +75,7 @@ export function TopNav() {
       <nav className={`hidden md:flex sticky top-0 z-40 bg-white/90 backdrop-blur-md h-20 w-full px-4 md:px-[20px] justify-between items-center border-b border-[#edeef0] transition-transform duration-300 ease-out motion-reduce:transition-none ${headerHidden ? '-translate-y-full' : 'translate-y-0'}`}
         onFocusCapture={() => setHidden(false)}
       >
-        <Link href="/" aria-label={`${OPERATOR.name} home`}>
+        <Link href="/" aria-label={tx('{name} home', { name: OPERATOR.name })}>
           <Wordmark />
         </Link>
 

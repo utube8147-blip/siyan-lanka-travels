@@ -14,7 +14,10 @@ import { useStore } from './store';
 import { compressPhoto } from './trips';
 import { uuid } from './uuid';
 import type { Booking } from './types';
+import { tx } from '@/lib/i18n';
 
+import { dateLocale } from '@/lib/trips';
+import { fmtDate } from './dates';
 type Result = { ok: boolean; reason?: string };
 
 export interface Payee { bank: string; branch: string; account_no: string; account_name: string }
@@ -76,7 +79,7 @@ function useLocal<T>(key: string, fallback: T): T {
   return v;
 }
 
-const shortDate = (iso?: string | null) => (iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '');
+const shortDate = (iso?: string | null) => (iso ? fmtDate(new Date(`${iso}T00:00:00`), { day: 'numeric', month: 'short' }) : '');
 
 // --------------------------------------------------------------- payouts ---
 /** 'mine' = the signed-in passenger's refunds and resale payouts; 'all' = office staff's list. */
@@ -106,7 +109,7 @@ export function usePayouts(scope: 'mine' | 'all') {
         bookingRef: r.bookings?.ref ?? '',
         trip: r.bookings ? `${r.bookings.from_stop} → ${r.bookings.to_stop} · ${shortDate(r.bookings.travel_date)}` : '',
         userId: r.user_id,
-        name: r.profiles?.full_name || r.bookings?.passenger_name || 'Passenger',
+        name: r.profiles?.full_name || r.bookings?.passenger_name || tx('Passenger'),
         phone: r.bookings?.contact_phone || r.bookings?.passenger_phone || r.profiles?.phone || '',
         amount: r.amount,
         status: r.status,
@@ -169,7 +172,7 @@ const rpc = async (fn: string, args: Record<string, unknown>): Promise<Result> =
 /** Passenger: where to send the money. */
 export async function setPayoutDetails(id: string, payee: Payee): Promise<Result> {
   if (payee.bank.trim().length < 2 || payee.account_no.trim().length < 5 || payee.account_name.trim().length < 2)
-    return { ok: false, reason: 'Add the bank, account number and the name on the account.' };
+    return { ok: false, reason: tx('Add the bank, account number and the name on the account.') };
   return DB ? rpc('set_payout_details', { p_id: id, p_payee: payee }) : demoPatch(id, { payee });
 }
 /** Office staff: the money has been sent. */
@@ -216,8 +219,8 @@ const readAsDataUrl = (f: File) =>
 /** Passenger: upload the bank slip (photo, screenshot or PDF) for a held booking. */
 export async function submitSlip(booking: Booking, file: File, reference: string): Promise<Result> {
   const pdf = isPdfFile(file);
-  if (!pdf && !file.type.startsWith('image/')) return { ok: false, reason: 'Upload a photo, a screenshot or a PDF of the slip.' };
-  if (pdf && file.size > MAX_PDF_BYTES) return { ok: false, reason: 'That PDF is larger than 5 MB. Upload a smaller one or a screenshot.' };
+  if (!pdf && !file.type.startsWith('image/')) return { ok: false, reason: tx('Upload a photo, a screenshot or a PDF of the slip.') };
+  if (pdf && file.size > MAX_PDF_BYTES) return { ok: false, reason: tx('That PDF is larger than 5 MB. Upload a smaller one or a screenshot.') };
   let dataUrl: string;
   try {
     // Photos are shrunk before upload; a PDF goes up as it is.
@@ -232,7 +235,7 @@ export async function submitSlip(booking: Booking, file: File, reference: string
   const sb = supabase();
   const { data: sess } = await sb.auth.getSession();
   const uid = sess.session?.user.id;
-  if (!uid) return { ok: false, reason: 'Please sign in again.' };
+  if (!uid) return { ok: false, reason: tx('Please sign in again.') };
   const path = `${uid}/${booking.ref}-${uuid().slice(0, 8)}.${pdf ? 'pdf' : 'jpg'}`;
   const blob = pdf ? file : await (await fetch(dataUrl)).blob();
   const up = await sb.storage.from('payment-slips').upload(path, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg' });

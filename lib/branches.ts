@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { OPERATOR } from '@/config/operator';
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
+import { tx } from '@/lib/i18n';
 
 export interface Branch {
   id: string;
@@ -63,9 +64,9 @@ export function useBranches() {
   }, [load]);
 
   const write = async (op: () => PromiseLike<{ error: { message?: string } | null }>): Promise<Result> => {
-    if (!isSupabaseConfigured) return { ok: false, reason: 'Connect the database to manage branches.' };
+    if (!isSupabaseConfigured) return { ok: false, reason: tx('Connect the database to manage branches.') };
     const { error: e } = await op();
-    if (e) return { ok: false, reason: /branches_name_key/.test(e.message ?? '') ? 'There is already a branch with that name.' : friendlyError(e) };
+    if (e) return { ok: false, reason: /branches_name_key/.test(e.message ?? '') ? tx('There is already a branch with that name.') : friendlyError(e) };
     await load();
     return { ok: true };
   };
@@ -80,8 +81,8 @@ export function useBranches() {
 /** "our Bastian Mawatha counter" / "our Bastian Mawatha or Kalmunai counter", for passengers paying a held seat. */
 export function counterPlaces(branches: Branch[] | null) {
   const open = (branches ?? []).filter((b) => b.active && b.takesPayments);
-  if (open.length === 0) return { text: 'our counter', list: [] as Branch[] };
-  return { text: `our ${open.map((b) => b.name).join(' or ')} counter`, list: open };
+  if (open.length === 0) return { text: tx('our counter'), list: [] as Branch[] };
+  return { text: tx('our {join} counter', { join: open.map((b) => b.name).join(' or ') }), list: open };
 }
 
 /** Sales and cash by branch for a range of days (super admins). */

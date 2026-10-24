@@ -12,9 +12,11 @@ import BlurText from '@/components/motion/BlurText';
 import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { useStore } from '@/lib/store';
+import { StopsMap } from '@/components/StopsMap';
 import { addDays, allStopNames, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route, Trip } from '@/lib/types';
-import { useT } from '@/lib/i18n';
+import { useT, N_ } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 const HERO_IMAGE = '/brand/bus.png';
 
@@ -22,8 +24,8 @@ const HERO_IMAGE = '/brand/bus.png';
 const NIGHTS_AHEAD = 8;
 
 const INTERIOR_CARDS = [
-  { image: '/brand/interior.png', title: 'Reclining leather seats', subtitle: 'Room to sleep on the overnight run east' },
-  { image: '/brand/poster.png', title: 'ND 2323, Siyan Lanka Travels', subtitle: 'Your coach, every trip' },
+  { image: '/brand/interior.png', title: N_('Reclining leather seats'), subtitle: N_('Room to sleep on the overnight run east') },
+  { image: '/brand/poster.png', title: 'ND 2323, Siyan Lanka Travels', subtitle: N_('Your coach, every trip') },
 ];
 
 const AMENITY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -70,7 +72,7 @@ export default function LandingPage() {
   useEffect(() => {
     const calc = () => {
       const w = window.innerWidth;
-      setStopCols(w < 640 ? 3 : w < 1024 ? 5 : 7);
+      setStopCols(w < 1024 ? 5 : 7);
     };
     calc();
     window.addEventListener('resize', calc);
@@ -79,6 +81,7 @@ export default function LandingPage() {
   // One bus, out one night and back the next: the stop line shows one
   // direction at a time. Starts on the way the bus goes next.
   const [stopDir, setStopDir] = useState<string | null>(null);
+  const [showAllStops, setShowAllStops] = useState(false);
   const nextRouteId = useMemo(() => {
     if (!ready) return null;
     for (let i = 0; i < NIGHTS_AHEAD; i++) {
@@ -90,7 +93,9 @@ export default function LandingPage() {
     }
     return null;
   }, [ready, data]);
-  const stopRoute = activeRoutes.find((r) => r.id === (stopDir ?? nextRouteId)) ?? firstRoute;
+  const shownRoute = activeRoutes.find((r) => r.id === (stopDir ?? nextRouteId)) ?? firstRoute;
+  // Points that only shape the road aren't shown as stops (the map still follows them).
+  const stopRoute = shownRoute ? { ...shownRoute, stops: shownRoute.stops.filter((s) => !s.hidden) } : shownRoute;
   // Clock time at each stop, when this direction always leaves at the same time.
   const stopStart = (() => {
     if (!stopRoute) return null;
@@ -153,7 +158,7 @@ export default function LandingPage() {
                 text={
                   firstRoute
                     ? t("{from} to {to}, with a seat that's yours.", { from: firstRoute.stops[0].name, to: firstRoute.stops[firstRoute.stops.length - 1].name })
-                    : 'Book your seat before you leave home.'
+                    : t('Book your seat before you leave home.')
                 }
               />
               <p className="text-[16px] leading-[1.6] max-w-xl mx-auto lg:mx-0 text-white/90 text-shadow-premium">
@@ -184,7 +189,7 @@ export default function LandingPage() {
                   <button
                     type="button"
                     onClick={swap}
-                    aria-label="Swap boarding and drop-off"
+                    aria-label={tx('Swap boarding and drop-off')}
                     className="justify-self-center mb-1 p-2 md:p-2.5 rounded-full bg-white/15 border border-white/25 text-white hover:bg-white hover:text-[#050a44] transition-colors"
                   >
                     <ArrowLeftRight className="w-4 h-4" />
@@ -254,10 +259,11 @@ export default function LandingPage() {
                   <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-2">{t('Where we stop')}</h2>
                   <p className="text-[15px] text-[#46464f] max-w-xl">
                     {t('Get on or off at any of these. Fares shown from {from}; you only pay for the part you ride.', { from: stopRoute.stops[0].name })}
+                    <span className="md:hidden"> {t('Tap a stop to book a seat to it.')}</span>
                   </p>
                 </div>
                 {activeRoutes.length > 1 && (
-                  <div role="group" aria-label={t('Direction')} className="inline-flex self-start md:self-auto p-1 rounded-xl bg-[#f2f4f6] border border-[#edeef0]">
+                  <div role="group" aria-label={t('Direction')} className="flex md:inline-flex w-full md:w-auto self-stretch md:self-auto p-1 rounded-xl bg-[#f2f4f6] border border-[#edeef0] overflow-x-auto no-scrollbar">
                     {activeRoutes.map((r) => {
                       const on = r.id === stopRoute.id;
                       return (
@@ -266,9 +272,12 @@ export default function LandingPage() {
                           type="button"
                           aria-pressed={on}
                           onClick={() => setStopDir(r.id)}
-                          className={`px-4 h-10 rounded-lg text-[14px] font-semibold whitespace-nowrap transition-colors ${on ? 'bg-white text-[#050a44] shadow-sm' : 'text-[#46464f]'}`}
+                          className={`flex-1 md:flex-none px-3 md:px-4 h-10 rounded-lg text-[13px] md:text-[14px] font-semibold whitespace-nowrap transition-colors ${on ? 'bg-white text-[#050a44] shadow-sm' : 'text-[#46464f]'}`}
                         >
-                          {t('From {from}', { from: r.stops[0].name })}
+                          {/* Two routes can start at the same town: name both ends. */}
+                          {activeRoutes.filter((x) => x.stops[0].name === r.stops[0].name).length > 1
+                            ? `${r.stops[0].name} → ${r.stops[r.stops.length - 1].name}`
+                            : t('From {from}', { from: r.stops[0].name })}
                         </button>
                       );
                     })}
@@ -276,8 +285,47 @@ export default function LandingPage() {
                 )}
               </div>
 
-              {/* Snake (phones, tablets, small laptops) */}
-              <div className="xl:hidden">
+              {/* The route on a map, above the stops. */}
+              <StopsMap stops={shownRoute!.stops} className="h-[240px] md:h-[340px] mb-6 md:mb-10" />
+
+              {/* Phones: a vertical timeline. Each stop is a tap to book from the start to there. */}
+              <ol className="md:hidden rounded-2xl bg-white border border-[#edeef0] shadow-sm overflow-hidden">
+                {(showAllStops ? stopRoute.stops : stopRoute.stops.filter((_, i) => i < 4 || i === stopRoute.stops.length - 1)).map((stop, k, shown) => {
+                  const i = stopRoute.stops.indexOf(stop);
+                  const ends = i === 0 || i === stopRoute.stops.length - 1;
+                  const hidden = !showAllStops && k === shown.length - 1 && stopRoute.stops.length > 5;
+                  const time = stopStart ? formatTime12(addMinutes(stopStart, stop.offsetMin)) : i === 0 ? t('Start') : formatDuration(stop.offsetMin);
+                  return (
+                    <li key={stop.name}>
+                      {hidden && (
+                        <button type="button" onClick={() => setShowAllStops(true)} className="w-full flex items-center gap-3 px-4 py-2.5 text-left">
+                          <span className="w-[64px] shrink-0" />
+                          <span className="w-4 shrink-0 flex justify-center" aria-hidden><span className="w-[3px] h-6 border-l-[3px] border-dotted border-[#c7c5d1]" /></span>
+                          <span className="text-[13px] font-bold text-[#050a44] underline underline-offset-4">{t('{n} more stops', { n: stopRoute.stops.length - 5 })}</span>
+                        </button>
+                      )}
+                      <Link
+                        href={i === 0 ? '/search' : `/search?${new URLSearchParams({ from: stopRoute.stops[0].name, to: stop.name }).toString()}`}
+                        className="relative flex items-center gap-3 px-4 py-3 active:bg-[#f2f4f6]"
+                      >
+                        <span className="w-[64px] shrink-0 text-[12px] font-semibold text-[#46464f] tabular-nums">{time}</span>
+                        <span className="relative w-4 shrink-0 self-stretch flex items-center justify-center" aria-hidden>
+                          <span className={`absolute left-1/2 -translate-x-1/2 w-[3px] bg-[#e1e2e4] ${i === 0 ? 'top-1/2 -bottom-3' : ends ? '-top-3 bottom-1/2' : '-top-3 -bottom-3'}`} />
+                          <span className={`relative rounded-full ${ends ? 'w-4 h-4 bg-[#050a44]' : 'w-3 h-3 bg-[#feb700] ring-2 ring-white'}`} />
+                        </span>
+                        <span className={`flex-1 min-w-0 truncate ${ends ? 'text-[16px] font-extrabold' : 'text-[15px] font-semibold'} text-[#050a44]`}>{stop.name}</span>
+                        {i > 0 && <span className="shrink-0 text-[13px] font-bold text-[#7c5800] tabular-nums">{formatLKR(stop.fareFromStart)}</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ol>
+              {showAllStops && stopRoute.stops.length > 5 && (
+                <button type="button" onClick={() => setShowAllStops(false)} className="md:hidden mt-3 text-[13px] font-bold text-[#050a44] underline underline-offset-4">{t('Show fewer stops')}</button>
+              )}
+
+              {/* Snake (tablets, small laptops) */}
+              <div className="hidden md:block xl:hidden">
                 {stopRows.map((row, r) => {
                   const reversed = r % 2 === 1;
                   const isLastRow = r === stopRows.length - 1;
@@ -351,9 +399,7 @@ export default function LandingPage() {
             <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-[40px] items-center">
               <div>
                 <p className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#feb700]/15 text-[#7c5800] text-[12px] font-bold mb-4">
-                  <span className="material-symbols-outlined text-[16px]">new_releases</span>
-                  New
-                </p>
+                  <span className="material-symbols-outlined text-[16px]">new_releases</span>{tx('New')}</p>
                 <h2 className="text-[28px] md:text-[34px] font-bold text-[#050a44] leading-[1.15] mb-4">{t('Bring your bike with you')}</h2>
                 <p className="text-[16px] leading-[1.7] text-[#46464f] max-w-lg">
                   {t('Book a space in the luggage compartment when you book your seat. Upload a photo of the bike, and the crew will load it at your stop and have it ready when you get off.')}
@@ -371,14 +417,12 @@ export default function LandingPage() {
                     <span className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#050a44] text-[#feb700] flex items-center justify-center">
                       <span className="material-symbols-outlined text-[28px]">{k.icon}</span>
                     </span>
-                    <p className="text-[14px] sm:text-[16px] font-bold text-[#050a44] mt-3 sm:mt-4 leading-tight">{k.label}</p>
-                    <p className="text-[13px] text-[#46464f] mt-1">Up to {formatLKR(k.fullRouteFee)}</p>
-                    <p className="text-[12px] text-[#686873] mt-0.5">Less for shorter trips</p>
+                    <p className="text-[14px] sm:text-[16px] font-bold text-[#050a44] mt-3 sm:mt-4 leading-tight">{tx(k.label)}</p>
+                    <p className="text-[13px] text-[#46464f] mt-1">{tx('Up to {amount}', { amount: formatLKR(k.fullRouteFee) })}</p>
+                    <p className="text-[12px] text-[#686873] mt-0.5">{tx('Less for shorter trips')}</p>
                   </div>
                 ))}
-                <p className="col-span-2 text-[12px] text-[#46464f]">
-                  Space is limited on each departure. Motorbike tanks no more than a quarter full.
-                </p>
+                <p className="col-span-2 text-[12px] text-[#46464f]">{tx('Space is limited on each departure. Motorbike tanks no more than a quarter full.')}</p>
               </div>
             </div>
           </section>
@@ -402,22 +446,18 @@ export default function LandingPage() {
           <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-[48px] items-center">
             <div>
               <h2 className="text-[28px] md:text-[34px] font-bold text-[#050a44] leading-[1.15] mb-4">
-                {activeBuses.length === 1 ? t('Our coach') : `Our ${activeBuses.length} coaches`}
+                {activeBuses.length === 1 ? t('Our coach') : tx('Our {length} coaches', { length: activeBuses.length })}
               </h2>
-              <p className="text-[16px] leading-[1.7] text-[#46464f] mb-8 max-w-lg">
-                We run our own coach and keep it that way: cleaned between trips, serviced on schedule, driven by people who know Route 48 by heart.
-              </p>
+              <p className="text-[16px] leading-[1.7] text-[#46464f] mb-8 max-w-lg">{tx('We run our own coach and keep it that way: cleaned between trips, serviced on schedule, driven by people who know Route 48 by heart.')}</p>
               <div className="space-y-4">
                 {activeBuses.map((bus) => (
                   <div key={bus.id} className="rounded-2xl border border-[#edeef0] p-5 premium-shadow">
                     <div className="flex items-center justify-between gap-3 mb-4">
                       <div>
                         <p className="text-[17px] font-bold text-[#050a44]">{bus.name}</p>
-                        <p className="text-[13px] text-[#46464f]">
-                          {bus.type} · {busCapacity(bus)} seats · {bus.regNo}
-                        </p>
+                        <p className="text-[13px] text-[#46464f]">{tx('{type} · {seats} seats · {regNo}', { type: bus.type === 'AC' ? tx('AC') : tx('Non-AC'), seats: busCapacity(bus), regNo: bus.regNo })}</p>
                       </div>
-                      <span className="bg-[#feb700]/15 text-[#7c5800] text-[11px] px-2.5 py-1 rounded-full font-bold">{bus.type === 'AC' ? 'AC coach' : 'Non-AC'}</span>
+                      <span className="bg-[#feb700]/15 text-[#7c5800] text-[11px] px-2.5 py-1 rounded-full font-bold">{bus.type === 'AC' ? tx('AC coach') : tx('Non-AC')}</span>
                     </div>
                     <ul className="flex flex-wrap gap-2">
                       {bus.amenities.map((a) => {
@@ -425,7 +465,7 @@ export default function LandingPage() {
                         return (
                           <li key={a} className="flex items-center gap-1.5 text-[13px] font-medium text-[#050a44] bg-[#f2f4f6] rounded-full px-3 py-1.5">
                             {Icon && <Icon className="w-4 h-4" />}
-                            {a}
+                            {tx(a)}
                           </li>
                         );
                       })}
@@ -449,15 +489,15 @@ export default function LandingPage() {
                       key={card.image}
                       type="button"
                       onClick={() => setActiveCard(i)}
-                      aria-label={`Show ${card.title}`}
+                      aria-label={tx('Show {title}', { title: tx(card.title) })}
                       className="absolute inset-0 bg-white rounded-[2.5rem] overflow-hidden border border-[#edeef0] shadow-2xl transition-all duration-700 ease-out text-left"
                       style={style}
                     >
-                      <img alt={card.title} className="w-full h-full object-cover" src={card.image} />
+                      <img alt={tx(card.title)} className="w-full h-full object-cover" src={card.image} />
                       {position === 0 && (
                         <div className="absolute bottom-6 left-6 right-6 bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/20">
-                          <div className="text-white text-[14px] font-semibold mb-1">{card.title}</div>
-                          <div className="text-white/75 text-[12px] font-medium">{card.subtitle}</div>
+                          <div className="text-white text-[14px] font-semibold mb-1">{tx(card.title)}</div>
+                          <div className="text-white/75 text-[12px] font-medium">{tx(card.subtitle)}</div>
                         </div>
                       )}
                     </button>
@@ -470,7 +510,7 @@ export default function LandingPage() {
                     key={card.image}
                     type="button"
                     onClick={() => setActiveCard(i)}
-                    aria-label={`Show ${card.title}`}
+                    aria-label={tx('Show {title}', { title: tx(card.title) })}
                     className={`h-2 rounded-full transition-all duration-300 ${activeCard === i ? 'w-6 bg-[#050a44]' : 'w-2 bg-[#c7c5d1] hover:bg-[#9a99a8]'}`}
                   />
                 ))}
@@ -485,9 +525,9 @@ export default function LandingPage() {
             <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-10">{t('Booking takes about two minutes')}</h2>
             <ol className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[
-                ['Choose a departure', 'Pick where you get on and off and the time that suits you.'],
-                ['Pick your seat', 'See exactly which seats are free. Ladies-only seats are marked at the front.'],
-                ['Show your ticket', 'Pay online and show the QR ticket to the conductor at Bastian Mawatha or your stop.'],
+                [N_('Choose a departure'), N_('Pick where you get on and off and the time that suits you.')],
+                [N_('Pick your seat'), N_('See exactly which seats are free. Ladies-only seats are marked at the front.')],
+                [N_('Show your ticket'), N_('Pay online and show the QR ticket to the conductor at Bastian Mawatha or your stop.')],
               ].map(([title, body], i) => (
                 <li key={title} className="rounded-2xl bg-white border border-[#edeef0] p-6">
                   <span className="text-[34px] font-black text-[#feb700] leading-none">{i + 1}</span>
@@ -505,9 +545,7 @@ export default function LandingPage() {
             <div className="rounded-[2.5rem] border border-[#edeef0] premium-shadow p-8 md:p-14 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
               <div className="max-w-xl">
                 <h2 className="text-[28px] md:text-[30px] font-bold text-[#050a44] leading-[1.2] mb-3">{t('Questions, or booking for a group?')}</h2>
-                <p className="text-[16px] leading-[1.7] text-[#46464f]">
-                  Get in touch and we&apos;ll hold seats for you. You can also buy tickets from our conductor at {OPERATOR.contact.address.split(',')[0]}.
-                </p>
+                <p className="text-[16px] leading-[1.7] text-[#46464f]">{tx('Get in touch and we\'ll hold seats for you. You can also buy tickets from our conductor at {place}.', { place: OPERATOR.contact.address.split(',')[0] })}</p>
               </div>
               <div className="flex flex-col sm:flex-row sm:flex-wrap lg:justify-end gap-3 w-full lg:w-auto">
                 {OPERATOR.contact.phone ? (
@@ -517,8 +555,7 @@ export default function LandingPage() {
                 ) : null}
                 {OPERATOR.contact.whatsappHref ? (
                   <a href={OPERATOR.contact.whatsappHref} className="flex items-center justify-center gap-2 px-7 py-4 bg-white border border-[#c7c5d1] text-[#050a44] rounded-2xl text-[16px] font-semibold hover:bg-[#edeef0] whitespace-nowrap shrink-0">
-                    <MessageCircle className="w-5 h-5" /> WhatsApp
-                  </a>
+                    <MessageCircle className="w-5 h-5" />{' '}{tx('WhatsApp')}</a>
                 ) : null}
                 <a href={`mailto:${OPERATOR.contact.email}`} className="flex items-center justify-center gap-2 px-7 py-4 bg-white border border-[#c7c5d1] text-[#050a44] rounded-2xl text-[16px] font-semibold hover:bg-[#edeef0] whitespace-nowrap shrink-0">
                   <Mail className="w-5 h-5" /> {OPERATOR.contact.email}

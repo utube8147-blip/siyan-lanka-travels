@@ -18,7 +18,9 @@ import { addDays, bikeSpacesFor, bikeSpacesUsed, genId, genRef, isLiveBooking, t
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
 import { bookingFromRow, busFromRow, busToRow, routeFromRow, routeToRow, scheduleFromRow, scheduleToRow } from './supabase/mappers';
 import { isStaffRole, useAuth } from '@/contexts/AuthContext';
+import { fetchAllRows } from '@/lib/supabase/fetchAll';
 import { uuid } from '@/lib/uuid';
+import { tx, txn } from '@/lib/i18n';
 
 const STORAGE_KEY = 'vivid-demo-data';
 
@@ -120,13 +122,23 @@ function availabilityBookings(seats: any[], bikeUsage: any[], visible: Booking[]
   return out;
 }
 
-async function fetchRemote(userId: string | null, staff: boolean): Promise<StoreData> {
+/** How far back / ahead each kind of account loads bookings. */
+const RANGE = {
+  office: { back: 180 }, // staff screens: reports, cash, payouts
+  conductor: { back: 14, ahead: 7 }, // their trips, and closing recent ones
+};
+
+async function fetchRemote(userId: string | null, staff: boolean, conductor = false): Promise<StoreData> {
   const sb = supabase();
   await sb.rpc('release_expired_holds'); // free seats from unpaid holds that ran out
   const today = todayISO();
   const from = addDays(today, -2);
-  const to = addDays(today, 120);
-  const seatRows = (cols: string) => sb.from('booking_seats').select(cols).eq('active', true).gte('travel_date', from).lte('travel_date', to);
+  // Seat maps: only as far ahead as anyone can book (staff can sell further ahead at the counter).
+  const settingsFirst = await sb.from('app_settings').select('*').maybeSingle();
+  const windowSetting = Number(settingsFirst.data?.booking_window_days ?? OPERATOR.bookingWindowDays);
+  const to = addDays(today, staff || !(windowSetting > 0) ? 120 : windowSetting + 1);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const seatRows = (cols: string) => fetchAllRows<any>((a, b) => sb.from('booking_seats').select(cols).eq('active', true).gte('travel_date', from).lte('travel_date', to).order('travel_date').order('schedule_id').order('seat').range(a, b));
   const [buses, routes, schedules, seatsFirst, bikes] = await Promise.all([
     sb.from('buses').select('*').order('created_at'),
     sb.from('routes').select('*').order('created_at'),
@@ -135,8 +147,7 @@ async function fetchRemote(userId: string | null, staff: boolean): Promise<Store
     sb.rpc('get_bike_usage', { p_from: from, p_to: to }),
   ]);
   // How far ahead passengers can book. The whole row, so a database one update behind still loads.
-  const settings = await sb.from('app_settings').select('*').maybeSingle();
-  const windowDays = Number(settings.data?.booking_window_days ?? OPERATOR.bookingWindowDays);
+  const windowDays = windowSetting;
   // A database that hasn't had the latest setup.sql has no "solo" column: seats must still load.
   const seats = seatsFirst.error ? await seatRows('schedule_id, travel_date, seat, gender') : seatsFirst;
   const firstError = buses.error || routes.error || schedules.error || seats.error || bikes.error;
@@ -144,11 +155,16 @@ async function fetchRemote(userId: string | null, staff: boolean): Promise<Store
 
   let rows: any[] = [];
   if (userId) {
-    let q = sb.from('bookings').select('*, booking_bikes(*)').order('travel_date');
-    q = staff ? q.gte('travel_date', addDays(today, -180)) : q.eq('user_id', userId);
-    const res = await q;
+    const res = await fetchAllRows<any>((a, b) => {
+      let q = sb.from('bookings').select('*, booking_bikes(*)');
+      if (!staff) q = q.eq('user_id', userId);
+      else if (conductor) q = q.gte('travel_date', addDays(today, -RANGE.conductor.back)).lte('travel_date', addDays(today, RANGE.conductor.ahead));
+      else q = q.gte('travel_date', addDays(today, -RANGE.office.back));
+      // A stable order so pages don't overlap or skip rows.
+      return q.order('travel_date').order('id').range(a, b);
+    });
     if (res.error) throw res.error;
-    rows = res.data ?? [];
+    rows = res.data;
   }
   // Bike photos are private: short-lived signed links for the owner / staff.
   const paths = rows.flatMap((r) => (r.booking_bikes ?? []).map((b: any) => b.photo_path).filter(Boolean));
@@ -169,6 +185,7 @@ async function fetchRemote(userId: string | null, staff: boolean): Promise<Store
     bookings: staff ? visible : [...visible, ...availabilityBookings(seats.data ?? [], bikes.data ?? [], visible)],
     // Staff can book any date at the counter.
     bookingWindowDays: staff ? 0 : Number.isFinite(windowDays) ? windowDays : OPERATOR.bookingWindowDays,
+    optionalCutoffHours: Number(settingsFirst.data?.optional_stop_cutoff_hours ?? 3),
   };
 }
 
@@ -195,6 +212,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoading: authLoading } = useAuth();
   const userId = user?.id ?? null;
   const staff = isStaffRole(user?.role);
+  const conductor = user?.role === 'conductor';
   const [data, setData] = useState<StoreData>(EMPTY);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -208,7 +226,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     try {
-      const next = await fetchRemote(userId, staff);
+      const next = await fetchRemote(userId, staff, conductor);
       setData(next);
       setError(null);
     } catch (e) {
@@ -216,7 +234,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setReady(true);
     }
-  }, [mode, userId, staff]);
+  }, [mode, userId, staff, conductor]);
 
   // Load after mount (and again when the signed-in user changes).
   useEffect(() => {
@@ -319,7 +337,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteBus = useCallback<StoreContextValue['deleteBus']>(
     async (id) => {
       const used = dataRef.current.schedules.filter((s) => s.busId === id);
-      if (used.length) return { ok: false, reason: `This bus runs ${used.length} departure(s). Reassign or delete those first.` };
+      if (used.length) return { ok: false, reason: txn(used.length, 'This bus runs {n} departure. Reassign or delete it first.', 'This bus runs {n} departures. Reassign or delete those first.') };
       if (mode === 'supabase') return remoteWrite(() => supabase().from('buses').delete().eq('id', id));
       setData((prev) => ({ ...prev, buses: prev.buses.filter((b) => b.id !== id) }));
       return { ok: true };
@@ -329,7 +347,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteRoute = useCallback<StoreContextValue['deleteRoute']>(
     async (id) => {
       const used = dataRef.current.schedules.filter((s) => s.routeId === id);
-      if (used.length) return { ok: false, reason: `This route has ${used.length} departure(s). Delete those first.` };
+      if (used.length) return { ok: false, reason: txn(used.length, 'This route has {n} departure. Delete it first.', 'This route has {n} departures. Delete those first.') };
       if (mode === 'supabase') return remoteWrite(() => supabase().from('routes').delete().eq('id', id));
       setData((prev) => ({ ...prev, routes: prev.routes.filter((r) => r.id !== id) }));
       return { ok: true };
@@ -341,7 +359,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const today = todayISO();
       const upcoming = dataRef.current.bookings.filter((b) => b.scheduleId === id && b.status === 'confirmed' && b.date >= today && !b.id.startsWith('avail-'));
       if (upcoming.length)
-        return { ok: false, reason: `${upcoming.length} upcoming booking(s) are on this departure. Pause it instead, or cancel those bookings first.` };
+        return { ok: false, reason: txn(upcoming.length, '{n} upcoming booking is on this departure. Pause it instead, or cancel that booking first.', '{n} upcoming bookings are on this departure. Pause it instead, or cancel those bookings first.') };
       if (mode === 'supabase') return remoteWrite(() => supabase().from('schedules').delete().eq('id', id));
       setData((prev) => ({ ...prev, schedules: prev.schedules.filter((s) => s.id !== id) }));
       return { ok: true };
@@ -356,7 +374,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const sb = supabase();
         const { data: sess } = await sb.auth.getSession();
         const uid = sess.session?.user.id;
-        if (!uid) return { ok: false, reason: 'Please sign in to book.' };
+        if (!uid) return { ok: false, reason: tx('Please sign in to book.') };
         try {
           const bikes = await Promise.all(
             (input.bikes ?? []).map(async (b) => ({
@@ -396,13 +414,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const d = dataRef.current;
       const taken = takenSeats(d.bookings, input.scheduleId, input.date);
       const clash = input.seats.filter((s) => taken.has(s));
-      if (clash.length) return { ok: false, reason: `Seat ${clash.join(', ')} was just booked by someone else.` };
+      if (clash.length) return { ok: false, reason: tx('Seat {clash} was just booked by someone else.', { clash: clash.join(', ') }) };
       if (input.bikes?.length) {
         const schedule = d.schedules.find((s) => s.id === input.scheduleId);
         const bus = d.buses.find((b) => b.id === schedule?.busId);
         const need = input.bikes.reduce((n, b) => n + bikeSpacesFor(b.kind), 0);
         const left = (bus?.bikeSpaces ?? 0) - bikeSpacesUsed(d.bookings, input.scheduleId, input.date);
-        if (need > left) return { ok: false, reason: 'The luggage compartment just filled up for this departure.' };
+        if (need > left) return { ok: false, reason: tx('The luggage compartment just filled up for this departure.') };
       }
       const { promo: _promo, payment, useReward: _reward, ...rest } = input;
       void _promo;
@@ -442,12 +460,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       const d = dataRef.current;
       const current = d.bookings.find((b) => b.id === id);
-      if (!current) return { ok: false, reason: 'Booking not found.' };
+      if (!current) return { ok: false, reason: tx('Booking not found.') };
       const merged = { ...current, ...patch };
       if (patch.seats || patch.date || patch.scheduleId) {
         const taken = takenSeats(d.bookings, merged.scheduleId, merged.date, id);
         const clash = merged.seats.filter((s) => taken.has(s));
-        if (clash.length) return { ok: false, reason: `Seat ${clash.join(', ')} is already taken on that departure.` };
+        if (clash.length) return { ok: false, reason: tx('Seat {clash} is already taken on that departure.', { clash: clash.join(', ') }) };
       }
       const next = { ...d, bookings: d.bookings.map((b) => (b.id === id ? merged : b)) };
       dataRef.current = next;
@@ -502,9 +520,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       {error && (
         <div role="alert" className="fixed z-[130] left-3 right-3 md:left-auto md:right-6 bottom-[calc(84px+env(safe-area-inset-bottom))] md:bottom-6 md:w-[380px] rounded-xl bg-[#ba1a1a] text-white text-[13px] font-medium px-4 py-3 shadow-lg">
           {error}{' '}
-          <button onClick={() => refresh()} className="underline font-semibold">
-            Retry
-          </button>
+          <button onClick={() => refresh()} className="underline font-semibold">{tx('Retry')}</button>
         </div>
       )}
     </StoreContext.Provider>
@@ -528,7 +544,7 @@ export function StoreLoading() {
 export function PageSkeleton() {
   const bar = 'rounded-lg skeleton';
   return (
-    <div className="max-w-[1440px] mx-auto px-4 md:px-[64px] py-6 md:py-8 space-y-5" role="status" aria-label="Loading">
+    <div className="max-w-[1440px] mx-auto px-4 md:px-[64px] py-6 md:py-8 space-y-5" role="status" aria-label={tx('Loading')}>
       <div className={`${bar} h-7 w-48`} />
       <div className={`${bar} h-4 w-72 max-w-full`} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
@@ -540,7 +556,7 @@ export function PageSkeleton() {
           </div>
         ))}
       </div>
-      <span className="sr-only">Loading</span>
+      <span className="sr-only">{tx('Loading')}</span>
     </div>
   );
 }

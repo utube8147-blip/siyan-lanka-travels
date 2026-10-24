@@ -11,6 +11,7 @@ import { friendlyError, isSupabaseConfigured as DB, supabase } from './supabase/
 import { useStore } from './store';
 import { departureDate, genId, getTrip, todayISO, addDays } from './trips';
 import type { Booking, Gender } from './types';
+import { tx } from '@/lib/i18n';
 
 type Result = { ok: boolean; reason?: string };
 
@@ -173,12 +174,12 @@ export function useWaitlist(userId?: string | null) {
       const { error } = await supabase().from('waitlist').insert({
         schedule_id: e.scheduleId, travel_date: e.date, from_stop: e.from, to_stop: e.to, seats: e.seats, phone: e.phone,
       });
-      if (error) return { ok: false, reason: /duplicate|unique/.test(error.message) ? "You're already on the waitlist for this bus." : friendlyError(error) };
+      if (error) return { ok: false, reason: /duplicate|unique/.test(error.message) ? tx('You\'re already on the waitlist for this bus.') : friendlyError(error) };
       await load();
       return { ok: true };
     }
     if (local.some((w) => w.scheduleId === e.scheduleId && w.date === e.date && (w.status === 'waiting' || w.status === 'offered')))
-      return { ok: false, reason: "You're already on the waitlist for this bus." };
+      return { ok: false, reason: tx('You\'re already on the waitlist for this bus.') };
     setLocal([...local, { ...e, id: genId('wl'), status: 'waiting', createdAt: new Date().toISOString() }]);
     return { ok: true };
   };
@@ -345,7 +346,7 @@ export function useTripContact(booking?: Booking | null) {
     if (!booking) return;
     const near = Math.abs(new Date(`${booking.date}T00:00`).getTime() - new Date(`${todayISO()}T00:00`).getTime()) <= 86_400_000;
     if (!near) return setC(null);
-    if (!DB) return setC({ name: 'Suresh Kumar', role: 'conductor', phone: '+94 71 553 9087' });
+    if (!DB) return setC({ name: tx('Suresh Kumar'), role: 'conductor', phone: '+94 71 553 9087' });
     supabase()
       .rpc('get_trip_contact', { p_booking: booking.id })
       .then(({ data }) => setC(((data as { name: string; role: string; phone: string }[]) ?? [])[0] ?? null));
@@ -510,12 +511,12 @@ export function useCashCounts() {
   /** `forUserId`: office staff closing for that person (the database checks they may). */
   const save = async (c: Omit<CashCount, 'id' | 'createdAt'>, forUserId?: string | null): Promise<Result> => {
     if (!DB) {
-      if (local.some((x) => x.date === c.date && (x.scheduleId ?? null) === (c.scheduleId ?? null))) return { ok: false, reason: 'You already closed this.' };
+      if (local.some((x) => x.date === c.date && (x.scheduleId ?? null) === (c.scheduleId ?? null))) return { ok: false, reason: tx('You already closed this.') };
       setLocal([{ ...c, id: genId('cc'), createdAt: new Date().toISOString() }, ...local]);
       return { ok: true };
     }
     const { error } = await supabase().from('cash_counts').insert({ count_date: c.date, schedule_id: c.scheduleId ?? null, expected: c.expected, counted: c.counted, notes: c.notes, ...(forUserId ? { created_by: forUserId } : {}) });
-    if (error) return { ok: false, reason: /duplicate|unique/.test(error.message) ? 'This is already closed.' : friendlyError(error) };
+    if (error) return { ok: false, reason: /duplicate|unique/.test(error.message) ? tx('This is already closed.') : friendlyError(error) };
     await load();
     return { ok: true };
   };

@@ -3,7 +3,10 @@
 // uses the same date range and the same filters.
 import { addDays, busCapacity, isLiveBooking, netRevenue, parseISODate, runsOn, todayISO } from './trips';
 import type { Booking, StoreData } from './types';
+import { tx, N_ } from '@/lib/i18n-core';
 
+import { dateLocale } from '@/lib/trips';
+import { fmtDate } from './dates';
 export interface Range {
   from: string; // inclusive, "YYYY-MM-DD"
   to: string; // inclusive
@@ -14,11 +17,11 @@ export interface Range {
 }
 export type Preset = '7d' | 'month' | 'lastMonth' | '90d' | 'custom';
 export const PRESETS: { id: Preset; label: string }[] = [
-  { id: '7d', label: 'Last 7 days' },
-  { id: 'month', label: 'This month' },
-  { id: 'lastMonth', label: 'Last month' },
-  { id: '90d', label: 'Last 90 days' },
-  { id: 'custom', label: 'Custom' },
+  { id: '7d', label: N_('Last 7 days') },
+  { id: 'month', label: N_('This month') },
+  { id: 'lastMonth', label: N_('Last month') },
+  { id: '90d', label: N_('Last 90 days') },
+  { id: 'custom', label: N_('Custom') },
 ];
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 export function presetDates(p: Exclude<Preset, 'custom'>, today = todayISO()): { from: string; to: string } {
@@ -59,7 +62,7 @@ export type Bucket = { key: string; label: string; title: string; from: string; 
 export function buckets(r: Pick<Range, 'from' | 'to'>): Bucket[] {
   const n = daysIn(r);
   const out: Bucket[] = [];
-  const fmt = (d: string, o: Intl.DateTimeFormatOptions) => parseISODate(d).toLocaleDateString('en-GB', o);
+  const fmt = (d: string, o: Intl.DateTimeFormatOptions) => fmtDate(parseISODate(d), o);
   if (n <= 31) {
     for (let i = 0; i < n; i++) {
       const d = addDays(r.from, i);
@@ -127,17 +130,17 @@ export function leadDays(b: Booking) {
   return Math.max(0, Math.round((parseISODate(b.date).getTime() - parseISODate(b.createdAt.slice(0, 10)).getTime()) / 86_400_000));
 }
 export const LEAD_BANDS: { label: string; test: (d: number) => boolean }[] = [
-  { label: 'Same day', test: (d) => d === 0 },
-  { label: '1 day before', test: (d) => d === 1 },
-  { label: '2 to 3 days', test: (d) => d >= 2 && d <= 3 },
-  { label: '4 to 7 days', test: (d) => d >= 4 && d <= 7 },
-  { label: '8 to 14 days', test: (d) => d >= 8 && d <= 14 },
-  { label: '15 days or more', test: (d) => d >= 15 },
+  { label: N_('Same day'), test: (d) => d === 0 },
+  { label: N_('1 day before'), test: (d) => d === 1 },
+  { label: N_('2 to 3 days'), test: (d) => d >= 2 && d <= 3 },
+  { label: N_('4 to 7 days'), test: (d) => d >= 4 && d <= 7 },
+  { label: N_('8 to 14 days'), test: (d) => d >= 8 && d <= 14 },
+  { label: N_('15 days or more'), test: (d) => d >= 15 },
 ];
 
-export const PAY_LABEL: Record<string, string> = { cash: 'Cash', bank: 'Bank transfer', card: 'Card', wallet: 'Mobile wallet', counter: 'Pay at counter', bus: 'Pay on the bus', free: 'Free trip' };
-export const CHANNEL_LABEL: Record<string, string> = { online: 'Online', counter: 'Counter', phone: 'Phone' };
-export const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+export const PAY_LABEL: Record<string, string> = { cash: N_('Cash'), bank: N_('Bank transfer'), card: N_('Card'), wallet: N_('Mobile wallet'), counter: N_('Pay at counter'), bus: N_('Pay on the bus'), free: N_('Free trip') };
+export const CHANNEL_LABEL: Record<string, string> = { online: N_('Online'), counter: N_('Counter'), phone: N_('Phone') };
+export const WEEKDAY_SHORT = [N_('Mon'), N_('Tue'), N_('Wed'), N_('Thu'), N_('Fri'), N_('Sat'), N_('Sun')];
 /** 0 = Monday … 6 = Sunday */
 export const weekdayIndex = (date: string) => (parseISODate(date).getDay() + 6) % 7;
 
@@ -152,18 +155,18 @@ export const isPaidBooking = (b: Booking) => b.status !== 'cancelled' && (b.paym
  */
 export function incomeSource(b: Booking, roleOf: (userId: string) => string | undefined): string {
   const m = b.paymentMethod;
-  if (m === 'bank') return 'Bank transfer';
-  if (m === 'card' || m === 'wallet') return 'Card / wallet online';
+  if (m === 'bank') return tx('Bank transfer');
+  if (m === 'card' || m === 'wallet') return tx('Card / wallet online');
   if (m === 'cash' || m === undefined) {
-    if (b.channel === 'counter') return 'Counter sales (cash)';
-    if (b.channel === 'phone') return 'Phone sales (cash)';
-    if (m === undefined) return 'Online payment';
+    if (b.channel === 'counter') return tx('Counter sales (cash)');
+    if (b.channel === 'phone') return tx('Phone sales (cash)');
+    if (m === undefined) return tx('Online payment');
     const role = b.paidBy ? roleOf(b.paidBy) : undefined;
-    if (role === 'conductor') return 'Collected on the bus (conductor)';
-    if (role) return 'Paid at the counter for an online booking';
-    return 'Cash for online bookings';
+    if (role === 'conductor') return tx('Collected on the bus (conductor)');
+    if (role) return tx('Paid at the counter for an online booking');
+    return tx('Cash for online bookings');
   }
-  return PAY_LABEL[m] ?? 'Other';
+  return tx(PAY_LABEL[m]) ?? tx('Other');
 }
 
 /** Seat ids in a sensible order: 2 before 10, 3A before 3B. */

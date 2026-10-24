@@ -5,8 +5,10 @@
 
 import { OPERATOR } from '@/config/operator';
 import { busSeatMap, seatIdsOf } from './seatLayout';
+import { fmtDate } from './dates';
 import { bikeKind, getBikeConfig } from './bikeConfig';
 import type { BikeKind, Booking, Bus, Gender, Route, Schedule, StoreData, Trip } from './types';
+import { tx } from '@/lib/i18n-core';
 
 // ---------------------------------------------------------------- money ----
 const lkr = new Intl.NumberFormat('en-LK', { maximumFractionDigits: 2, minimumFractionDigits: 0 });
@@ -51,17 +53,19 @@ export function lastBookableDate(data: Pick<StoreData, 'bookingWindowDays'>) {
 }
 
 let DATE_LOCALE = 'en-GB';
+/** The locale for dates in the language in use (en-GB / ta-LK / si-LK). */
+export const dateLocale = () => DATE_LOCALE;
 /** Set by the language switcher (en-GB / ta-LK / si-LK). */
 export function setDateLocale(locale: string) {
   DATE_LOCALE = locale;
 }
 
-/** "2026-07-12" → "Sun, 12 Jul 2026" */
+/** "2026-07-12" → "Sun, 12 Jul 2026" (in the language in use) */
 export function formatDateLabel(iso: string | null | undefined, withYear = true) {
   if (!iso) return '';
   const d = parseISODate(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(DATE_LOCALE, {
+  return fmtDate(d, {
     weekday: 'short',
     day: '2-digit',
     month: 'short',
@@ -141,7 +145,7 @@ export function genId(prefix: string) {
 }
 
 export function routeLabel(route: Route | undefined) {
-  if (!route || route.stops.length === 0) return 'Unnamed route';
+  if (!route || route.stops.length === 0) return tx('Unnamed route');
   return `${route.stops[0].name} → ${route.stops[route.stops.length - 1].name}`;
 }
 
@@ -200,12 +204,15 @@ export function seatsBesideLoneWoman(bookings: Booking[], bus: Pick<Bus, 'rows' 
   }
   return out;
 }
-export const BESIDE_WOMAN_MESSAGE = (seat: string) => `Seat ${seat} is beside a woman travelling alone, so it is kept for women passengers. Please choose another seat.`;
+export const BESIDE_WOMAN_MESSAGE = (seat: string) => tx('Seat {seat} is beside a woman travelling alone, so it is kept for women passengers. Please choose another seat.', { seat });
 
 // ---------------------------------------------------------------- trips ----
+/** Stops passengers see: everything except the points that only shape the road. */
+export const passengerStops = (route: Pick<Route, 'stops'>) => route.stops.filter((s) => !s.hidden);
+
 export function allStopNames(data: Pick<StoreData, 'routes'>) {
   const names = new Set<string>();
-  data.routes.filter((r) => r.active).forEach((r) => r.stops.forEach((s) => names.add(s.name)));
+  data.routes.filter((r) => r.active).forEach((r) => r.stops.forEach((s) => !s.hidden && names.add(s.name)));
   return Array.from(names);
 }
 
@@ -214,7 +221,7 @@ function sameStop(a: string, b: string) {
 }
 
 function stopIndex(route: Route, name: string) {
-  return route.stops.findIndex((s) => sameStop(s.name, name));
+  return route.stops.findIndex((s) => !s.hidden && sameStop(s.name, name));
 }
 
 /** Departure datetime (local) for a schedule on a date, at a given stop offset. */
@@ -257,7 +264,7 @@ function buildTrip(
     departure: fromMinutes(depMin + from.offsetMin),
     arrival: fromMinutes(depMin + to.offsetMin),
     durationMin: to.offsetMin - from.offsetMin,
-    via: route.stops.slice(fromIdx + 1, toIdx).map((s) => s.name),
+    via: route.stops.slice(fromIdx + 1, toIdx).filter((s) => !s.hidden).map((s) => s.name),
     fare: segmentFare(route, fromIdx, toIdx),
     capacity,
     seatsBooked: taken.size,
@@ -355,10 +362,10 @@ export function runsOn(s: Schedule, iso: string) {
 /** "Mon, Wed, Fri" / "Daily" / "Every other day from 2 Oct". */
 export function describeRuns(s: Schedule) {
   if (isAlternating(s)) {
-    const from = parseISODate(s.startDate!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    return `Every ${s.everyDays === 2 ? 'other' : s.everyDays === 3 ? 'third' : `${s.everyDays}th`} day from ${from}`;
+    const from = fmtDate(parseISODate(s.startDate!), { day: 'numeric', month: 'short' });
+    return s.everyDays === 2 ? tx('Every other day from {from}', { from }) : tx('Every {n} days from {from}', { n: s.everyDays, from });
   }
-  if (s.days.length === 7) return 'Daily';
+  if (s.days.length === 7) return tx('Daily');
   const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   return [...s.days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => names[d]).join(', ');
 }

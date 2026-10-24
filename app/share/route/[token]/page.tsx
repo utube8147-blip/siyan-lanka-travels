@@ -13,15 +13,17 @@ import { Wordmark } from '@/components/Wordmark';
 import { GoogleMapsLinks } from '@/components/GoogleMapsLinks';
 import { getShare, type RouteShare } from '@/lib/routeShare';
 import { fetchRoadRoute } from '@/lib/routing';
-import { formatTime12 } from '@/lib/trips';
+import { formatTime12, dateLocale } from '@/lib/trips';
+import { tx } from '@/lib/i18n';
 
+import { fmtDate } from '@/lib/dates';
 const RouteShareMap = dynamic(() => import('@/components/RouteShareMap').then((m) => m.RouteShareMap), {
   ssr: false,
   loading: () => <div className="h-[360px] lg:h-[calc(100vh-140px)] rounded-2xl skeleton" />,
 });
 
 const hmm = (m: number) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, '0')}`;
-const dur = (m: number) => (m < 60 ? `${Math.round(m)} min` : `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')} min`);
+const dur = (m: number) => (m < 60 ? tx('{m} min', { m: Math.round(m) }) : tx('{floor} h {padStart} min', { floor: Math.floor(m / 60), padStart: String(Math.round(m % 60)).padStart(2, '0') }));
 const clock = (departure: string, plusMin: number) => {
   const [h, m] = departure.split(':').map(Number);
   const total = h * 60 + m + Math.round(plusMin);
@@ -66,11 +68,9 @@ export default function SharedRoutePage() {
       <Shell>
         <div className="max-w-lg mx-auto text-center py-16">
           <RouteIcon className="w-10 h-10 mx-auto text-[#6b6d78]" />
-          <h1 className="text-[22px] font-extrabold text-[#050a44] mt-3">This link isn&apos;t available</h1>
-          <p className="text-[14px] text-[#46464f] mt-2">It may have been turned off by {OPERATOR.name}, or the address isn&apos;t complete. Ask the person who sent it for a new link.</p>
-          <Link href="/" className="inline-block mt-6 font-bold text-[#050a44] underline">
-            Go to {OPERATOR.name}
-          </Link>
+          <h1 className="text-[22px] font-extrabold text-[#050a44] mt-3">{tx('This link isn\'t available')}</h1>
+          <p className="text-[14px] text-[#46464f] mt-2">{tx('It may have been turned off by {name}, or the address isn\'t complete. Ask the person who sent it for a new link.', { name: OPERATOR.name })}</p>
+          <Link href="/" className="inline-block mt-6 font-bold text-[#050a44] underline">{tx('Go to {name}', { name: OPERATOR.name })}</Link>
         </div>
       </Shell>
     );
@@ -83,27 +83,25 @@ export default function SharedRoutePage() {
   return (
     <Shell>
       <div className="mb-5">
-        <p className="text-[12px] font-bold uppercase tracking-wide text-[#7c5800]">Route plan</p>
+        <p className="text-[12px] font-bold uppercase tracking-wide text-[#7c5800]">{tx('Route plan')}</p>
         <h1 className="text-[24px] md:text-[30px] font-extrabold tracking-tight text-[#050a44] leading-tight">{share.title}</h1>
-        <p className="text-[13px] text-[#6b6d78] mt-1">
-          Shared by {OPERATOR.name} on {new Date(share.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. A plan for review: times are estimates, not a booking timetable.
-        </p>
+        <p className="text-[13px] text-[#6b6d78] mt-1">{tx('Shared by {name} on {date}. A plan for review: times are estimates, not a booking timetable.', { name: OPERATOR.name, date: fmtDate(new Date(share.createdAt), { day: 'numeric', month: 'long', year: 'numeric' }) })}</p>
         {share.note && <p className="mt-3 rounded-xl bg-[#feb700]/12 border border-[#feb700]/40 px-4 py-3 text-[14px] text-[#191c1e] whitespace-pre-line">{share.note}</p>}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <Fact label="Stops" value={String(stops.length)} />
-        <Fact label="Distance by road" value={km ? `${km.toFixed(0)} km` : '…'} />
-        <Fact label="Travel time" value={dur(total)} />
-        <Fact label={share.departure ? 'Leaves → arrives' : 'From → to'} value={share.departure ? `${clock(share.departure, 0)} → ${clock(share.departure, total)}` : `${stops[0].name} → ${stops[stops.length - 1].name}`} small />
+        <Fact label={tx('Stops')} value={String(stops.length)} />
+        <Fact label={tx('Distance by road')} value={km ? `${km.toFixed(0)} km` : '…'} />
+        <Fact label={tx('Travel time')} value={dur(total)} />
+        <Fact label={share.departure ? tx('Leaves → arrives') : tx('From → to')} value={share.departure ? `${clock(share.departure, 0)} → ${clock(share.departure, total)}` : `${stops[0].name} → ${stops[stops.length - 1].name}`} small />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-5 items-start">
         <div className="lg:sticky lg:top-4 space-y-2">
           <RouteShareMap stops={stops} path={road?.path ?? null} selected={selected} onSelect={setSelected} className="h-[360px] md:h-[460px] lg:h-[calc(100vh-140px)] lg:min-h-[480px]" />
           <div className="flex flex-wrap items-center gap-2">
-            <GoogleMapsLinks stops={stops} label="Open in Google Maps" />
-            <span className="text-[12px] text-[#6b6d78]">Tap a stop to find it on the map.</span>
+            <GoogleMapsLinks stops={stops} label={tx('Open in Google Maps')} />
+            <span className="text-[12px] text-[#6b6d78]">{tx('Tap a stop to find it on the map.')}</span>
           </div>
         </div>
 
@@ -136,7 +134,7 @@ export default function SharedRoutePage() {
           })}
         </ol>
       </div>
-      {share.departure && <p className="mt-4 text-[12px] text-[#6b6d78]">Clock times are for the {formatTime12(share.departure)} departure.</p>}
+      {share.departure && <p className="mt-4 text-[12px] text-[#6b6d78]">{tx('Clock times are for the {time} departure.', { time: formatTime12(share.departure) })}</p>}
     </Shell>
   );
 }
@@ -149,7 +147,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <Link href="/" aria-label={OPERATOR.name}>
             <Wordmark size="sm" />
           </Link>
-          <span className="text-[12px] font-semibold text-white/70">Shared route</span>
+          <span className="text-[12px] font-semibold text-white/70">{tx('Shared route')}</span>
         </div>
       </header>
       <main className="max-w-[1200px] mx-auto px-4 md:px-6 py-6">{children}</main>

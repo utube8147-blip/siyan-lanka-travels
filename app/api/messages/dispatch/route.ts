@@ -10,6 +10,7 @@ import { adminClient } from '@/lib/server/admin';
 import { sendSms } from '@/lib/server/messaging';
 import { deliverQueued } from '@/lib/server/dispatch';
 import { pushPendingNotifications } from '@/lib/server/push';
+import { sameSecret } from '@/lib/server/webhook';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,21 +34,24 @@ async function remindRenewals(db: NonNullable<ReturnType<typeof adminClient>>) {
 
 async function handle(req: Request) {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!secret || !sameSecret(req.headers.get('authorization') ?? '', `Bearer ${secret}`)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const db = adminClient();
   if (!db) return NextResponse.json({ error: 'SUPABASE_SECRET_KEY not set' }, { status: 500 });
 
   await db.rpc('release_expired_holds');
+  // Optional ("on request") stops whose cut-off has passed: the detour runs, or the
+  // passengers who booked it are moved to the nearest main stop (notification + text queued).
+  const optional = await db.rpc('settle_optional_stops').then((r) => (r.error ? { error: r.error.message.slice(0, 200) } : { moved: r.data }));
   // Push first: it's quick, and a slow SMS provider shouldn't delay reminders.
   // Documents and licences that are about to expire (or have): super admins get a
   // notification (pushed below); the owner also gets one text listing them.
   const renewals = await remindRenewals(db).catch((e) => ({ error: String(e).slice(0, 200) }));
-  const push = await pushPendingNotifications(db).catch((e) => ({ error: String(e).slice(0, 200) }));
+  const push = await pushPendingNotifications(db, { reminders: true }).catch((e) => ({ error: String(e).slice(0, 200) }));
   const { data: batch, error } = await db.from('message_queue').select('*').eq('status', 'pending').order('created_at').limit(50);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const results = await deliverQueued(db, batch ?? []);
-  return NextResponse.json({ processed: batch?.length ?? 0, ...results, push, renewals });
+  return NextResponse.json({ processed: batch?.length ?? 0, ...results, push, renewals, optional });
 }
 
 export const GET = handle;

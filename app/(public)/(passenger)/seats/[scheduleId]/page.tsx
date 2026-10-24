@@ -14,8 +14,10 @@ import { useSavedPassengers, usePublicSettings } from '@/lib/extras';
 import { isLkMobile, useBookingCode } from '@/components/BookingCodeGate';
 import type { BikeItem } from '@/lib/types';
 import { useStore, StoreLoading } from '@/lib/store';
+import { OnRequestNotice } from '@/components/OnRequestNotice';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO, seatsBesideLoneWoman, BESIDE_WOMAN_MESSAGE } from '@/lib/trips';
-import { useT } from '@/lib/i18n';
+import { useT, txn, txr } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 const MAX_SEATS_PER_BOOKING = OPERATOR.maxSeatsPerBooking;
 const HOLD_SECONDS = OPERATOR.seatHoldMinutes * 60;
@@ -135,13 +137,13 @@ function BookingPageInner() {
     setIsVerified(!pub.bookingOtp);
   }, [authMode, userId, pub.bookingOtp]);
   const verifyNumber = async () => {
-    if (!isLkMobile(phone)) return addToast('Enter a mobile number first, like 077 123 4567.', 'error');
+    if (!isLkMobile(phone)) return addToast(tx('Enter a mobile number first, like 077 123 4567.'), 'error');
     setVerifying(true);
     const ok = await bookingCode.ask(phone);
     setVerifying(false);
     if (ok) {
       setIsVerified(true);
-      addToast('Verified. You can go on to payment.', 'success');
+      addToast(tx('Verified. You can go on to payment.'), 'success');
     }
   };
   const [otpValue, setOtpValue] = useState('');
@@ -168,7 +170,7 @@ function BookingPageInner() {
 
   useEffect(() => {
     if (ready && (!trip || trip.closed)) {
-      addToast('Booking for that departure has closed. Please pick another bus.', 'error');
+      addToast(tx('Booking for that departure has closed. Please pick another bus.'), 'error');
       router.push('/search');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,7 +180,7 @@ function BookingPageInner() {
   useEffect(() => {
     setSelectedSeats((prev) => {
       const lost = prev.filter((s) => taken.has(s));
-      if (lost.length) addToast(`Seat ${lost.join(', ')} was just booked by someone else.`, 'error');
+      if (lost.length) addToast(tx('Seat {lost} was just booked by someone else.', { lost: lost.join(', ') }), 'error');
       return lost.length ? prev.filter((s) => !taken.has(s)) : prev;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,7 +214,7 @@ function BookingPageInner() {
       const r = await holdSeats(trip.scheduleId, date, wanted);
       if (!r.ok) {
         // Someone got there first: say so, and drop whatever is no longer free.
-        addToast(r.reason ?? 'One of those seats is no longer free.', 'error');
+        addToast(r.reason ?? tx('One of those seats is no longer free.'), 'error');
         await reloadHolds();
         setSelectedSeats([]);
         return;
@@ -229,7 +231,7 @@ function BookingPageInner() {
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          addToast('Session expired. Please select your seats again.', 'error');
+          addToast(tx('Session expired. Please select your seats again.'), 'error');
           setSelectedSeats([]);
           return HOLD_SECONDS;
         }
@@ -248,21 +250,21 @@ function BookingPageInner() {
 
   const sendOtp = () => {
     if ((phone ?? '').trim().length < 6) {
-      addToast('Enter a valid phone number first.', 'error');
+      addToast(tx('Enter a valid phone number first.'), 'error');
       return;
     }
     setOtpSent(true);
     setOtpCooldown(30);
-    addToast(`Verification code sent to ${phone}`, 'info');
+    addToast(tx('Verification code sent to {phone}', { phone }), 'info');
   };
 
   const confirmOtp = () => {
     if (otpValue.trim().length !== 4) {
-      addToast('Enter the 4-digit code sent to your phone.', 'error');
+      addToast(tx('Enter the 4-digit code sent to your phone.'), 'error');
       return;
     }
     setIsVerified(true);
-    addToast('Phone number verified.', 'success');
+    addToast(tx('Phone number verified.'), 'success');
   };
 
   const passengerValid =
@@ -289,7 +291,7 @@ function BookingPageInner() {
       const isSelected = prev.includes(seatId);
 
       if (!isSelected && FEMALE_ONLY_SEATS.includes(seatId) && hasMalePassenger) {
-        addToast(`Seat ${seatId} is reserved for female passengers.`, 'error');
+        addToast(tx('Seat {seatId} is reserved for female passengers.', { seatId }), 'error');
         return prev;
       }
       if (!isSelected && besideWoman.has(seatId) && passengerGender !== 'Female') {
@@ -302,7 +304,7 @@ function BookingPageInner() {
       }
 
       if (prev.length >= MAX_SEATS_PER_BOOKING) {
-        addToast(`You can select up to ${MAX_SEATS_PER_BOOKING} seats on one booking.`, 'error');
+        addToast(tx('You can select up to {MAX_SEATS_PER_BOOKING} seats on one booking.', { MAX_SEATS_PER_BOOKING }), 'error');
         return prev;
       }
 
@@ -322,15 +324,15 @@ function BookingPageInner() {
     if (promoApplied) {
       setPromoApplied(false);
       setPromoInput('');
-      addToast('Promo code removed', 'info');
+      addToast(tx('Promo code removed'), 'info');
       return;
     }
     const typed = promoInput.trim().toUpperCase();
-    if (!typed) return setPromoError('Enter a promo code.');
-    if (!pub.promoCode || pub.promoPercent <= 0 || typed !== pub.promoCode.toUpperCase()) return setPromoError("That code isn't valid.");
+    if (!typed) return setPromoError(tx('Enter a promo code.'));
+    if (!pub.promoCode || pub.promoPercent <= 0 || typed !== pub.promoCode.toUpperCase()) return setPromoError(tx('That code isn\'t valid.'));
     setPromoError('');
     setPromoApplied(true);
-    addToast(`${pub.promoCode} applied: ${pub.promoPercent}% off the fare.`, 'success');
+    addToast(tx('{promoCode} applied: {promoPercent}% off the fare.', { promoCode: pub.promoCode, promoPercent: pub.promoPercent }), 'success');
   };
 
   const canProceedToPayment = detailsValid && selectedSeats.length > 0 && !bikeError;
@@ -380,22 +382,21 @@ function BookingPageInner() {
     <React.Fragment>
       <main className="max-w-[1440px] mx-auto px-4 md:px-[64px] py-[32px]">
         {bookingCode.modal}
-        <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
+        <nav aria-label={tx('Breadcrumb')} className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
           <div className="flex items-center">
-            <span className="hover:text-[#000000] cursor-pointer transition-colors" onClick={() => router.push(backToSearchHref)}>
-              Search Results
-            </span>
+            <span className="hover:text-[#000000] cursor-pointer transition-colors" onClick={() => router.push(backToSearchHref)}>{tx('Search Results')}</span>
             <span className="material-symbols-outlined text-[16px] mx-1">chevron_right</span>
           </div>
           <div className="flex items-center">
-            <span className="text-[#000000] font-bold">Passenger Details</span>
+            <span className="text-[#000000] font-bold">{tx('Passenger Details')}</span>
             <span className="material-symbols-outlined text-[16px] mx-1 text-[#46464f]">chevron_right</span>
           </div>
           <div className="flex items-center">
-            <span className="text-[#6b6d78]">Payment</span>
+            <span className="text-[#6b6d78]">{tx('Payment')}</span>
           </div>
         </nav>
 
+        {trip && <OnRequestNotice routeId={trip.routeId} scheduleId={trip.scheduleId} date={date} from={from} to={to} className="mb-6" />}
         <div className="mb-[32px] flex items-center justify-between">
           <div>
             <button
@@ -403,10 +404,10 @@ function BookingPageInner() {
               className="hidden md:flex items-center text-[#000000] font-bold mb-[4px] group"
             >
               <span className="material-symbols-outlined mr-[4px] group-hover:-translate-x-1 transition-transform">arrow_back</span>
-              <span className="text-[14px]">Modify Search</span>
+              <span className="text-[14px]">{tx('Modify Search')}</span>
             </button>
             <div className="flex flex-wrap items-center space-x-[8px] mt-2">
-              <h1 className="text-[20px] font-semibold">{from} to {to}</h1>
+              <h1 className="text-[20px] font-semibold">{tx('{from} to {to}', { from, to })}</h1>
               <span className="w-1.5 h-1.5 rounded-full bg-[#c7c5d1]"></span>
               <p className="text-[#46464f] font-medium text-[14px]">{trip.bus.name} ({trip.bus.type})</p>
               <span className="w-1.5 h-1.5 rounded-full bg-[#c7c5d1]"></span>
@@ -415,13 +416,13 @@ function BookingPageInner() {
           </div>
           <div className="hidden lg:flex items-center space-x-[16px]">
             <div className="flex flex-col items-end">
-              <span className="text-[12px] font-medium text-[#46464f]">Departure</span>
+              <span className="text-[12px] font-medium text-[#46464f]">{tx('Departure')}</span>
               <span className="text-[14px] font-bold">{formatTime12(trip.departure)}</span>
             </div>
             <span className="material-symbols-outlined text-[#686873]">chevron_right</span>
             <div className="flex flex-col items-start">
-              <span className="text-[12px] font-medium text-[#46464f]">Arrival</span>
-              <span className="text-[14px] font-bold">{formatTime12(trip.arrival)}{trip.arrivalDayOffset ? ' (+1 day)' : ''}</span>
+              <span className="text-[12px] font-medium text-[#46464f]">{tx('Arrival')}</span>
+              <span className="text-[14px] font-bold">{formatTime12(trip.arrival)}{trip.arrivalDayOffset ? tx(' (+1 day)') : ''}</span>
             </div>
           </div>
         </div>
@@ -430,20 +431,18 @@ function BookingPageInner() {
           <div className="lg:col-span-7 space-y-[24px]">
             <div className="bg-[#ffffff] rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
               <div className="flex items-center justify-between mb-[16px]">
-                <h2 className="text-[16px] font-semibold">Boarding &amp; Drop-off</h2>
-                <button onClick={() => router.push(backToSearchHref)} className="text-[12px] font-bold text-[#050a44] hover:underline">
-                  Change
-                </button>
+                <h2 className="text-[16px] font-semibold">{tx('Boarding & Drop-off')}</h2>
+                <button onClick={() => router.push(backToSearchHref)} className="text-[12px] font-bold text-[#050a44] hover:underline">{tx('Change')}</button>
               </div>
               <div className="flex items-center justify-between bg-[#f2f4f6] rounded-xl p-[16px]">
                 <div>
-                  <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">Pickup</p>
+                  <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">{tx('Pickup')}</p>
                   <p className="text-[14px] font-bold">{pickup}</p>
                   {pickupTime && <p className="text-[12px] text-[#46464f]">{pickupTime}</p>}
                 </div>
                 <span className="material-symbols-outlined text-[#686873]">arrow_forward</span>
                 <div className="text-right">
-                  <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">Drop-off</p>
+                  <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">{tx('Drop-off')}</p>
                   <p className="text-[14px] font-bold">{drop}</p>
                   {dropTime && <p className="text-[12px] text-[#46464f]">{dropTime}</p>}
                 </div>
@@ -496,9 +495,7 @@ function BookingPageInner() {
               </div>
 
               {bookingFor === 'other' && (
-                <p className="text-[11px] text-[#6b6d78] mb-[16px] -mt-[8px]">
-                  This ticket is for someone else - your account details won't be used here, just theirs.
-                </p>
+                <p className="text-[11px] text-[#6b6d78] mb-[16px] -mt-[8px]">{tx('This ticket is for someone else - your account details won\'t be used here, just theirs.')}</p>
               )}
 
               <div className={`grid grid-cols-1 ${bookingFor === 'other' ? 'sm:grid-cols-2' : ''} gap-[12px] mb-[16px]`}>
@@ -507,18 +504,18 @@ function BookingPageInner() {
                   <input
                     value={passengerName}
                     onChange={(e) => setPassengerName(e.target.value)}
-                    placeholder="As per ID"
+                    placeholder={tx('As per ID')}
                     className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
                     type="text"
                   />
                   {bookingFor === 'self' && isLoggedIn && (
-                    <p className="text-[10px] font-bold text-[#006e1c] mt-1 px-1">From your account</p>
+                    <p className="text-[10px] font-bold text-[#006e1c] mt-1 px-1">{tx('From your account')}</p>
                   )}
                 </div>
 
                 {bookingFor === 'other' && (
                   <div>
-                    <label className="text-[11px] font-bold text-[#46464f] px-1">Their phone number</label>
+                    <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Their phone number')}</label>
                     <input
                       value={passengerPhone}
                       onChange={(e) => setPassengerPhone(e.target.value.replace(/[^0-9+]/g, ''))}
@@ -531,7 +528,7 @@ function BookingPageInner() {
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-[#46464f] px-1 mb-1 block">Gender</label>
+                <label className="text-[11px] font-bold text-[#46464f] px-1 mb-1 block">{tx('Gender')}</label>
                 <div className="flex gap-[8px]">
                   {(['Male', 'Female'] as Gender[]).map((g) => (
                     <button
@@ -543,27 +540,23 @@ function BookingPageInner() {
                           : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f2f4f6]'
                       }`}
                     >
-                      {g}
+                      {tx(g)}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <p className="mt-[16px] text-[11px] text-[#6b6d78]">
-                Booking more than one seat (e.g. for family)? Pick as many seats as you need in the next step.
-              </p>
+              <p className="mt-[16px] text-[11px] text-[#6b6d78]">{tx('Booking more than one seat (e.g. for family)? Pick as many seats as you need in the next step.')}</p>
             </div>
 
             <BikeAddon trip={trip} bikes={bikes} onChange={setBikes} />
 
             <div className="bg-[#ffffff] rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
-              <h2 className="text-[16px] font-semibold mb-[20px]">Contact &amp; Verification</h2>
+              <h2 className="text-[16px] font-semibold mb-[20px]">{tx('Contact & Verification')}</h2>
 
               <div className="space-y-[16px]">
                 <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1 flex items-center gap-1.5">
-                    Mobile number for this booking
-                  </label>
+                  <label className="text-[11px] font-bold text-[#46464f] px-1 flex items-center gap-1.5">{tx('Mobile number for this booking')}</label>
 
                   <div className="flex gap-[8px] mt-1">
                     <input
@@ -582,16 +575,14 @@ function BookingPageInner() {
                     />
                     {isVerified ? (
                       <div className="flex items-center gap-1 px-3 rounded-lg bg-[#e8f6ea] text-[#006e1c] font-bold text-[12px] whitespace-nowrap">
-                        <span className="material-symbols-outlined text-[18px]">verified</span>
-                        Verified
-                      </div>
+                        <span className="material-symbols-outlined text-[18px]">verified</span>{tx('Verified')}</div>
                     ) : needsCode ? (
                       <button
                         onClick={verifyNumber}
                         disabled={verifying}
                         className="px-4 rounded-lg font-bold text-[12px] whitespace-nowrap bg-[#050a44] text-white hover:opacity-90 disabled:opacity-60"
                       >
-                        {verifying ? 'Sending…' : 'Verify'}
+                        {verifying ? tx('Sending…') : tx('Verify')}
                       </button>
                     ) : (
                       <button
@@ -603,21 +594,19 @@ function BookingPageInner() {
                             : 'bg-[#050a44] text-white hover:opacity-90'
                         }`}
                       >
-                        {otpCooldown > 0 ? `Resend (${otpCooldown}s)` : otpSent ? 'Resend code' : 'Send code'}
+                        {otpCooldown > 0 ? tx('Resend ({otpCooldown}s)', { otpCooldown }) : otpSent ? tx('Resend code') : tx('Send code')}
                       </button>
                     )}
                   </div>
 
                   {needsCode && !isVerified && (
-                    <p className="mt-1.5 text-[12px] text-[#46464f] px-1">
-                      Enter the mobile number for this booking and press Verify. We&apos;ll text it a 6-digit code; you need it to go on to payment.
-                    </p>
+                    <p className="mt-1.5 text-[12px] text-[#46464f] px-1">{tx('Enter the mobile number for this booking and press Verify. We\'ll text it a 6-digit code; you need it to go on to payment.')}</p>
                   )}
 
                   {otpSent && !isVerified && (
                     <div className="flex items-end gap-[8px] mt-[12px]">
                       <div className="flex-1">
-                        <label className="text-[11px] font-bold text-[#46464f] px-1">Enter 4-digit code</label>
+                        <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Enter 4-digit code')}</label>
                         <input
                           value={otpValue}
                           onChange={(e) => setOtpValue(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
@@ -630,17 +619,13 @@ function BookingPageInner() {
                       <button
                         onClick={confirmOtp}
                         className="h-[42px] px-4 rounded-lg font-bold text-[12px] bg-[#000000] text-white hover:opacity-90 transition-all"
-                      >
-                        Verify
-                      </button>
+                      >{tx('Verify')}</button>
                     </div>
                   )}
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1 flex items-center gap-1.5">
-                    Email address
-                    <span className="text-[10px] font-medium text-[#6b6d78] normal-case">optional</span>
+                  <label className="text-[11px] font-bold text-[#46464f] px-1 flex items-center gap-1.5">{tx('Email address')}<span className="text-[10px] font-medium text-[#6b6d78] normal-case">{tx('optional')}</span>
                   </label>
                   <input
                     value={email}
@@ -651,7 +636,7 @@ function BookingPageInner() {
                     }`}
                     type="email"
                   />
-                  {!emailOk && <p role="alert" className="mt-1 text-[11px] px-1 text-[#ba1a1a] font-semibold">Check the email address.</p>}
+                  {!emailOk && <p role="alert" className="mt-1 text-[11px] px-1 text-[#ba1a1a] font-semibold">{tx('Check the email address.')}</p>}
                 </div>
               </div>
             </div>
@@ -663,15 +648,15 @@ function BookingPageInner() {
 
               <div className="space-y-[16px] mb-[24px] text-[14px]">
                 <div className="flex justify-between">
-                  <span className="text-[#46464f]">Bus</span>
+                  <span className="text-[#46464f]">{tx('Bus')}</span>
                   <span className="font-bold">{trip.bus.name} · {trip.bus.regNo}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#46464f]">Bus type</span>
+                  <span className="text-[#46464f]">{tx('Bus type')}</span>
                   <span className="font-bold">{trip.bus.type}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[#46464f]">Fare per seat</span>
+                  <span className="text-[#46464f]">{tx('Fare per seat')}</span>
                   <span className="font-bold">{formatLKR(trip.fare)}</span>
                 </div>
               </div>
@@ -683,11 +668,11 @@ function BookingPageInner() {
                 className="w-full flex items-center justify-between p-[16px] rounded-xl border-2 border-dashed border-[#c7c5d1] hover:border-[#050a44] transition-colors mb-[24px] group"
               >
                 <div className="text-left">
-                  <p className="text-[12px] font-bold text-[#46464f] mb-0.5">Seats</p>
+                  <p className="text-[12px] font-bold text-[#46464f] mb-0.5">{tx('Seats')}</p>
                   <p className="text-[16px] font-bold text-[#050a44]">
                     {selectedSeats.length === 0
-                      ? 'Select your seats'
-                      : `${selectedSeats.length} seat${selectedSeats.length > 1 ? 's' : ''} selected`}
+                      ? tx('Select your seats')
+                      : txn(selectedSeats.length, '{n} seat selected', '{n} seats selected')}
                   </p>
                   {selectedSeats.length > 0 && (
                     <p className="text-[12px] text-[#46464f] mt-1">{selectedSeats.join(', ')}</p>
@@ -702,41 +687,38 @@ function BookingPageInner() {
                 <>
                   <div className="space-y-[8px] mb-[24px] text-[14px]">
                     <div className="flex justify-between">
-                      <span className="text-[#46464f]">Price per seat</span>
+                      <span className="text-[#46464f]">{tx('Price per seat')}</span>
                       <span className="font-bold">{formatLKR(seatPrice)}</span>
                     </div>
                     {promoApplied && (
                       <div className="flex justify-between text-[#006e1c]">
-                        <span className="font-medium">Discount ({pub.promoCode}, {pub.promoPercent}%)</span>
+                        <span className="font-medium">{tx('Discount ({promoCode}, {promoPercent}%)', { promoCode: pub.promoCode, promoPercent: pub.promoPercent })}</span>
                         <span className="font-bold">-{formatLKR(discount)}</span>
                       </div>
                     )}
                     {bikes.map((b, i) => (
                       <div key={b.id} className="flex justify-between">
-                        <span className="text-[#46464f]">
-                          {bikeKind(b.kind).label} space{bikes.length > 1 ? ` ${i + 1}` : ''}
+                        <span className="text-[#46464f]">{tx('{label} space', { label: bikeKind(b.kind).label })}{bikes.length > 1 ? ` ${i + 1}` : ''}
                         </span>
                         <span className="font-bold">{formatLKR(b.fee)}</span>
                       </div>
                     ))}
                     <div className="flex justify-between">
-                      <span className="text-[#46464f]">Booking fee</span>
+                      <span className="text-[#46464f]">{tx('Booking fee')}</span>
                       <span className="font-bold">{formatLKR(platformFee)}</span>
                     </div>
                   </div>
 
                   <div className="bg-[#f2f4f6] rounded-xl p-[20px] mb-[24px]">
                     <div className="flex justify-between items-center">
-                      <span className="text-[16px] font-semibold">Total</span>
+                      <span className="text-[16px] font-semibold">{tx('Total')}</span>
                       <span className="text-[20px] font-semibold text-[#000000]">{formatLKR(totalPrice)}</span>
                     </div>
                   </div>
 
                   <div className={`flex items-center p-[12px] border rounded-xl mb-[16px] ${timeLeft < 60 ? 'bg-[#ffdad6]/50 border-[#ba1a1a]/20' : 'bg-[#feb700]/10 border-[#feb700]/20'}`}>
                     <span className={`material-symbols-outlined mr-[8px] text-[18px] ${timeLeft < 60 ? 'text-[#93000a]' : 'text-[#7c5800]'}`}>timer</span>
-                    <p className={`text-[11px] font-medium ${timeLeft < 60 ? 'text-[#93000a]' : 'text-[#6b4b00]'}`}>
-                      Seats are held for {formatTime(timeLeft)}
-                    </p>
+                    <p className={`text-[11px] font-medium ${timeLeft < 60 ? 'text-[#93000a]' : 'text-[#6b4b00]'}`}>{tx('Seats are held for {time}', { time: formatTime(timeLeft) })}</p>
                   </div>
                 </>
               )}
@@ -748,7 +730,7 @@ function BookingPageInner() {
                   !canProceedToPayment ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[0.98]'
                 }`}
               >
-                <span>Proceed to Payment</span>
+                <span>{tx('Proceed to Payment')}</span>
                 <span className="material-symbols-outlined">arrow_forward</span>
               </button>
 
@@ -756,18 +738,17 @@ function BookingPageInner() {
                 <p className="text-center text-[11px] font-medium text-[#ba1a1a] mt-[12px]">
                   {!passengerValid
                     ? bookingFor === 'other'
-                      ? "Fill in the passenger's name, gender, and phone number."
-                      : 'Fill in the passenger name and gender.'
+                      ? tx('Fill in the passenger\'s name, gender, and phone number.')
+                      : tx('Fill in the passenger name and gender.')
                     : !contactValid
-                    ? 'Verify your phone number to continue.'
+                    ? tx('Verify your phone number to continue.')
                     : selectedSeats.length === 0
-                    ? 'Select at least one seat to continue.'
+                    ? tx('Select at least one seat to continue.')
                     : bikeError}
                 </p>
               )}
 
-              <p className="text-center text-[12px] font-medium text-[#46464f] mt-[16px]">
-                By proceeding, you agree to our <a className="text-[#000000] underline" href="/legal#terms" target="_blank" rel="noopener">Terms of Service</a>
+              <p className="text-center text-[12px] font-medium text-[#46464f] mt-[16px]">{txr('By proceeding, you agree to our <a>Terms of Service</a>', { a: (c) => <a className="text-[#000000] underline" href="/legal#terms" target="_blank" rel="noopener">{c}</a> })}
               </p>
             </div>
 
@@ -777,16 +758,16 @@ function BookingPageInner() {
                   <span className="material-symbols-outlined text-[#7a7fbb]">sell</span>
                 </div>
                 <div className="min-w-0">
-                  <label htmlFor="promo-code" className="font-bold text-[14px] block">{promoApplied ? `${pub.promoCode} applied` : 'Have a promo code?'}</label>
+                  <label htmlFor="promo-code" className="font-bold text-[14px] block">{promoApplied ? tx('{promoCode} applied', { promoCode: pub.promoCode }) : tx('Have a promo code?')}</label>
                   {promoApplied ? (
-                    <p className="text-[12px] font-medium text-[#006e1c]">{pub.promoPercent}% off the fare: you save {formatLKR(discount)}</p>
+                    <p className="text-[12px] font-medium text-[#006e1c]">{tx('{promoPercent}% off the fare: you save {amount}', { promoPercent: pub.promoPercent, amount: formatLKR(discount) })}</p>
                   ) : (
                     <input
                       id="promo-code"
                       value={promoInput}
                       onChange={(e) => { setPromoInput(e.target.value.toUpperCase().replace(/\s/g, '')); setPromoError(''); }}
                       onKeyDown={(e) => e.key === 'Enter' && applyPromo()}
-                      placeholder="Enter code"
+                      placeholder={tx('Enter code')}
                       autoCapitalize="characters"
                       className="mt-1 w-full max-w-[220px] px-3 py-2 bg-white rounded-lg text-sm font-bold tracking-wide outline-none focus:ring-1 focus:ring-[#050a44] placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9a9ba5]"
                     />
@@ -795,7 +776,7 @@ function BookingPageInner() {
                 </div>
               </div>
               <button onClick={applyPromo} className="text-[#000000] font-bold text-[14px] hover:underline transition-all shrink-0 ml-3">
-                {promoApplied ? 'Remove' : 'Apply'}
+                {promoApplied ? tx('Remove') : tx('Apply')}
               </button>
             </div>
           </div>

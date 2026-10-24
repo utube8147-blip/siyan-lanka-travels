@@ -9,6 +9,7 @@
 // Staff area → Buses → Edit has the editor (components/admin/SeatLayoutEditor).
 import type { Bus } from './types';
 
+import { N_ } from '@/lib/i18n-core';
 export type SeatCell = string | null;
 export interface SeatMap {
   /** Seats left of the aisle in a normal row. */
@@ -60,9 +61,9 @@ export function layoutSegments(map: SeatMap): LayoutSegment[] {
 /** How "Build" and "Renumber" name the seats. */
 export type Numbering = 'letters' | 'ltr' | 'sheet';
 export const NUMBERINGS: { id: Numbering; label: string; hint: string }[] = [
-  { id: 'sheet', label: '1, 2, 3… right side first', hint: 'Like a printed booking sheet: in each row the right pair is numbered first (aisle seat, then window), then the left pair.' },
-  { id: 'ltr', label: '1, 2, 3… left to right', hint: 'Row by row, from the left window to the right window.' },
-  { id: 'letters', label: '1A, 1B, 1C… row + letter', hint: 'Row number and a letter across the row.' },
+  { id: 'sheet', label: N_('1, 2, 3… right side first'), hint: N_('Like a printed booking sheet: in each row the right pair is numbered first (aisle seat, then window), then the left pair.') },
+  { id: 'ltr', label: N_('1, 2, 3… left to right'), hint: N_('Row by row, from the left window to the right window.') },
+  { id: 'letters', label: N_('1A, 1B, 1C… row + letter'), hint: N_('Row number and a letter across the row.') },
 ];
 
 const LETTERS = 'ABCDEFGHJK';

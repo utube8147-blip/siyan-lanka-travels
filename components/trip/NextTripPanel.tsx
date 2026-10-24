@@ -9,17 +9,19 @@ import { MapPin, Navigation, Phone, Radio, Share2, Clock3, CreditCard } from 'lu
 import { OPERATOR } from '@/config/operator';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
-import { departureDate, formatDateLabel, formatLKR, formatTime12, getTrip, toMinutes } from '@/lib/trips';
+import { departureDate, formatDateLabel, formatLKR, formatTime12, getTrip, toMinutes, dateLocale } from '@/lib/trips';
 import { km, useLiveTrip, usePublicSettings, useTripContact, whatsappShareUrl } from '@/lib/extras';
 import { startPayhere } from '@/lib/payhere-client';
 import type { Booking } from '@/lib/types';
-import { useT } from '@/lib/i18n';
+import { useT, txr } from '@/lib/i18n';
 import { counterPlaces, useBranches } from '@/lib/branches';
 import { TripBell } from '@/components/trip/TripBell';
+import { tx } from '@/lib/i18n';
 
+import { fmtDate } from '@/lib/dates';
 const ago = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+  return m < 1 ? tx('just now') : m < 60 ? tx('{m} min ago', { m }) : tx('{round} h ago', { round: Math.round(m / 60) });
 };
 
 export function NextTripPanel() {
@@ -67,22 +69,22 @@ export function NextTripPanel() {
       const withPos = stops.map((s, i) => ({ i, d: s.lat != null && s.lng != null ? km(location, { lat: s.lat, lng: s.lng! }) : Infinity }));
       const near = withPos.sort((a, b) => a.d - b.d)[0];
       const toStop = km(location, { lat: stop.lat, lng: stop.lng });
-      if (near.i > bi && toStop > 3) eta = { text: 'The bus has passed your stop', tone: 'done' };
-      else if (toStop <= 1) eta = { text: 'The bus is at your stop now', tone: 'ok' };
+      if (near.i > bi && toStop > 3) eta = { text: tx('The bus has passed your stop'), tone: 'done' };
+      else if (toStop <= 1) eta = { text: tx('The bus is at your stop now'), tone: 'ok' };
       else {
         const mins = Math.max(2, stops[bi].offsetMin - stops[near.i].offsetMin + Math.round((near.d / 45) * 60));
-        eta = { text: `About ${mins} min away · near ${stops[near.i].name}`, tone: 'ok' };
+        eta = { text: tx('About {mins} min away · near {name}', { mins, name: stops[near.i].name }), tone: 'ok' };
       }
     } else if (minsToDep > -30) {
       const at = new Date(leaves.getTime() + delay * 60000);
-      eta = { text: delay ? `Running ~${delay} min late · expected ${at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : `On schedule · ${formatTime12(trip.departure)}`, tone: delay ? 'warn' : 'ok' };
+      eta = { text: delay ? tx('Running ~{delay} min late · expected {toLocaleTimeString}', { delay, toLocaleTimeString: at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) }) : tx('On schedule · {time}', { time: formatTime12(trip.departure) }), tone: delay ? 'warn' : 'ok' };
     }
   }
 
   const mapUrl = stop?.lat != null ? `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${booking.from} bus stand Sri Lanka`)}`;
   const busUrl = location ? `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}` : null;
   const share = whatsappShareUrl(
-    `My ${OPERATOR.name} ticket ${booking.ref}: ${booking.from} → ${booking.to}, ${formatDateLabel(trip.boardingDate)} at ${formatTime12(trip.departure)}, seat ${booking.seats.join(', ')}. Boarding: ${stop?.landmark ?? booking.from}. ${OPERATOR.siteUrl}/my-bookings`,
+    tx('My {name} ticket {ref}: {from} → {to}, {date} at {time}, seat {seats}. Boarding: {v}. {siteUrl}/my-bookings', { name: OPERATOR.name, ref: booking.ref, from: booking.from, to: booking.to, date: formatDateLabel(trip.boardingDate), time: formatTime12(trip.departure), seats: booking.seats.join(', '), v: stop?.landmark ?? booking.from, siteUrl: OPERATOR.siteUrl }),
   );
   const held = booking.status === 'held';
 
@@ -91,31 +93,26 @@ export function NextTripPanel() {
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm overflow-hidden mb-[28px]"
-      aria-label="Your next trip"
+      aria-label={tx('Your next trip')}
     >
       <div className="px-5 py-4 flex flex-wrap items-start justify-between gap-3 border-b border-[#edeef0]">
         <div>
-          <p className="text-[12px] font-bold uppercase tracking-wide text-[#7c5800]">{held ? (booking.paymentMethod === 'bus' ? 'Seat reserved · pay on the bus' : t('Seat held · not paid yet')) : minsToDep < 24 * 60 ? t('Your trip is coming up') : t('Your next trip')}</p>
+          <p className="text-[12px] font-bold uppercase tracking-wide text-[#7c5800]">{held ? (booking.paymentMethod === 'bus' ? tx('Seat reserved · pay on the bus') : t('Seat held · not paid yet')) : minsToDep < 24 * 60 ? t('Your trip is coming up') : t('Your next trip')}</p>
           <h2 className="text-[20px] font-semibold text-[#050a44] mt-0.5">
             {booking.from} → {booking.to}
           </h2>
-          <p className="text-[13px] text-[#46464f]">
-            {formatDateLabel(trip.boardingDate)} · {formatTime12(trip.departure)} · seat {booking.seats.join(', ')} · {booking.ref}
-          </p>
+          <p className="text-[13px] text-[#46464f]">{tx('{date} · {time} · seat {seats} · {ref}', { date: formatDateLabel(trip.boardingDate), time: formatTime12(trip.departure), seats: booking.seats.join(', '), ref: booking.ref })}</p>
         </div>
         <div className="flex flex-wrap items-start gap-2">
           <TripBell bookingId={booking.id} />
           {contact && (
             <a href={`tel:${contact.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold">
-              <Phone className="w-4 h-4" /> Call {contact.role}
-            </a>
+              <Phone className="w-4 h-4" />{' '}{tx('Call {role}', { role: contact.role })}</a>
           )}
           <a href={`/track?ref=${booking.ref}`} className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#feb700] text-[#14120a] text-[13px] font-bold">
-            <Radio className="w-4 h-4" /> Track bus
-          </a>
+            <Radio className="w-4 h-4" />{' '}{tx('Track bus')}</a>
           <a href={share} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#25D366] text-white text-[13px] font-bold">
-            <Share2 className="w-4 h-4" /> WhatsApp
-          </a>
+            <Share2 className="w-4 h-4" />{' '}{tx('WhatsApp')}</a>
         </div>
       </div>
 
@@ -123,15 +120,20 @@ export function NextTripPanel() {
         <div className="px-5 py-3 bg-[#feb700]/10 border-b border-[#feb700]/30 text-[13px] text-[#46464f] flex flex-wrap items-center gap-3">
           <Clock3 className="w-4 h-4 text-[#7c5800]" />
           <span className="flex-1 min-w-[200px]">
-            Pay <b className="text-[#050a44]">{formatLKR(booking.total)}</b>
-            {booking.paymentMethod === 'bus' && <> in cash to the conductor when you board. Your seat is reserved; show the QR code.</>}
-            {booking.paymentMethod !== 'bus' && booking.holdExpiresAt && <> by <b className="text-[#050a44]">{new Date(booking.holdExpiresAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</b></>}{' '}
-            {booking.paymentMethod === 'bus' ? null : booking.paymentMethod === 'bank' ? <>by bank transfer to {pub.bankDetails} (reference {booking.ref}).</> : booking.paymentMethod === 'counter' ? <>at {counters.list.length ? `${counters.text} (${counters.list.map((b) => b.address || b.name).join('; ')})` : `our counter, ${OPERATOR.contact.address}`}.</> : <>or the seat is released.</>}
+            {(() => {
+              const b = (c: React.ReactNode) => <b className="text-[#050a44]">{c}</b>;
+              const amount = formatLKR(booking.total);
+              const until = booking.holdExpiresAt ? fmtDate(new Date(booking.holdExpiresAt), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+              if (booking.paymentMethod === 'bus') return txr('Pay <b>{amount}</b> in cash to the conductor when you board. Your seat is reserved; show the QR code.', { amount, b });
+              if (booking.paymentMethod === 'bank') return txr('Pay <b>{amount}</b> by <b2>{until}</b2> by bank transfer to {bankDetails} (reference {ref}).', { amount, until, bankDetails: pub.bankDetails, ref: booking.ref, b, b2: b });
+              if (booking.paymentMethod === 'counter')
+                return txr('Pay <b>{amount}</b> by <b2>{until}</b2> at {where}.', { amount, until, where: counters.list.length ? `${counters.text} (${counters.list.map((x) => x.address || x.name).join('; ')})` : tx('our counter, {address}', { address: OPERATOR.contact.address }), b, b2: b });
+              return txr('Pay <b>{amount}</b> by <b2>{until}</b2> or the seat is released.', { amount, until, b, b2: b });
+            })()}
           </span>
           {pub.paymentsMode === 'payhere' && pub.cardPayments && (
             <button onClick={async () => setPayErr(await startPayhere(booking.id))} className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#feb700] text-[#14120a] font-bold">
-              <CreditCard className="w-4 h-4" /> Pay online now
-            </button>
+              <CreditCard className="w-4 h-4" />{' '}{tx('Pay online now')}</button>
           )}
           {payErr && <span className="w-full text-[#ba1a1a] font-semibold">{payErr}</span>}
         </div>
@@ -140,13 +142,13 @@ export function NextTripPanel() {
       <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#edeef0]">
         <div className="p-5">
           <p className="text-[12px] font-bold text-[#46464f] flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {t('Where to wait')}</p>
-          <p className="text-[15px] font-semibold text-[#050a44] mt-1">{stop?.landmark || `${booking.from} bus stand`}</p>
+          <p className="text-[15px] font-semibold text-[#050a44] mt-1">{stop?.landmark || tx('{from} bus stand', { from: booking.from })}</p>
           {stop?.notes && <p className="text-[13px] text-[#46464f] mt-1">{stop.notes}</p>}
           {stop?.photo && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={stop.photo} alt={`Boarding point at ${booking.from}`} className="mt-3 w-full max-h-48 object-cover rounded-xl border border-[#edeef0]" />
+            <img src={stop.photo} alt={tx('Boarding point at {from}', { from: booking.from })} className="mt-3 w-full max-h-48 object-cover rounded-xl border border-[#edeef0]" />
           )}
-          <p className="text-[12px] text-[#6b6d78] mt-2">Be there 20 minutes early. At night, wait in a lit spot and look for &ldquo;SIYAN LANKA&rdquo; on the windscreen.</p>
+          <p className="text-[12px] text-[#6b6d78] mt-2">{tx('Be there 20 minutes early. At night, wait in a lit spot and look for “SIYAN LANKA” on the windscreen.')}</p>
           <a href={mapUrl} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 mt-3 text-[13px] font-bold text-[#050a44] underline">
             <Navigation className="w-4 h-4" /> {t('Open in Maps')}
           </a>
@@ -163,13 +165,11 @@ export function NextTripPanel() {
                 <p className={`text-[15px] font-semibold mt-1 ${eta.tone === 'warn' ? 'text-[#7c5800]' : eta.tone === 'done' ? 'text-[#46464f]' : 'text-[#006e1c]'}`}>{eta.text}</p>
               )}
               {location ? (
-                <p className="text-[12px] text-[#6b6d78] mt-1">
-                  Location updated {ago(location.updatedAt)}
-                  {location.speedKmh ? ` · ${location.speedKmh} km/h` : ''} ·{' '}
-                  <a href={busUrl!} target="_blank" rel="noopener" className="underline font-semibold text-[#050a44]">see bus on map</a>
+                <p className="text-[12px] text-[#6b6d78] mt-1">{location.speedKmh ? tx('Location updated {updatedAt} · {speed} km/h', { updatedAt: ago(location.updatedAt), speed: location.speedKmh }) : tx('Location updated {updatedAt}', { updatedAt: ago(location.updatedAt) })} ·{' '}
+                  <a href={busUrl!} target="_blank" rel="noopener" className="underline font-semibold text-[#050a44]">{tx('see bus on map')}</a>
                 </p>
               ) : (
-                <p className="text-[12px] text-[#6b6d78] mt-1">The bus hasn&apos;t started sharing its location yet.</p>
+                <p className="text-[12px] text-[#6b6d78] mt-1">{tx('The bus hasn\'t started sharing its location yet.')}</p>
               )}
             </>
           )}
@@ -178,13 +178,13 @@ export function NextTripPanel() {
               {events.slice(0, 3).map((e) => (
                 <li key={e.id} className="text-[13px] text-[#46464f]">
                   <span className="text-[#6b6d78]">{new Date(e.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>{' '}
-                  {e.kind === 'departed' ? `Left ${e.stop}` : e.kind === 'delayed' ? `Running ${e.minutes} min late` : e.kind === 'arriving' ? `${e.minutes} min from ${e.stop}` : e.kind === 'arrived' ? `Reached ${e.stop}` : e.message}
+                  {e.kind === 'departed' ? tx('Left {stop}', { stop: e.stop }) : e.kind === 'delayed' ? tx('Running {minutes} min late', { minutes: e.minutes }) : e.kind === 'arriving' ? tx('{minutes} min from {stop}', { minutes: e.minutes, stop: e.stop }) : e.kind === 'arrived' ? tx('Reached {stop}', { stop: e.stop }) : e.message}
                   {e.message && e.kind !== 'note' ? ` · ${e.message}` : ''}
                 </li>
               ))}
             </ul>
           )}
-          {liveWindow && toMinutes(trip.departure) >= 0 && <p className="sr-only">Scheduled departure {formatTime12(trip.departure)}</p>}
+          {liveWindow && toMinutes(trip.departure) >= 0 && <p className="sr-only">{tx('Scheduled departure {time}', { time: formatTime12(trip.departure) })}</p>}
         </div>
       </div>
     </motion.section>

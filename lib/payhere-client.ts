@@ -1,4 +1,5 @@
 'use client';
+import { tx } from '@/lib/i18n';
 /** Send the passenger to PayHere for a held booking. Returns an error message, or never returns (redirects). */
 export async function startPayhere(bookingId: string): Promise<string | null> {
   return start({ bookingId });
@@ -10,7 +11,7 @@ export async function startPayhereResale(orderRef: string): Promise<string | nul
 async function start(body: { bookingId: string } | { resaleOrder: string }): Promise<string | null> {
   const res = await fetch('/api/payhere/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const j = await res.json().catch(() => ({}));
-  if (!res.ok) return j.error ?? 'Could not start the payment.';
+  if (!res.ok) return j.error ?? tx('Could not start the payment.');
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = j.action;

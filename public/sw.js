@@ -4,7 +4,7 @@
  *   under the same URL).
  * Bump VERSION to force every phone to refresh its cache.
  */
-const VERSION = 'v4';
+const VERSION = 'v5';
 // Registered as /sw.js?dev=1 during `npm run dev`: no caching, so you never
 // see stale files while developing (install + notifications still work).
 const DEV = new URL(self.location.href).searchParams.has('dev');
@@ -25,6 +25,17 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Pages with someone's tickets, money or staff data are never kept for
+// offline use (a shared phone would show them to the next person).
+const PRIVATE = /^\/(admin|conductor|staff|auth|my-bookings|dashboard|payment|refund|profile|track|marketplace\/buy|api)(\/|$)/;
+const MAX_PAGES = 40;
+async function keepPage(request, response) {
+  const cache = await caches.open(PAGE_CACHE);
+  await cache.put(request, response);
+  const keys = await cache.keys();
+  for (const old of keys.slice(0, Math.max(0, keys.length - MAX_PAGES))) await cache.delete(old);
+}
+
 const isStatic = (url) =>
   url.pathname.startsWith('/_next/static/') ||
   url.pathname.startsWith('/icons/') ||
@@ -41,13 +52,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(PAGE_CACHE).then((c) => c.put(request, copy));
-          }
+          if (res.ok && !PRIVATE.test(url.pathname)) keepPage(request, res.clone()).catch(() => {});
           return res;
         })
-        .catch(async () => (await caches.match(request)) || (await caches.match('/offline.html')) || Response.error()),
+        .catch(async () => (!PRIVATE.test(url.pathname) && (await caches.match(request))) || (await caches.match('/offline.html')) || Response.error()),
     );
     return;
   }

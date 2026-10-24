@@ -10,17 +10,19 @@ import { NotificationOptIn } from '@/components/NotificationOptIn';
 import { SuccessCheck } from '@/components/motion/SuccessCheck';
 import { counterPlaces, useBranches } from '@/lib/branches';
 import { useLoyalty, usePublicSettings, useSavedPassengers, whatsappShareUrl } from '@/lib/extras';
-import { addDays as addDaysIso } from '@/lib/trips';
+import { addDays as addDaysIso, dateLocale } from '@/lib/trips';
 import { notify } from '@/lib/pwa';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, todayISO } from '@/lib/trips';
 import type { BikeItem, Gender } from '@/lib/types';
-import { useT } from '@/lib/i18n';
+import { useT, txr, txn } from '@/lib/i18n';
 import { useBookingCode, CODE_CANCELLED } from '@/components/BookingCodeGate';
 import { PaymentSlipCard } from '@/components/trip/PaymentSlipCard';
 import { SLIP_ACCEPT, submitSlip } from '@/lib/money';
+import { tx } from '@/lib/i18n';
 
+import { fmtDate } from '@/lib/dates';
 type PaymentMethod = 'card' | 'wallet' | 'bank' | 'counter' | 'bus';
 type PayState = 'idle' | 'processing' | 'success';
 
@@ -155,8 +157,8 @@ function PaymentPageInner() {
     if (!canPay) {
       setError(
         method === 'card'
-          ? 'Fill in all card details correctly.'
-          : 'Select a wallet provider to continue.'
+          ? tx('Fill in all card details correctly.')
+          : tx('Select a wallet provider to continue.')
       );
       return;
     }
@@ -174,7 +176,7 @@ function PaymentPageInner() {
         to: trip.to,
         seats,
         passenger: {
-          name: lead?.name || 'Passenger',
+          name: lead?.name || tx('Passenger'),
           gender: (lead?.gender as Gender) || '',
           phone: lead?.phone || contactPhone,
         },
@@ -194,13 +196,13 @@ function PaymentPageInner() {
       if (!result.ok) {
         setPayState('idle');
         // Only a seat problem is fixed by picking another seat; anything else just says what went wrong.
-        setError(result.reason === CODE_CANCELLED ? CODE_CANCELLED : /seat/i.test(result.reason ?? '') && !/hold|reserve/i.test(result.reason ?? '') ? `${result.reason} Go back and pick another seat. You have not been charged.` : `${result.reason} You have not been charged.`);
+        setError(result.reason === CODE_CANCELLED ? tx(CODE_CANCELLED) : /seat/i.test(result.reason ?? '') && !/hold|reserve/i.test(result.reason ?? '') ? tx('{reason} Go back and pick another seat. You have not been charged.', { reason: result.reason }) : tx('{reason} You have not been charged.', { reason: result.reason }));
         return;
       }
       // Already transferred: send the slip with the booking, so the office can check it straight away.
       if (method === 'bank' && slipFile && result.booking.status === 'held') {
         const up = await submitSlip(result.booking, slipFile, slipRef.trim());
-        setSlipNote(up.ok ? '' : `Your seat is held, but the slip didn't upload (${up.reason ?? 'try again'}). Upload it below.`);
+        setSlipNote(up.ok ? '' : tx("Your seat is held, but the slip didn't upload ({reason}). Upload it below.", { reason: up.reason ?? tx('try again') }));
         // Re-read the booking so the next screen shows "Slip received" and doesn't ask for it again.
         if (up.ok) await reload();
       }
@@ -212,7 +214,7 @@ function PaymentPageInner() {
         const j = await res.json().catch(() => ({}));
         if (!res.ok) {
           setPayState('idle');
-          setError(j.error ?? 'Could not start the payment. Your seat is held for 20 minutes; try again from My trips.');
+          setError(j.error ?? tx('Could not start the payment. Your seat is held for 20 minutes; try again from My trips.'));
           return;
         }
         const form = document.createElement('form');
@@ -230,8 +232,8 @@ function PaymentPageInner() {
         return;
       }
       setHeldUntil(result.booking.status === 'held' ? result.booking.holdExpiresAt ?? null : null);
-      notify('Booking confirmed', {
-        body: `${trip.from} → ${trip.to}, ${formatDateLabel(trip.boardingDate)} at ${formatTime12(trip.departure)} · Seat ${seats.join(', ')} · ${result.booking.ref}`,
+      notify(tx('Booking confirmed'), {
+        body: tx('{from} → {to}, {date} at {time} · Seat {seats} · {ref}', { from: trip.from, to: trip.to, date: formatDateLabel(trip.boardingDate), time: formatTime12(trip.departure), seats: seats.join(', '), ref: result.booking.ref }),
         tag: `booking-${result.booking.id}`,
         url: '/my-bookings',
       });
@@ -272,7 +274,7 @@ function PaymentPageInner() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      setError('Could not download the ticket right now.');
+      setError(tx('Could not download the ticket right now.'));
     } finally {
       setIsDownloading(false);
     }
@@ -285,15 +287,11 @@ function PaymentPageInner() {
   if (!trip) {
     return (
       <main className="max-w-[600px] mx-auto px-4 py-[64px] text-center">
-        <p className="text-[16px] font-semibold text-[#46464f]">
-          We couldn't find that trip. Please start your booking again.
-        </p>
+        <p className="text-[16px] font-semibold text-[#46464f]">{tx('We couldn\'t find that trip. Please start your booking again.')}</p>
         <button
           onClick={() => router.push('/search')}
           className="mt-[16px] px-6 py-3 bg-black text-white rounded-xl font-bold text-sm"
-        >
-          Back to Search
-        </button>
+        >{tx('Back to Search')}</button>
       </main>
     );
   }
@@ -306,20 +304,18 @@ function PaymentPageInner() {
             <div className="mb-[14px]">
                 <SuccessCheck size={68} />
             </div>
-            <h1 className="text-[24px] font-bold mb-[4px]">{heldUntil ? (method === 'bus' ? 'Seat reserved' : t('Seat held')) : t('Booking Confirmed!')}</h1>
+            <h1 className="text-[24px] font-bold mb-[4px]">{heldUntil ? (method === 'bus' ? tx('Seat reserved') : t('Seat held')) : t('Booking Confirmed!')}</h1>
             <p className="text-[14px] text-[#46464f] max-w-xl">
                 {heldUntil && method === 'bus' ? (
-                  <>
-                    Your seat is reserved. Pay <span className="font-bold">{formatLKR(totalPrice)}</span> in cash to the conductor when you board, and show the QR code below. We&apos;ve texted you the details.
-                  </>
+                  <>{txr("Your seat is reserved. Pay <b>{amount}</b> in cash to the conductor when you board, and show the QR code below. We've texted you the details.", { amount: formatLKR(totalPrice), b: (c) => <span className="font-bold">{c}</span> })}</>
                 ) : heldUntil ? (
                   <>
-                    Pay <span className="font-bold">{formatLKR(totalPrice)}</span> by{' '}
-                    <span className="font-bold">{new Date(heldUntil).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>{' '}
-                    {method === 'bank' ? `to ${pub.bankDetails}, reference ${bookingRef}.` : `at ${counters.list.length ? `${counters.text}: ${counterWhere}` : `our counter (${counterWhere})`}.`} We&apos;ve texted you the details.
+                    {method === 'bank'
+                      ? txr("Pay <b>{amount}</b> by <b2>{until}</b2> to {bankDetails}, reference {bookingRef}. We've texted you the details.", { amount: formatLKR(totalPrice), until: fmtDate(new Date(heldUntil), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), bankDetails: pub.bankDetails, bookingRef, b: (c) => <span className="font-bold">{c}</span>, b2: (c) => <span className="font-bold">{c}</span> })
+                      : txr("Pay <b>{amount}</b> by <b2>{until}</b2> at {where}. We've texted you the details.", { amount: formatLKR(totalPrice), until: fmtDate(new Date(heldUntil), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), where: counters.list.length ? `${counters.text}: ${counterWhere}` : tx('our counter ({where})', { where: counterWhere }), b: (c) => <span className="font-bold">{c}</span>, b2: (c) => <span className="font-bold">{c}</span> })}
                   </>
                 ) : (
-                  <>Your ticket is in My trips and we&apos;ve texted you the details. Show the QR code when you board.</>
+                  <>{tx('Your ticket is in My trips and we\'ve texted you the details. Show the QR code when you board.')}</>
                 )}
             </p>
             <div className="flex flex-wrap justify-center gap-2 mt-4">
@@ -355,19 +351,19 @@ function PaymentPageInner() {
                 <div className="px-[24px] py-[16px] bg-[#f2f4f6] flex justify-between items-center border-b border-[#c7c5d1]">
                     <div>
                     <h3 className="text-[16px] font-semibold">{OPERATOR.name}</h3>
-                    <p className="text-[11px] text-[#46464f]">Bus No. {scheduleId.toUpperCase()}</p>
+                    <p className="text-[11px] text-[#46464f]">{tx('Bus No. {scheduleId}', { scheduleId: scheduleId.toUpperCase() })}</p>
                     </div>
                     <div className="text-right">
                     <span className="bg-[#feb700]/20 text-[#6b4b00] px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wide">
                         {trip.bus.type} · {trip.bus.name}
                     </span>
-                    <p className="mt-[6px] text-[11px] text-[#46464f]">PNR: {bookingRef}</p>
+                    <p className="mt-[6px] text-[11px] text-[#46464f]">{tx('PNR: {bookingRef}', { bookingRef })}</p>
                     </div>
                 </div>
 
                 <div className="p-[24px] grid grid-cols-1 md:grid-cols-3 gap-[24px]">
                     <div className="flex flex-col">
-                    <span className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">Departure</span>
+                    <span className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">{tx('Departure')}</span>
                     <span className="text-[18px] font-semibold">{pickup}</span>
                     <span className="text-[13px] text-[#46464f]">{formatDateLabel(trip.boardingDate)} • {formatTime12(trip.departure)}</span>
                     </div>
@@ -382,35 +378,35 @@ function PaymentPageInner() {
                     </div>
 
                     <div className="flex flex-col md:text-right">
-                    <span className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">Arrival</span>
+                    <span className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">{tx('Arrival')}</span>
                     <span className="text-[18px] font-semibold">{drop}</span>
-                    <span className="text-[13px] text-[#46464f]">{formatTime12(trip.arrival)}{trip.arrivalDayOffset ? ' (+1 day)' : ''}</span>
+                    <span className="text-[13px] text-[#46464f]">{formatTime12(trip.arrival)}{trip.arrivalDayOffset ? tx(' (+1 day)') : ''}</span>
                     </div>
                 </div>
 
                 <div className="px-[24px] py-[16px] border-t border-[#c7c5d1] bg-white grid grid-cols-2 md:grid-cols-4 gap-[16px]">
                     <div>
-                    <span className="text-[11px] text-[#46464f] block">Passenger</span>
+                    <span className="text-[11px] text-[#46464f] block">{tx('Passenger')}</span>
                     <span className="text-[13px] font-bold">{passengerNames}</span>
                     </div>
                     <div>
-                    <span className="text-[11px] text-[#46464f] block">Seat Number</span>
+                    <span className="text-[11px] text-[#46464f] block">{tx('Seat Number')}</span>
                     <span className="text-[13px] font-bold">{seats.join(', ') || '—'}</span>
                     </div>
                     {bikes.length > 0 && (
                       <div>
-                        <span className="text-[11px] text-[#46464f] block">Luggage compartment</span>
+                        <span className="text-[11px] text-[#46464f] block">{tx('Luggage compartment')}</span>
                         <span className="text-[13px] font-bold">
                           {bikes.map((b) => `${bikeKind(b.kind).label}${b.regNo ? ` (${b.regNo})` : ''}`).join(', ')}
                         </span>
                       </div>
                     )}
                     <div>
-                    <span className="text-[11px] text-[#46464f] block">Boarding Point</span>
+                    <span className="text-[11px] text-[#46464f] block">{tx('Boarding Point')}</span>
                     <span className="text-[13px] font-bold">{pickup}</span>
                     </div>
                     <div>
-                    <span className="text-[11px] text-[#46464f] block">Total Fare</span>
+                    <span className="text-[11px] text-[#46464f] block">{tx('Total Fare')}</span>
                     <span className="text-[13px] font-bold">{formatLKR(totalPrice)}</span>
                     </div>
                 </div>
@@ -420,33 +416,21 @@ function PaymentPageInner() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-[24px] flex-1">
                 <div className="bg-white p-[20px] rounded-xl border border-[#c7c5d1] shadow-sm h-full flex flex-col">
                     <h4 className="text-[14px] font-semibold mb-[12px] flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[18px]">info</span>
-                    Travel Guidelines
-                    </h4>
+                    <span className="material-symbols-outlined text-[18px]">info</span>{tx('Travel Guidelines')}</h4>
                     <ul className="space-y-[8px] text-[13px] text-[#46464f]">
                     <li className="flex gap-2">
-                        <span className="font-bold">•</span>
-                        Please report at the boarding point 20 minutes before departure.
-                    </li>
+                        <span className="font-bold">•</span>{tx('Please report at the boarding point 20 minutes before departure.')}</li>
                     <li className="flex gap-2">
-                        <span className="font-bold">•</span>
-                        Carry a valid photo ID for verification.
-                    </li>
+                        <span className="font-bold">•</span>{tx('Carry a valid photo ID for verification.')}</li>
                     <li className="flex gap-2">
-                        <span className="font-bold">•</span>
-                        Maximum luggage allowance: 20kg per person.
-                    </li>
+                        <span className="font-bold">•</span>{tx('Maximum luggage allowance: 20kg per person.')}</li>
                     </ul>
                 </div>
 
                 <div className="bg-white p-[20px] rounded-xl border border-[#c7c5d1] shadow-sm h-full flex flex-col">
                     <h4 className="text-[14px] font-semibold mb-[12px] flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[18px]">support_agent</span>
-                    Support &amp; Help
-                    </h4>
-                    <p className="text-[13px] text-[#46464f] mb-[12px]">
-                    Need to change your travel plans? Get in touch and we'll help.
-                    </p>
+                    <span className="material-symbols-outlined text-[18px]">support_agent</span>{tx('Support & Help')}</h4>
+                    <p className="text-[13px] text-[#46464f] mb-[12px]">{tx('Need to change your travel plans? Get in touch and we\'ll help.')}</p>
                     <div className="flex flex-col gap-[6px]">
                     {OPERATOR.contact.phone ? (<a className="flex items-center gap-2 text-[13px] font-bold hover:underline" href={OPERATOR.contact.phoneHref}><span className="material-symbols-outlined text-[16px]">call</span>{OPERATOR.contact.phone}</a>) : null}
                     <a className="flex items-center gap-2 text-[13px] font-bold hover:underline" href={`mailto:${OPERATOR.contact.email}`}>
@@ -461,27 +445,21 @@ function PaymentPageInner() {
             {/* QR & Actions */}
             <div className="lg:col-span-4 flex flex-col gap-[24px] lg:h-full">
                 <div className="bg-white rounded-xl shadow-sm border border-[#c7c5d1] overflow-hidden p-[24px] flex flex-col items-center">
-                <span className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-[16px]">
-                    Boarding QR Code
-                </span>
+                <span className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-[16px]">{tx('Boarding QR Code')}</span>
 
                 <div className="p-3 bg-white border border-[#c7c5d1] rounded-xl mb-[16px]">
                     {qrImageUrl ? (
                     <img
                         src={qrImageUrl}
-                        alt={`QR code for booking ${bookingRef}`}
+                        alt={tx('QR code for booking {bookingRef}', { bookingRef })}
                         className="w-[160px] h-[160px]"
                     />
                     ) : (
-                    <div className="w-[160px] h-[160px] flex items-center justify-center text-[11px] font-medium text-[#46464f]">
-                        Generating QR…
-                    </div>
+                    <div className="w-[160px] h-[160px] flex items-center justify-center text-[11px] font-medium text-[#46464f]">{tx('Generating QR…')}</div>
                     )}
                 </div>
 
-                <p className="text-center text-[12px] text-[#46464f] mb-[20px]">
-                    Scan this QR code at the counter or during boarding to verify your e-ticket.
-                </p>
+                <p className="text-center text-[12px] text-[#46464f] mb-[20px]">{tx('Scan this QR code at the counter or during boarding to verify your e-ticket.')}</p>
 
                 {error && (
                     <p className="text-[11px] font-medium text-[#ba1a1a] mb-[12px] text-center">{error}</p>
@@ -501,18 +479,14 @@ function PaymentPageInner() {
                         <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
                     ) : (
                         <>
-                        <span className="material-symbols-outlined text-[16px]">download</span>
-                        Download Ticket
-                        </>
+                        <span className="material-symbols-outlined text-[16px]">download</span>{tx('Download Ticket')}</>
                     )}
                     </button>
 
                     <button
                     onClick={() => router.push('/')}
                     className="w-full py-3 px-4 rounded-xl font-bold text-[13px] bg-white text-black border border-[#c7c5d1] hover:bg-[#f2f4f6] active:scale-95 transition-all"
-                    >
-                    Back to Home
-                    </button>
+                    >{tx('Back to Home')}</button>
                     <NotificationOptIn compact />
                 </div>
                 </div>
@@ -521,11 +495,9 @@ function PaymentPageInner() {
                 <div className="bg-[#f2f4f6] rounded-xl p-[20px] border border-[#c7c5d1] flex-1 flex flex-col justify-center">
                 <div className="flex items-center gap-2 mb-[8px]">
                     <span className="material-symbols-outlined text-[18px] text-[#46464f]">notifications_active</span>
-                    <span className="text-[13px] font-bold">Trip Reminder</span>
+                    <span className="text-[13px] font-bold">{tx('Trip Reminder')}</span>
                 </div>
-                <p className="text-[12px] text-[#46464f]">
-                    We'll send a reminder to {contactPhone || 'your registered number'} a few hours before departure.
-                </p>
+                <p className="text-[12px] text-[#46464f]">{tx("We'll send a reminder to {phone} a few hours before departure.", { phone: contactPhone || tx('your registered number') })}</p>
                 </div>
             </div>
             </div>
@@ -536,21 +508,21 @@ function PaymentPageInner() {
   return (
     <main className="max-w-[1200px] mx-auto px-4 md:px-[64px] py-[32px]">
       {bookingCode.modal}
-      <nav aria-label="Breadcrumb" className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
+      <nav aria-label={tx('Breadcrumb')} className="hidden md:flex flex-wrap items-center space-x-2 text-[12px] font-medium mb-[24px] text-[#46464f]">
         <div className="flex items-center">
-          <span className="cursor-default">Search Results</span>
+          <span className="cursor-default">{tx('Search Results')}</span>
           <span className="material-symbols-outlined text-[16px] mx-1">chevron_right</span>
         </div>
         <div className="flex items-center">
-          <span className="cursor-default">Passenger Details</span>
+          <span className="cursor-default">{tx('Passenger Details')}</span>
           <span className="material-symbols-outlined text-[16px] mx-1 text-[#46464f]">chevron_right</span>
         </div>
         <div className="flex items-center">
-          <span className="text-[#000000] font-bold">Payment</span>
+          <span className="text-[#000000] font-bold">{tx('Payment')}</span>
         </div>
       </nav>
 
-      <h1 className="text-[20px] font-semibold mb-[24px]">Complete your payment</h1>
+      <h1 className="text-[20px] font-semibold mb-[24px]">{tx('Complete your payment')}</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-[24px]">
         <div className="lg:col-span-7 space-y-[24px]">
@@ -574,9 +546,7 @@ function PaymentPageInner() {
                 <button
                   onClick={() => setMethod('bus')}
                   className={`py-2 text-sm font-bold rounded-lg transition-all ${method === 'bus' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'}`}
-                >
-                  Pay on the bus
-                </button>
+                >{tx('Pay on the bus')}</button>
               )}
               {(['card', 'wallet'] as const).map((m) => (
                 <button
@@ -584,14 +554,14 @@ function PaymentPageInner() {
                   onClick={() => cardOpen && setMethod(m)}
                   disabled={!cardOpen}
                   aria-disabled={!cardOpen}
-                  title={cardOpen ? undefined : 'Not available yet'}
+                  title={cardOpen ? undefined : tx('Not available yet')}
                   className={`py-2 text-sm font-bold rounded-lg transition-all ${
                     !cardOpen ? 'text-[#9a9ba5] cursor-not-allowed' : method === m ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
                   }`}
                 >
                   {!cardOpen && <span className="material-symbols-outlined text-[14px] align-[-2px] mr-1">lock</span>}
                   {m === 'card' ? t('Card') : t('Mobile Wallet')}
-                  {!cardOpen && <span className="block text-[10px] font-semibold">Not available yet</span>}
+                  {!cardOpen && <span className="block text-[10px] font-semibold">{tx('Not available yet')}</span>}
                 </button>
               ))}
             </div>
@@ -601,7 +571,7 @@ function PaymentPageInner() {
                 <input type="checkbox" checked={useReward} onChange={(e) => setUseReward(e.target.checked)} className="w-5 h-5 accent-[#050a44]" />
                 <span className="text-[14px]">
                   <span className="font-bold text-[#050a44]">{t('Use my free trip')}</span>
-                  <span className="block text-[12px] text-[#46464f]">You&apos;ve earned it: one seat on this booking is free ({formatLKR(seatPrice)} off).</span>
+                  <span className="block text-[12px] text-[#46464f]">{tx('You\'ve earned it: one seat on this booking is free ({amount} off).', { amount: formatLKR(seatPrice) })}</span>
                 </span>
               </label>
             )}
@@ -609,38 +579,31 @@ function PaymentPageInner() {
             {holdMethod ? (
               <div className="rounded-xl bg-[#f8f9fb] border border-[#e1e2e4] p-4 space-y-2 text-[14px] text-[#46464f]">
                 <p className="font-bold text-[#050a44]">
-                  {method === 'bank' ? 'We hold your seat while you transfer' : method === 'bus' ? 'Reserve now, pay the conductor on the bus' : 'We hold your seat, you pay at our counter'}
+                  {method === 'bank' ? tx('We hold your seat while you transfer') : method === 'bus' ? tx('Reserve now, pay the conductor on the bus') : tx('We hold your seat, you pay at our counter')}
                 </p>
                 {method === 'bus' ? (
-                  <p>
-                    Your seat is reserved for this trip. Pay <b className="text-[#050a44]">{formatLKR(totalPrice)}</b> in cash to the conductor when you board; please bring the exact amount. Show the QR code in My trips. If your plans change, cancel in My trips so someone else can have the seat.
-                  </p>
+                  <p>{txr('Your seat is reserved for this trip. Pay <b>{amount}</b> in cash to the conductor when you board; please bring the exact amount. Show the QR code in My trips. If your plans change, cancel in My trips so someone else can have the seat.', { amount: formatLKR(totalPrice), b: (c) => <b className="text-[#050a44]">{c}</b> })}</p>
                 ) : (
                 <>
-                <p>
-                  Your seat is held for {method === 'bank' ? `${Math.round(pub.holdMinutesBank / 60)} hours` : `${Math.round(pub.holdMinutesCounter / 60)} hours`}{' '}(or until online booking closes, if sooner).
-                  If it isn&apos;t paid by then, it&apos;s released for others.
-                </p>
+                <p>{txn(Math.round((method === 'bank' ? pub.holdMinutesBank : pub.holdMinutesCounter) / 60), "Your seat is held for {n} hour (or until online booking closes, if sooner). If it isn't paid by then, it's released for others.", "Your seat is held for {n} hours (or until online booking closes, if sooner). If it isn't paid by then, it's released for others.")}</p>
                 {method === 'bank' ? (
                   <>
                   <p className="rounded-lg bg-white border border-[#e1e2e4] px-3 py-2 font-semibold text-[#050a44]">
                     {pub.bankDetails}
-                    <span className="block text-[12px] font-normal text-[#46464f]">Use your booking reference as the payment reference. We&apos;ll confirm when it arrives.</span>
+                    <span className="block text-[12px] font-normal text-[#46464f]">{tx('Use your booking reference as the payment reference. We\'ll confirm when it arrives.')}</span>
                   </p>
                   <div className="rounded-lg bg-white border border-[#e1e2e4] px-3 py-3 space-y-2">
-                    <p className="font-bold text-[#050a44]">Upload your payment slip</p>
-                    <p className="text-[13px]">
-                      Already transferred? Attach the slip now (photo, screenshot or PDF) and it goes to our office with your booking. Not yet? Hold your seat first; you can upload it on the next screen or later in My trips.
-                    </p>
+                    <p className="font-bold text-[#050a44]">{tx('Upload your payment slip')}</p>
+                    <p className="text-[13px]">{tx('Already transferred? Attach the slip now (photo, screenshot or PDF) and it goes to our office with your booking. Not yet? Hold your seat first; you can upload it on the next screen or later in My trips.')}</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <button type="button" onClick={() => slipInput.current?.click()} className="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold">
-                        <span className="material-symbols-outlined text-[18px]">upload</span> {slipFile ? 'Change file' : 'Choose slip (photo or PDF)'}
+                        <span className="material-symbols-outlined text-[18px]">upload</span> {slipFile ? tx('Change file') : tx('Choose slip (photo or PDF)')}
                       </button>
                       {slipFile && (
                         <span className="text-[13px] font-semibold text-[#006e1c] flex items-center gap-1 min-w-0">
                           <span className="material-symbols-outlined text-[16px]">check_circle</span>
                           <span className="truncate max-w-[180px]">{slipFile.name}</span>
-                          <button type="button" onClick={() => setSlipFile(null)} className="underline text-[#46464f] font-medium ml-1">Remove</button>
+                          <button type="button" onClick={() => setSlipFile(null)} className="underline text-[#46464f] font-medium ml-1">{tx('Remove')}</button>
                         </span>
                       )}
                     </div>
@@ -648,8 +611,8 @@ function PaymentPageInner() {
                       <input
                         value={slipRef}
                         onChange={(e) => setSlipRef(e.target.value)}
-                        placeholder="Bank reference no. (optional)"
-                        aria-label="Bank reference number"
+                        placeholder={tx('Bank reference no. (optional)')}
+                        aria-label={tx('Bank reference number')}
                         className="w-full max-w-[320px] h-10 px-3 rounded-xl bg-[#f2f4f6] text-[14px] font-medium outline-none focus:ring-1 focus:ring-[#050a44]"
                       />
                     )}
@@ -657,20 +620,20 @@ function PaymentPageInner() {
                   </div>
                   </>
                 ) : (
-                  <p>Pay in cash at {counterWhere}. Show your booking reference.</p>
+                  <p>{tx('Pay in cash at {counterWhere}. Show your booking reference.', { counterWhere })}</p>
                 )}
                 </>
                 )}
               </div>
             ) : payhereLive ? (
               <div className="rounded-xl bg-[#f8f9fb] border border-[#e1e2e4] p-4 text-[14px] text-[#46464f]">
-                <p className="font-bold text-[#050a44]">You&apos;ll pay securely on PayHere</p>
-                <p className="mt-1">Visa, Mastercard, Amex, eZ Cash, mCash and Genie. Your seat is held for 20 minutes while you pay.</p>
+                <p className="font-bold text-[#050a44]">{tx('You\'ll pay securely on PayHere')}</p>
+                <p className="mt-1">{tx('Visa, Mastercard, Amex, eZ Cash, mCash and Genie. Your seat is held for 20 minutes while you pay.')}</p>
               </div>
             ) : method === 'card' ? (
               <div className="space-y-[12px]">
                 <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1">Card number</label>
+                  <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Card number')}</label>
                   <input
                     value={cardNumber}
                     onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
@@ -680,21 +643,21 @@ function PaymentPageInner() {
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1">Name on card</label>
+                  <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Name on card')}</label>
                   <input
                     value={cardName}
                     onChange={(e) => setCardName(e.target.value)}
-                    placeholder="As printed on card"
+                    placeholder={tx('As printed on card')}
                     className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-[12px]">
                   <div>
-                    <label className="text-[11px] font-bold text-[#46464f] px-1">Expiry</label>
+                    <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Expiry')}</label>
                     <input
                       value={expiry}
                       onChange={(e) => setExpiry(formatExpiry(e.target.value))}
-                      placeholder="MM/YY"
+                      placeholder={tx('MM/YY')}
                       inputMode="numeric"
                       className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
                     />
@@ -716,9 +679,9 @@ function PaymentPageInner() {
               <div className="space-y-[8px]">
                 {(
                   [
-                    { id: 'ezcash', label: 'eZ Cash' },
+                    { id: 'ezcash', label: tx('eZ Cash') },
                     { id: 'mcash', label: 'mCash' },
-                    { id: 'frimi', label: 'FriMi' },
+                    { id: 'frimi', label: tx('FriMi') },
                   ] as const
                 ).map((w) => (
                   <button
@@ -739,16 +702,14 @@ function PaymentPageInner() {
                   </button>
                 ))}
                 {wallet && (
-                  <p className="text-[11px] text-[#6b6d78] mt-[8px] px-1">
-                    You'll receive a payment prompt on {contactPhone || 'your registered number'} to confirm.
-                  </p>
+                  <p className="text-[11px] text-[#6b6d78] mt-[8px] px-1">{tx("You'll receive a payment prompt on {phone} to confirm.", { phone: contactPhone || tx('your registered number') })}</p>
                 )}
               </div>
             )}
           </div>
 
           <div className="bg-white rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
-            <h2 className="text-[16px] font-semibold mb-[16px]">Passenger</h2>
+            <h2 className="text-[16px] font-semibold mb-[16px]">{tx('Passenger')}</h2>
             {passengers.map((p, i) => (
               <div key={i} className="flex items-center justify-between text-[14px] py-[6px]">
                 <span className="font-bold">{p.name}</span>
@@ -760,27 +721,27 @@ function PaymentPageInner() {
 
         <div className="lg:col-span-5">
           <div className="bg-white rounded-xl p-[32px] shadow-lg border border-[#c7c5d1] lg:sticky lg:top-24 lg:self-start">
-            <h2 className="text-[20px] font-semibold mb-[24px]">Order Summary</h2>
+            <h2 className="text-[20px] font-semibold mb-[24px]">{tx('Order Summary')}</h2>
 
             <div className="space-y-[12px] mb-[20px] text-[14px]">
               <div className="flex justify-between">
-                <span className="text-[#46464f]">Route</span>
+                <span className="text-[#46464f]">{tx('Route')}</span>
                 <span className="font-bold">{from} → {to}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#46464f]">Bus</span>
+                <span className="text-[#46464f]">{tx('Bus')}</span>
                 <span className="font-bold">{trip.bus.name} · {trip.bus.regNo}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#46464f]">Seats</span>
+                <span className="text-[#46464f]">{tx('Seats')}</span>
                 <span className="font-bold">{seats.join(', ') || '—'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#46464f]">Pickup</span>
+                <span className="text-[#46464f]">{tx('Pickup')}</span>
                 <span className="font-bold">{pickup}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#46464f]">Drop-off</span>
+                <span className="text-[#46464f]">{tx('Drop-off')}</span>
                 <span className="font-bold">{drop}</span>
               </div>
             </div>
@@ -789,12 +750,12 @@ function PaymentPageInner() {
 
             <div className="space-y-[8px] mb-[20px] text-[14px]">
               <div className="flex justify-between">
-                <span className="text-[#46464f]">Fare ({seats.length} × {formatLKR(seatPrice)})</span>
+                <span className="text-[#46464f]">{tx('Fare ({length} × {amount})', { length: seats.length, amount: formatLKR(seatPrice) })}</span>
                 <span className="font-bold">{formatLKR(basePrice)}</span>
               </div>
               {discount > 0 && (
                 <div className="flex justify-between text-[#006e1c]">
-                  <span className="font-medium">Discount ({pub.promoCode})</span>
+                  <span className="font-medium">{tx('Discount ({promoCode})', { promoCode: pub.promoCode })}</span>
                   <span className="font-bold">-{formatLKR(discount)}</span>
                 </div>
               )}
@@ -805,22 +766,21 @@ function PaymentPageInner() {
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={b.photo} alt="" className="w-8 h-8 rounded-md object-cover border border-[#e1e2e4] shrink-0" />
                     ) : null}
-                    <span className="truncate">
-                      {bikeKind(b.kind).label} space{bikes.length > 1 ? ` ${i + 1}` : ''}
+                    <span className="truncate">{bikes.length > 1 ? tx('{label} space {n}', { label: tx(bikeKind(b.kind).label), n: i + 1 }) : tx('{label} space', { label: tx(bikeKind(b.kind).label) })}
                     </span>
                   </span>
                   <span className="font-bold">{formatLKR(b.fee)}</span>
                 </div>
               ))}
               <div className="flex justify-between">
-                <span className="text-[#46464f]">Booking fee</span>
+                <span className="text-[#46464f]">{tx('Booking fee')}</span>
                 <span className="font-bold">{formatLKR(platformFee)}</span>
               </div>
             </div>
 
             <div className="bg-[#f2f4f6] rounded-xl p-[20px] mb-[20px]">
               <div className="flex justify-between items-center">
-                <span className="text-[16px] font-semibold">Total</span>
+                <span className="text-[16px] font-semibold">{tx('Total')}</span>
                 <span className="text-[20px] font-semibold">{formatLKR(totalPrice)}</span>
               </div>
             </div>
@@ -838,22 +798,16 @@ function PaymentPageInner() {
             >
               {payState === 'processing' ? (
                 <>
-                  <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>
-                  Processing…
-                </>
+                  <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>{tx('Processing…')}</>
               ) : (
-                <>{method === 'bus' ? `Reserve my seat · pay ${formatLKR(totalPrice)} on the bus` : method === 'bank' && slipFile ? 'Hold my seat · send my slip' : holdMethod ? `Hold my seat · pay ${formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0))} later` : `Pay ${formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0))}`}</>
+                <>{method === 'bus' ? tx('Reserve my seat · pay {amount} on the bus', { amount: formatLKR(totalPrice) }) : method === 'bank' && slipFile ? tx('Hold my seat · send my slip') : holdMethod ? tx('Hold my seat · pay {amount} later', { amount: formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0)) }) : tx('Pay {amount}', { amount: formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0)) })}</>
               )}
             </button>
 
             {!holdMethod && !payhereLive && (
-            <p className="text-center text-[12px] font-semibold text-[#7c5800] bg-[#feb700]/10 rounded-lg px-3 py-2 mt-[16px]">
-              Demo checkout: no card is charged. Any 16-digit number works.
-            </p>
+            <p className="text-center text-[12px] font-semibold text-[#7c5800] bg-[#feb700]/10 rounded-lg px-3 py-2 mt-[16px]">{tx('Demo checkout: no card is charged. Any 16-digit number works.')}</p>
             )}
-            <p className="text-center text-[11px] font-medium text-[#46464f] mt-[12px]">
-              Payments are securely processed. By paying you agree to our{' '}
-              <a className="text-[#000000] underline" href="/legal#terms" target="_blank" rel="noopener">Terms of Service</a>.
+            <p className="text-center text-[11px] font-medium text-[#46464f] mt-[12px]">{txr('Payments are securely processed. By paying you agree to our <a>Terms of Service</a>.', { a: (c) => <a className="text-[#000000] underline" href="/legal#terms" target="_blank" rel="noopener">{c}</a> })}
             </p>
           </div>
         </div>

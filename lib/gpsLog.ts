@@ -9,6 +9,7 @@
 import { isSupabaseConfigured as DB, supabase } from './supabase/client';
 import { km } from './extras';
 import { fetchRoadRoute } from './routing';
+import { tx } from '@/lib/i18n';
 
 export interface GpsPoint {
   /** Row id (database); the time in demo mode. */
@@ -110,7 +111,7 @@ export async function deleteGpsPoints(scheduleId: string, date: string, ids?: (n
       localStorage.setItem(key, JSON.stringify(keep));
       return { ok: true, deleted: all.length - keep.length };
     } catch {
-      return { ok: false, reason: 'Could not delete' };
+      return { ok: false, reason: tx('Could not delete') };
     }
   }
   const { data, error } = await supabase().rpc('delete_gps_log', { p_schedule: scheduleId, p_date: date, p_ids: ids ? ids.map(Number) : null });
@@ -120,7 +121,7 @@ export async function deleteGpsPoints(scheduleId: string, date: string, ids?: (n
 
 function missingTable(msg: string) {
   return /bus_location_log|gps_log_trips|schema cache|does not exist/i.test(msg)
-    ? 'The GPS log isn’t set up in the database yet. Run supabase/migrations/20261033000000_gps_trip_log.sql in Supabase → SQL Editor.'
+    ? tx('The GPS log isn’t set up in the database yet. Run supabase/migrations/20261033000000_gps_trip_log.sql in Supabase → SQL Editor.')
     : msg;
 }
 

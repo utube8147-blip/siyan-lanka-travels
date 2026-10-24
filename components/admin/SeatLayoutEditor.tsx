@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { NUMBERINGS, buildSeatMap, layoutSegments, normalWidth, renumber, seatIdsOf, seatMapProblems, type Numbering, type SeatMap } from '@/lib/seatLayout';
 import { Button, Field, inputClass } from './ui';
+import { tx } from '@/lib/i18n';
 
 export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange: (m: SeatMap) => void }) {
   const lastRow = value.cells[value.cells.length - 1] ?? [];
@@ -91,7 +92,7 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
       key={c}
       value={cell ?? ''}
       onChange={(e) => setCell(r, c, e.target.value)}
-      aria-label={`Seat number, row ${r + 1}, position ${c + 1}`}
+      aria-label={tx('Seat number, row {row}, position {pos}', { row: r + 1, pos: c + 1 })}
       placeholder="·"
       className={`${tight ? 'h-8' : 'h-9'} min-w-0 w-full rounded-lg text-center text-[13px] font-bold outline-none focus:ring-2 focus:ring-[#050a44] ${
         cell ? 'bg-white border-2 border-[#8b90a8] text-[#050a44] hover:border-[#3b82f6] cursor-text' : cell === '' ? 'bg-white border border-[#ba1a1a] text-[#050a44]' : 'bg-transparent border border-dashed border-[#c7c5d1] text-[#6b6d78] placeholder:text-[#c7c5d1]'
@@ -107,58 +108,56 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-[#f2f4f6] p-4 space-y-3">
-        <p className="text-[13px] font-bold text-[#050a44]">1. Build the layout</p>
+        <p className="text-[13px] font-bold text-[#050a44]">{tx('1. Build the layout')}</p>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Left side: rows">
+          <Field label={tx('Left side: rows')}>
             <input type="number" min={1} max={20} className={inputClass} value={rowsLeft} onChange={(e) => setRowsLeft(num(e.target.value, 1, 20))} />
           </Field>
-          <Field label="Right side: rows">
+          <Field label={tx('Right side: rows')}>
             <input type="number" min={1} max={20} className={inputClass} value={rowsRight} onChange={(e) => setRowsRight(num(e.target.value, 1, 20))} />
           </Field>
-          <Field label="Left side: seats per row">
+          <Field label={tx('Left side: seats per row')}>
             <select className={inputClass} value={left} onChange={(e) => setLeft(Number(e.target.value))}>
               {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </Field>
-          <Field label="Right side: seats per row">
+          <Field label={tx('Right side: seats per row')}>
             <select className={inputClass} value={right} onChange={(e) => setRight(Number(e.target.value))}>
               {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </Field>
-          <Field label="Back bench seats">
+          <Field label={tx('Back bench seats')}>
             <select className={inputClass} value={back} onChange={(e) => setBack(Number(e.target.value))}>
-              {Array.from({ length: left + right + 3 }, (_, n) => n).map((n) => <option key={n} value={n}>{n === 0 ? 'None' : n}</option>)}
+              {Array.from({ length: left + right + 3 }, (_, n) => n).map((n) => <option key={n} value={n}>{n === 0 ? tx('None') : n}</option>)}
             </select>
           </Field>
         </div>
         {rowsLeft !== rowsRight && (
-          <p className="text-[12px] font-semibold text-[#050a44]">
-            {rowsLeft} rows on the left and {rowsRight} on the right share the same length of bus, so the side with more rows is drawn with its seats a little closer together.
-          </p>
+          <p className="text-[12px] font-semibold text-[#050a44]">{tx('{rowsLeft} rows on the left and {rowsRight} on the right share the same length of bus, so the side with more rows is drawn with its seats a little closer together.', { rowsLeft, rowsRight })}</p>
         )}
-        <Field label="Seat numbers" hint={NUMBERINGS.find((n) => n.id === numbering)?.hint}>
+        <Field label={tx('Seat numbers')} hint={tx(NUMBERINGS.find((n) => n.id === numbering)?.hint ?? '')}>
           <select className={inputClass} value={numbering} onChange={(e) => setNumbering(e.target.value as Numbering)}>
-            {NUMBERINGS.map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+            {NUMBERINGS.map((n) => <option key={n.id} value={n.id}>{tx(n.label)}</option>)}
           </select>
         </Field>
         <Button variant="secondary" onClick={build}>
-          <RotateCcw className="w-4 h-4" /> Build: left {rowsLeft} × {left}, right {rowsRight} × {right}{back ? `, ${back} at the back` : ''} = {rowsLeft * left + rowsRight * right + back} seats
+          <RotateCcw className="w-4 h-4" />{' '}{tx('Build: left {rowsLeft} × {left}, right {rowsRight} × {right}', { rowsLeft, left, rowsRight, right })}{back ? tx(', {back} at the back', { back }) : ''} = {rowsLeft * left + rowsRight * right + back} seats
         </Button>
-        <p className="text-[12px] text-[#6b6d78]">Building replaces the grid below, including any changes made by hand.</p>
+        <p className="text-[12px] text-[#6b6d78]">{tx('Building replaces the grid below, including any changes made by hand.')}</p>
       </div>
 
       <div className="space-y-2">
-        <p className="text-[13px] font-bold text-[#050a44]">2. Adjust any seat</p>
+        <p className="text-[13px] font-bold text-[#050a44]">{tx('2. Adjust any seat')}</p>
         <p className="text-[12px] text-[#46464f]">
           {value.stagger
-            ? 'Each side is shown as its own stack of rows, front of the bus at the top. Every box can be typed in: click a seat and type its number (17, 3A…). To number them all at once, pick a style under "Seat numbers" and press "Renumber the seats". Use the bin to remove a row from one side, or "Add a row" under a side.'
-            : 'Each box is one position, front of the bus at the top, left side on the left. Every box can be typed in: click a seat and type its number (17, 3A…), or clear the box where there is no seat (a door, a gap). To number them all at once, pick a style under "Seat numbers" and press "Renumber the seats".'}
+            ? tx('Each side is shown as its own stack of rows, front of the bus at the top. Every box can be typed in: click a seat and type its number (17, 3A…). To number them all at once, pick a style under "Seat numbers" and press "Renumber the seats". Use the bin to remove a row from one side, or "Add a row" under a side.')
+            : tx('Each box is one position, front of the bus at the top, left side on the left. Every box can be typed in: click a seat and type its number (17, 3A…), or clear the box where there is no seat (a door, a gap). To number them all at once, pick a style under "Seat numbers" and press "Renumber the seats".')}
         </p>
         {value.stagger ? (
           // Sides with different numbers of rows: each side is its own stack, exactly as passengers
           // will see it. No empty boxes: the side with more rows simply sits a little closer together.
           <div className="rounded-xl border border-[#c7c5d1] p-3 overflow-x-auto">
-            <p className="text-[10px] font-bold text-[#686873] text-right mb-2">Front · driver</p>
+            <p className="text-[10px] font-bold text-[#686873] text-right mb-2">{tx('Front · driver')}</p>
             <div className="mx-auto space-y-1.5" style={{ width: 'fit-content' }}>
               {indexedSegments.map((seg, i) =>
                 seg.kind === 'row' ? (
@@ -167,9 +166,9 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
                       {value.cells[seg.r].map((cell, c) => cellInput(seg.r, c, cell))}
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
-                      <button type="button" onClick={() => resizeRow(seg.r, -1)} title="One seat fewer on this bench" aria-label="Bench: one position fewer" className="w-6 h-7 rounded text-[14px] font-bold text-[#46464f] hover:bg-[#f2f4f6]">−</button>
-                      <button type="button" onClick={() => resizeRow(seg.r, 1)} title="One more seat on this bench" aria-label="Bench: one more position" className="w-6 h-7 rounded text-[14px] font-bold text-[#46464f] hover:bg-[#f2f4f6]">+</button>
-                      <button type="button" onClick={() => removeRow(seg.r)} title="Remove this bench" aria-label="Remove bench" className="w-7 h-7 rounded flex items-center justify-center text-[#ba1a1a] hover:bg-[#ba1a1a]/10">
+                      <button type="button" onClick={() => resizeRow(seg.r, -1)} title={tx('One seat fewer on this bench')} aria-label={tx('Bench: one position fewer')} className="w-6 h-7 rounded text-[14px] font-bold text-[#46464f] hover:bg-[#f2f4f6]">−</button>
+                      <button type="button" onClick={() => resizeRow(seg.r, 1)} title={tx('One more seat on this bench')} aria-label={tx('Bench: one more position')} className="w-6 h-7 rounded text-[14px] font-bold text-[#46464f] hover:bg-[#f2f4f6]">+</button>
+                      <button type="button" onClick={() => removeRow(seg.r)} title={tx('Remove this bench')} aria-label={tx('Remove bench')} className="w-7 h-7 rounded flex items-center justify-center text-[#ba1a1a] hover:bg-[#ba1a1a]/10">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -183,7 +182,7 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
                       const count = side === 'left' ? value.left : value.right;
                       return (
                         <div key={side} className="flex flex-col">
-                          <p className="text-[10px] font-bold text-[#686873] mb-1">{side === 'left' ? 'Left side' : 'Right side'} · {rowsHere.length} rows</p>
+                          <p className="text-[10px] font-bold text-[#686873] mb-1">{side === 'left' ? tx('Left side') : tx('Right side')}{' '}{tx('· {length} rows', { length: rowsHere.length })}</p>
                           <div className="flex-1 flex flex-col justify-between" style={{ rowGap: more ? 2 : 6 }}>
                             {rowsHere.map((r, k) => (
                               <div key={r} className="flex items-center gap-1.5">
@@ -191,13 +190,13 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
                                 <div className="grid gap-1.5" style={{ width: count * 46 - 6, gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}>
                                   {Array.from({ length: count }, (_, j) => cellInput(r, from + j, value.cells[r][from + j], more))}
                                 </div>
-                                <button type="button" onClick={() => removeSideRow(r, side)} title="Remove this row from this side" aria-label={`Remove row ${k + 1} on the ${side} side`} className="w-6 h-6 rounded flex items-center justify-center text-[#ba1a1a] hover:bg-[#ba1a1a]/10">
+                                <button type="button" onClick={() => removeSideRow(r, side)} title={tx('Remove this row from this side')} aria-label={(side === 'left' ? tx('Remove row {v} on the left side', { v: k + 1 }) : tx('Remove row {v} on the right side', { v: k + 1 }))} className="w-6 h-6 rounded flex items-center justify-center text-[#ba1a1a] hover:bg-[#ba1a1a]/10">
                                   <Trash2 className="w-3 h-3" />
                                 </button>
                               </div>
                             ))}
                           </div>
-                          <button type="button" onClick={() => addSideRow(side)} className="mt-2 self-start text-[12px] font-bold text-[#050a44] underline">+ Add a row on the {side}</button>
+                          <button type="button" onClick={() => addSideRow(side)} className="mt-2 self-start text-[12px] font-bold text-[#050a44] underline">{side === 'left' ? tx('+ Add a row on the left') : tx('+ Add a row on the right')}</button>
                         </div>
                       );
                     })}
@@ -208,7 +207,7 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
           </div>
         ) : (
         <div className="rounded-xl border border-[#c7c5d1] p-3 overflow-x-auto">
-          <p className="text-[10px] font-bold text-[#686873] text-right mb-2">Front · driver</p>
+          <p className="text-[10px] font-bold text-[#686873] text-right mb-2">{tx('Front · driver')}</p>
           <div className="space-y-1.5 mx-auto" style={{ width: 'fit-content' }}>
             {value.cells.map((row, r) => (
               <div key={r} className="flex items-center gap-2">
@@ -219,7 +218,7 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
                       key={c}
                       value={cell ?? ''}
                       onChange={(e) => setCell(r, c, e.target.value)}
-                      aria-label={`Row ${r + 1}, position ${c + 1}`}
+                      aria-label={tx('Row {row}, position {pos}', { row: r + 1, pos: c + 1 })}
                       placeholder="·"
                       className={`h-9 min-w-0 w-full rounded-lg text-center text-[13px] font-bold outline-none focus:ring-2 focus:ring-[#050a44] ${
                         cell ? 'bg-white border-2 border-[#8b90a8] text-[#050a44] hover:border-[#3b82f6] cursor-text' : 'bg-transparent border border-dashed border-[#c7c5d1] text-[#6b6d78] placeholder:text-[#c7c5d1]'
@@ -228,9 +227,9 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
                   ))}
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
-                  <button type="button" onClick={() => resizeRow(r, -1)} title="One position fewer in this row" aria-label={`Row ${r + 1}: one position fewer`} className="w-6 h-7 rounded text-[14px] font-bold text-[#46464f] hover:bg-[#f2f4f6]">−</button>
-                  <button type="button" onClick={() => resizeRow(r, 1)} title="One more position in this row" aria-label={`Row ${r + 1}: one more position`} className="w-6 h-7 rounded text-[14px] font-bold text-[#46464f] hover:bg-[#f2f4f6]">+</button>
-                  <button type="button" onClick={() => removeRow(r)} title="Remove this row" aria-label={`Remove row ${r + 1}`} className="w-7 h-7 rounded flex items-center justify-center text-[#ba1a1a] hover:bg-[#ba1a1a]/10">
+                  <button type="button" onClick={() => resizeRow(r, -1)} title={tx('One position fewer in this row')} aria-label={tx('Row {v}: one position fewer', { v: r + 1 })} className="w-6 h-7 rounded text-[14px] font-bold text-[#46464f] hover:bg-[#f2f4f6]">−</button>
+                  <button type="button" onClick={() => resizeRow(r, 1)} title={tx('One more position in this row')} aria-label={tx('Row {v}: one more position', { v: r + 1 })} className="w-6 h-7 rounded text-[14px] font-bold text-[#46464f] hover:bg-[#f2f4f6]">+</button>
+                  <button type="button" onClick={() => removeRow(r)} title={tx('Remove this row')} aria-label={tx('Remove row {v}', { v: r + 1 })} className="w-7 h-7 rounded flex items-center justify-center text-[#ba1a1a] hover:bg-[#ba1a1a]/10">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -240,31 +239,25 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
         </div>
         )}
         <div className="flex flex-wrap gap-2">
-          {!value.stagger && <Button size="sm" variant="secondary" onClick={addRow}><Plus className="w-3.5 h-3.5" /> Add a row</Button>}
-          <Button size="sm" variant="secondary" onClick={() => onChange(renumber(value, numbering))}>Renumber the seats</Button>
+          {!value.stagger && <Button size="sm" variant="secondary" onClick={addRow}><Plus className="w-3.5 h-3.5" />{' '}{tx('Add a row')}</Button>}
+          <Button size="sm" variant="secondary" onClick={() => onChange(renumber(value, numbering))}>{tx('Renumber the seats')}</Button>
         </div>
-        <p className="text-[12px] text-[#6b6d78]">
-          Renumber uses the style chosen above and keeps the gaps where they are. Do it after clearing or adding boxes, then fix any single number by hand.
-        </p>
+        <p className="text-[12px] text-[#6b6d78]">{tx('Renumber uses the style chosen above and keeps the gaps where they are. Do it after clearing or adding boxes, then fix any single number by hand.')}</p>
       </div>
 
       <div className="rounded-xl bg-[#f2f4f6] p-4 space-y-3">
-        <p className="text-[13px] font-bold text-[#050a44]">3. Do the two sides line up?</p>
+        <p className="text-[13px] font-bold text-[#050a44]">{tx('3. Do the two sides line up?')}</p>
         <label className="flex items-start gap-2 text-[13px] font-semibold text-[#050a44]">
           <input type="checkbox" className="mt-0.5 w-4 h-4" checked={!!value.stagger} onChange={(e) => onChange({ ...value, stagger: e.target.checked })} />
-          <span>
-            One side has more rows than the other, so the rows are not level
-            <span className="block text-[12px] font-normal text-[#46464f] mt-0.5">
-              Ticked automatically when you build with different row counts for the two sides (for example 11 on the left and 12 on the right). The side with more rows is drawn with its seats a little closer together, as below. Untick it only if the empty boxes are a real gap, such as a door.
-            </span>
+          <span>{tx('One side has more rows than the other, so the rows are not level')}<span className="block text-[12px] font-normal text-[#46464f] mt-0.5">{tx('Ticked automatically when you build with different row counts for the two sides (for example 11 on the left and 12 on the right). The side with more rows is drawn with its seats a little closer together, as below. Untick it only if the empty boxes are a real gap, such as a door.')}</span>
           </span>
         </label>
         {leftRows !== rightRows && !value.stagger && (
-          <p className="text-[12px] font-semibold text-[#7c5800]">The left side has {leftRows} rows and the right has {rightRows}. Tick the box if they share the same length of bus; leave it off if there is a real gap (a door) where the empty boxes are.</p>
+          <p className="text-[12px] font-semibold text-[#7c5800]">{tx('The left side has {leftRows} rows and the right has {rightRows}. Tick the box if they share the same length of bus; leave it off if there is a real gap (a door) where the empty boxes are.', { leftRows, rightRows })}</p>
         )}
         {value.stagger && (
           <div>
-            <p className="text-[11px] font-bold text-[#686873] mb-1.5">How passengers will see it</p>
+            <p className="text-[11px] font-bold text-[#686873] mb-1.5">{tx('How passengers will see it')}</p>
             <div className="rounded-xl bg-white border border-[#c7c5d1] p-3 mx-auto space-y-1.5" style={{ width: widest * 40, maxWidth: '100%' }}>
               {layoutSegments(value).map((seg, i) =>
                 seg.kind === 'row' ? (
@@ -290,7 +283,7 @@ export function SeatLayoutEditor({ value, onChange }: { value: SeatMap; onChange
         )}
       </div>
 
-      <p className="text-[13px] font-semibold text-[#050a44]">{total} seats in total</p>
+      <p className="text-[13px] font-semibold text-[#050a44]">{tx('{total} seats in total', { total })}</p>
       {problems.map((p) => (
         <p key={p} className="text-[12px] font-semibold text-[#ba1a1a]">{p}</p>
       ))}

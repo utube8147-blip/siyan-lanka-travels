@@ -11,8 +11,9 @@ import { useStore } from '@/lib/store';
 import type { Bus } from '@/lib/types';
 import { busCapacity, formatTime12, genId, routeLabel, seatIds } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, formatDays, inputClass, useToast } from '@/components/admin/ui';
+import { tx, N_ } from '@/lib/i18n';
 
-const AMENITIES = ['Air conditioning', 'Reclining seats', 'USB charging', 'Reading lights', 'Wi-Fi', 'Blankets', 'Water bottle', 'TV'];
+const AMENITIES = [N_('Air conditioning'), N_('Reclining seats'), N_('USB charging'), N_('Reading lights'), N_('Wi-Fi'), N_('Blankets'), N_('Water bottle'), N_('TV')];
 
 const blankBus = (): Bus => ({
   id: genId('bus'),
@@ -22,7 +23,7 @@ const blankBus = (): Bus => ({
   rows: 10,
   backRowSeats: 5,
   ladiesSeats: ['1A', '1B'],
-  amenities: ['Air conditioning', 'Reclining seats'],
+  amenities: [N_('Air conditioning'), N_('Reclining seats')],
   status: 'active',
   bikeSpaces: 4,
 });
@@ -36,8 +37,8 @@ export default function FleetPage() {
   return (
     <>
       <PageHeader
-        title="Buses"
-        description="Your fleet. A bus only takes bookings while it's active and has departures in the timetable."
+        title={tx('Buses')}
+        description={tx('Your fleet. A bus only takes bookings while it\'s active and has departures in the timetable.')}
         actions={
           <Button
             variant="gold"
@@ -46,8 +47,7 @@ export default function FleetPage() {
               setIsNew(true);
             }}
           >
-            <Plus className="w-4 h-4" /> Add a bus
-          </Button>
+            <Plus className="w-4 h-4" />{' '}{tx('Add a bus')}</Button>
         }
       />
 
@@ -59,12 +59,10 @@ export default function FleetPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-[18px] font-bold text-[#050a44]">{bus.name}</p>
-                  <p className="text-[13px] text-[#46464f]">
-                    {bus.regNo} · {bus.type} · {busCapacity(bus)} seats ({layoutName(busSeatMap(bus))}, {busSeatMap(bus).cells.length} rows)
-                  </p>
+                  <p className="text-[13px] text-[#46464f]">{tx('{regNo} · {type} · {bus} seats ({layoutName}, {length} rows)', { regNo: bus.regNo, type: bus.type, bus: busCapacity(bus), layoutName: layoutName(busSeatMap(bus)), length: busSeatMap(bus).cells.length })}</p>
                   <p className="text-[13px] text-[#46464f] flex items-center gap-1 mt-0.5">
                     <span className="material-symbols-outlined text-[16px]">two_wheeler</span>
-                    {bus.bikeSpaces ? `${bus.bikeSpaces} bike spaces in the luggage compartment` : 'No bike space'}
+                    {bus.bikeSpaces ? tx('{bikeSpaces} bike spaces in the luggage compartment', { bikeSpaces: bus.bikeSpaces }) : tx('No bike space')}
                   </p>
                 </div>
                 <Badge value={bus.status} />
@@ -72,20 +70,20 @@ export default function FleetPage() {
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {bus.amenities.map((a) => (
                   <span key={a} className="text-[12px] font-medium bg-[#f2f4f6] text-[#050a44] rounded-full px-2.5 py-1">
-                    {a}
+                    {tx(a)}
                   </span>
                 ))}
               </div>
               <div className="mt-4 border-t border-[#edeef0] pt-3">
-                <p className="text-[12px] font-bold text-[#46464f] mb-1">Timetabled departures</p>
+                <p className="text-[12px] font-bold text-[#46464f] mb-1">{tx('Timetabled departures')}</p>
                 {runs.length === 0 ? (
-                  <p className="text-[13px] text-[#686873]">None yet. Add one in Routes &amp; timetable.</p>
+                  <p className="text-[13px] text-[#686873]">{tx('None yet. Add one in Routes & timetable.')}</p>
                 ) : (
                   <ul className="text-[13px] text-[#050a44] space-y-0.5">
                     {runs.map((s) => (
                       <li key={s.id}>
                         {formatTime12(s.departure)} {routeLabel(data.routes.find((r) => r.id === s.routeId))} · {describeRuns(s)}
-                        {!s.active && ' (paused)'}
+                        {!s.active && tx(' (paused)')}
                       </li>
                     ))}
                   </ul>
@@ -99,19 +97,15 @@ export default function FleetPage() {
                     setEditing(structuredClone(bus));
                     setIsNew(false);
                   }}
-                >
-                  Edit
-                </Button>
+                >{tx('Edit')}</Button>
                 <Button
                   variant="danger"
                   size="sm"
                   onClick={async () => {
                     const res = await deleteBus(bus.id);
-                    toast(res.ok ? `${bus.name} removed` : res.reason ?? 'Could not delete', res.ok ? 'ok' : 'error');
+                    toast(res.ok ? tx('{name} removed', { name: bus.name }) : res.reason ?? tx('Could not delete'), res.ok ? 'ok' : 'error');
                   }}
-                >
-                  Delete
-                </Button>
+                >{tx('Delete')}</Button>
               </div>
             </Card>
           );
@@ -125,9 +119,9 @@ export default function FleetPage() {
           onClose={() => setEditing(null)}
           onSave={async (b) => {
             const res = await saveBus(b);
-            if (!res.ok) return toast(res.reason ?? 'Could not save', 'error');
+            if (!res.ok) return toast(res.reason ?? tx('Could not save'), 'error');
             setEditing(null);
-            toast(isNew ? `${b.name} added. Now give it a departure in Routes & timetable.` : `${b.name} saved`);
+            toast(isNew ? tx('{name} added. Now give it a departure in Routes & timetable.', { name: b.name }) : tx('{name} saved', { name: b.name }));
           }}
         />
       )}
@@ -159,37 +153,35 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
 
   return (
     <Modal
-      title={isNew ? 'Add a bus' : `Edit ${bus.name}`}
+      title={isNew ? tx('Add a bus') : tx('Edit {name}', { name: bus.name })}
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
+          <Button variant="secondary" onClick={onClose}>{tx('Cancel')}</Button>
           <Button disabled={!valid} onClick={() => onSave({ ...b, name: b.name.trim(), regNo: b.regNo.trim().toUpperCase(), ladiesSeats: ladiesList, reservedSeats: reservedList, seatMap: layoutChanged || bus.seatMap || isNew ? map : null })}>
-            {isNew ? 'Add bus' : 'Save changes'}
+            {isNew ? tx('Add bus') : tx('Save changes')}
           </Button>
         </>
       }
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Name passengers see">
-          <input className={inputClass} value={b.name} onChange={(e) => set('name', e.target.value)} placeholder="Siyan Gold" />
+        <Field label={tx('Name passengers see')}>
+          <input className={inputClass} value={b.name} onChange={(e) => set('name', e.target.value)} placeholder={tx('Siyan Gold')} />
         </Field>
-        <Field label="Registration no.">
-          <input className={inputClass} value={b.regNo} onChange={(e) => set('regNo', e.target.value)} placeholder="ND-2323" />
+        <Field label={tx('Registration no.')}>
+          <input className={inputClass} value={b.regNo} onChange={(e) => set('regNo', e.target.value)} placeholder={tx('ND-2323')} />
         </Field>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <Field label="Type">
+        <Field label={tx('Type')}>
           <select className={inputClass} value={b.type} onChange={(e) => set('type', e.target.value as Bus['type'])}>
             <option value="AC">AC</option>
-            <option value="Non-AC">Non-AC</option>
+            <option value="Non-AC">{tx('Non-AC')}</option>
           </select>
         </Field>
       </div>
       <div>
-        <p className="text-[14px] font-bold text-[#050a44] mb-2">Seat layout</p>
+        <p className="text-[14px] font-bold text-[#050a44] mb-2">{tx('Seat layout')}</p>
         <SeatLayoutEditor
           value={map}
           onChange={(m) => {
@@ -198,24 +190,22 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
           }}
         />
         {!isNew && layoutChanged && (
-          <p className="text-[12px] text-[#7c5800] font-semibold mt-2">
-            Tickets already sold keep the seat numbers they were sold with. If you change numbers on a bus with upcoming bookings, check those departures afterwards.
-          </p>
+          <p className="text-[12px] text-[#7c5800] font-semibold mt-2">{tx('Tickets already sold keep the seat numbers they were sold with. If you change numbers on a bus with upcoming bookings, check those departures afterwards.')}</p>
         )}
       </div>
-      <Field label="Bike spaces in the luggage compartment" hint="A bicycle uses 1 space; a scooter or motorbike uses 2. Set 0 if this bus can't carry bikes.">
+      <Field label={tx('Bike spaces in the luggage compartment')} hint={tx('A bicycle uses 1 space; a scooter or motorbike uses 2. Set 0 if this bus can\'t carry bikes.')}>
         <input className={inputClass} type="number" min={0} max={12} value={b.bikeSpaces ?? 0} onChange={(e) => set('bikeSpaces', Math.max(0, Number(e.target.value)))} />
       </Field>
-      <Field label="Ladies-only seats" hint="Seat numbers separated by commas, e.g. 1A, 1B">
+      <Field label={tx('Ladies-only seats')} hint={tx('Seat numbers separated by commas, e.g. 1A, 1B')}>
         <input className={inputClass} value={ladies} onChange={(e) => setLadies(e.target.value)} />
       </Field>
-      {badLadies.length > 0 && <p className="text-[12px] font-semibold text-[#ba1a1a]">Not on this layout: {badLadies.join(', ')}</p>}
-      <p className="text-[12px] text-[#6b6d78] -mt-1">Office staff can sell a ladies-only seat to a male passenger from Departures by ticking &ldquo;Override ladies-only&rdquo; on that sale.</p>
-      <Field label="Reserved seats (owner's approval)" hint="Seat numbers separated by commas, e.g. 1C, 1D. Passengers can't book these online. Staff can sell one only with a code that is texted to the owner.">
-        <input className={inputClass} value={reserved} onChange={(e) => setReserved(e.target.value)} placeholder="None" />
+      {badLadies.length > 0 && <p className="text-[12px] font-semibold text-[#ba1a1a]">{tx('Not on this layout: {badLadies}', { badLadies: badLadies.join(', ') })}</p>}
+      <p className="text-[12px] text-[#6b6d78] -mt-1">{tx('Office staff can sell a ladies-only seat to a male passenger from Departures by ticking “Override ladies-only” on that sale.')}</p>
+      <Field label={tx('Reserved seats (owner\'s approval)')} hint={tx('Seat numbers separated by commas, e.g. 1C, 1D. Passengers can\'t book these online. Staff can sell one only with a code that is texted to the owner.')}>
+        <input className={inputClass} value={reserved} onChange={(e) => setReserved(e.target.value)} placeholder={tx('None')} />
       </Field>
-      {badReserved.length > 0 && <p className="text-[12px] font-semibold text-[#ba1a1a]">Not on this layout: {badReserved.join(', ')}</p>}
-      <Field label="Amenities">
+      {badReserved.length > 0 && <p className="text-[12px] font-semibold text-[#ba1a1a]">{tx('Not on this layout: {badReserved}', { badReserved: badReserved.join(', ') })}</p>}
+      <Field label={tx('Amenities')}>
         <div className="flex flex-wrap gap-2">
           {AMENITIES.map((a) => {
             const on = b.amenities.includes(a);
@@ -227,17 +217,17 @@ function BusForm({ bus, isNew, onClose, onSave }: { bus: Bus; isNew: boolean; on
                 onClick={() => set('amenities', on ? b.amenities.filter((x) => x !== a) : [...b.amenities, a])}
                 className={`px-3 py-1.5 rounded-full text-[12px] font-bold border ${on ? 'bg-[#050a44] text-white border-[#050a44]' : 'border-[#c7c5d1] text-[#46464f]'}`}
               >
-                {a}
+                {tx(a)}
               </button>
             );
           })}
         </div>
       </Field>
-      <Field label="Status" hint="Buses in maintenance or retired don't show in search.">
+      <Field label={tx('Status')} hint={tx('Buses in maintenance or retired don\'t show in search.')}>
         <select className={inputClass} value={b.status} onChange={(e) => set('status', e.target.value as Bus['status'])}>
-          <option value="active">Active</option>
-          <option value="maintenance">In maintenance</option>
-          <option value="retired">Retired</option>
+          <option value="active">{tx('Active')}</option>
+          <option value="maintenance">{tx('In maintenance')}</option>
+          <option value="retired">{tx('Retired')}</option>
         </select>
       </Field>
     </Modal>

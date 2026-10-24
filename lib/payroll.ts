@@ -9,11 +9,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { friendlyError, isSupabaseConfigured as DB, supabase } from './supabase/client';
+import { fetchAllRows } from './supabase/fetchAll';
 import type { CrewMember, Expense } from './erp';
 import { uuid } from './uuid';
+import { tx, N_ } from '@/lib/i18n';
 
+import { dateLocale } from '@/lib/trips';
+import { fmtDate } from './dates';
 export type PayKind = 'advance' | 'salary' | 'bonus' | 'deduction';
-export const PAY_KIND_LABEL: Record<PayKind, string> = { advance: 'Advance', salary: 'Salary paid', bonus: 'Bonus', deduction: 'Deduction' };
+export const PAY_KIND_LABEL: Record<PayKind, string> = { advance: N_('Advance'), salary: N_('Salary paid'), bonus: N_('Bonus'), deduction: N_('Deduction') };
 export interface PayEntry {
   id: string;
   crewId: string;
@@ -59,8 +63,8 @@ export function usePayroll(saveExpense: (e: Expense) => Promise<Result>, removeE
       }
       return setReady(true);
     }
-    const { data, error } = await supabase().from('crew_pay').select('*').order('paid_on');
-    if (error) setError('Salary records couldn’t be loaded. If this is new, run supabase/setup.sql, then reload.');
+    const { data, error } = await fetchAllRows((a, b) => supabase().from('crew_pay').select('*').order('paid_on').order('id').range(a, b));
+    if (error) setError(tx('Salary records couldn’t be loaded. If this is new, run supabase/setup.sql, then reload.'));
     setEntries((data ?? []).map(fromRow));
     setReady(true);
   }, []);
@@ -79,11 +83,11 @@ export function usePayroll(saveExpense: (e: Expense) => Promise<Result>, removeE
 
   /** Records an advance, a salary payment, a bonus or a deduction. Money out also becomes an expense. */
   const add = async (member: CrewMember, e: Omit<PayEntry, 'id' | 'crewId' | 'expenseId'>): Promise<Result> => {
-    if (!(e.amount > 0)) return { ok: false, reason: 'Enter an amount.' };
+    if (!(e.amount > 0)) return { ok: false, reason: tx('Enter an amount.') };
     let expenseId: string | null = null;
     if (e.kind === 'advance' || e.kind === 'salary') {
       expenseId = uuid();
-      const monthName = new Date(`${e.month}-01T00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      const monthName = fmtDate(new Date(`${e.month}-01T00:00`), { month: 'long', year: 'numeric' });
       const r = await saveExpense({
         id: expenseId,
         spentOn: e.paidOn,

@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { Monitor, Moon, Sun } from 'lucide-react';
+import { tx } from '@/lib/i18n';
 
 export const THEME_KEY = 'theme';
 
@@ -52,8 +53,8 @@ export function ThemeToggle({ className = '', onDark = false }: { className?: st
     <button
       type="button"
       onClick={toggle}
-      aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={dark ? 'Light mode' : 'Dark mode'}
+      aria-label={dark ? tx('Switch to light mode') : tx('Switch to dark mode')}
+      title={dark ? tx('Light mode') : tx('Dark mode')}
       className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${onDark ? 'text-white/80 hover:text-white hover:bg-white/10' : 'text-[#46464f] hover:text-[#050a44] hover:bg-[#f2f4f6]'} ${className}`}
     >
       {dark === null ? <span className="w-5 h-5" /> : dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -87,12 +88,12 @@ export function ThemeSegmented() {
     }
   }, []);
   const opts: { v: ThemeChoice; label: string; Icon: typeof Sun }[] = [
-    { v: 'light', label: 'Light', Icon: Sun },
-    { v: 'dark', label: 'Dark', Icon: Moon },
-    { v: 'system', label: 'Auto', Icon: Monitor },
+    { v: 'light', label: tx('Light'), Icon: Sun },
+    { v: 'dark', label: tx('Dark'), Icon: Moon },
+    { v: 'system', label: tx('Auto'), Icon: Monitor },
   ];
   return (
-    <div role="radiogroup" aria-label="Theme" className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#f2f4f6]">
+    <div role="radiogroup" aria-label={tx('Theme')} className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#f2f4f6]">
       {opts.map(({ v, label, Icon }) => (
         <button
           key={v}

@@ -8,7 +8,8 @@ import { useStore } from '@/lib/store';
 import { addDays, formatDateLabel, todayISO } from '@/lib/trips';
 import { useLoyalty, useWaitlist } from '@/lib/extras';
 import AnimatedNumber from '@/components/motion/AnimatedNumber';
-import { useT } from '@/lib/i18n';
+import { useT, txn, txr } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 export function LoyaltyCard() {
   const { user } = useAuth();
@@ -18,20 +19,19 @@ export function LoyaltyCard() {
   return (
     <div className="bg-white rounded-2xl p-[20px] shadow-sm border border-[#c7c5d1] space-y-3 relative overflow-hidden">
       <div className="absolute left-0 top-0 w-1.5 h-full bg-gradient-to-b from-[#feb700] to-[#ffe08a]" />
-      <h4 className="font-bold text-[#050a44] text-[14px] flex items-center gap-2"><Gift className="w-4 h-4 text-[#7c5800]" /> Every {l.every}th trip free</h4>
+      <h4 className="font-bold text-[#050a44] text-[14px] flex items-center gap-2"><Gift className="w-4 h-4 text-[#7c5800]" />{' '}{tx('Every {every}th trip free', { every: l.every })}</h4>
       {l.available > 0 ? (
-        <p className="text-[13px] text-[#46464f]">
-          You have <b className="text-[#006e1c]">{l.available} free trip{l.available > 1 ? 's' : ''}</b>. Tick &ldquo;Use my free trip&rdquo; when you pay.
-        </p>
+        <p className="text-[13px] text-[#46464f]">{l.available === 1
+            ? txr('You have <b>1 free trip</b>. Tick “Use my free trip” when you pay.', { b: (c) => <b className="text-[#006e1c]">{c}</b> })
+            : txr('You have <b>{n} free trips</b>. Tick “Use my free trip” when you pay.', { n: l.available, b: (c) => <b className="text-[#006e1c]">{c}</b> })}</p>
       ) : (
         <p className="text-[13px] text-[#46464f]">
-          <b className="text-[#050a44]"><AnimatedNumber value={l.nextIn} /> more trip{l.nextIn > 1 ? 's' : ''}</b> until your next free one.
-        </p>
+          {txr(l.nextIn === 1 ? '<b>{n} more trip</b> until your next free one.' : '<b>{n} more trips</b> until your next free one.', { n: <AnimatedNumber value={l.nextIn} />, b: (c) => <b className="text-[#050a44]">{c}</b> })}</p>
       )}
       <div className="w-full bg-[#f2f4f6] h-2 rounded-full overflow-hidden" aria-hidden>
         <div className="bg-[#feb700] h-full rounded-full transition-all" style={{ width: `${l.available > 0 ? 100 : pct}%` }} />
       </div>
-      <p className="text-[11px] text-[#6b6d78]">{l.trips} completed trip{l.trips === 1 ? '' : 's'} so far.</p>
+      <p className="text-[11px] text-[#6b6d78]">{txn(l.trips, '{n} completed trip so far.', '{n} completed trips so far.')}</p>
     </div>
   );
 }
@@ -50,9 +50,9 @@ export function WaitlistCard() {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="font-semibold text-[#050a44]">{w.from} → {w.to}</p>
-                <p className="text-[#6b6d78]">{formatDateLabel(w.date, false)} · {w.seats} seat{w.seats > 1 ? 's' : ''}</p>
+                <p className="text-[#6b6d78]">{txn(w.seats, '{date} · {n} seat', '{date} · {n} seats', { date: formatDateLabel(w.date, false) })}</p>
               </div>
-              <button onClick={() => leave(w.id)} aria-label="Leave waitlist" className="p-1 rounded hover:bg-[#f2f4f6]"><X className="w-4 h-4 text-[#6b6d78]" /></button>
+              <button onClick={() => leave(w.id)} aria-label={tx('Leave waitlist')} className="p-1 rounded hover:bg-[#f2f4f6]"><X className="w-4 h-4 text-[#6b6d78]" /></button>
             </div>
             {w.status === 'offered' ? (
               <Link
@@ -63,7 +63,7 @@ export function WaitlistCard() {
                 {t('A seat is free: book now')}
               </Link>
             ) : (
-              <p className="mt-1 text-[12px] text-[#7c5800]">Waiting. We&apos;ll text you if a seat frees up.</p>
+              <p className="mt-1 text-[12px] text-[#7c5800]">{tx('Waiting. We\'ll text you if a seat frees up.')}</p>
             )}
           </li>
         ))}
@@ -92,11 +92,11 @@ export function PastTripsCard() {
           <li key={b.id} className="flex items-center justify-between gap-2 text-[13px]">
             <span>
               <span className="block font-semibold text-[#050a44]">{b.from} → {b.to}</span>
-              <span className="block text-[#6b6d78]">last {formatDateLabel(b.date, false)}</span>
+              <span className="block text-[#6b6d78]">{tx('last {date}', { date: formatDateLabel(b.date, false) })}</span>
             </span>
             <span className="flex gap-1.5 shrink-0">
               <Link href={`/search?${new URLSearchParams({ from: b.from, to: b.to, date: addDays(todayISO(), 1) }).toString()}`} className="px-2.5 py-1.5 rounded-lg bg-[#050a44] text-white text-[12px] font-bold">{t('Book again')}</Link>
-              <Link href={`/search?${new URLSearchParams({ from: b.to, to: b.from, date: addDays(todayISO(), 1) }).toString()}`} className="px-2.5 py-1.5 rounded-lg bg-[#f2f4f6] text-[#050a44] text-[12px] font-bold" aria-label={`Return: ${b.to} to ${b.from}`}>{t('Return')}</Link>
+              <Link href={`/search?${new URLSearchParams({ from: b.to, to: b.from, date: addDays(todayISO(), 1) }).toString()}`} className="px-2.5 py-1.5 rounded-lg bg-[#f2f4f6] text-[#050a44] text-[12px] font-bold" aria-label={tx('Return: {to} to {from}', { to: b.to, from: b.from })}>{t('Return')}</Link>
             </span>
           </li>
         ))}

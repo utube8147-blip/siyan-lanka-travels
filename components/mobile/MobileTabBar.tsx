@@ -11,14 +11,15 @@ import { usePathname } from 'next/navigation';
 import { House, Search, Ticket, UserRound } from 'lucide-react';
 import { motion } from 'motion/react';
 import { isFocused } from './routes';
-import { useT } from '@/lib/i18n';
+import { useT, N_ } from '@/lib/i18n';
 import { useHideOnScroll } from '@/lib/useHideOnScroll';
+import { tx } from '@/lib/i18n';
 
 const TABS = [
-  { href: '/', label: 'Home', Icon: House, fill: true, match: (p: string) => p === '/' || p.startsWith('/bus') },
-  { href: '/search', label: 'Book', Icon: Search, fill: false, match: (p: string) => p.startsWith('/search') },
-  { href: '/my-bookings', label: 'Trips', Icon: Ticket, fill: false, match: (p: string) => p.startsWith('/my-bookings') || p.startsWith('/refund') },
-  { href: '/profile', label: 'Profile', Icon: UserRound, fill: true, match: (p: string) => ['/profile', '/dashboard', '/marketplace', '/legal', '/services'].some((b) => p.startsWith(b)) },
+  { href: '/', label: N_('Home'), Icon: House, fill: true, match: (p: string) => p === '/' || p.startsWith('/bus') },
+  { href: '/search', label: N_('Book'), Icon: Search, fill: false, match: (p: string) => p.startsWith('/search') },
+  { href: '/my-bookings', label: N_('Trips'), Icon: Ticket, fill: false, match: (p: string) => p.startsWith('/my-bookings') || p.startsWith('/refund') },
+  { href: '/profile', label: N_('Profile'), Icon: UserRound, fill: true, match: (p: string) => ['/profile', '/dashboard', '/marketplace', '/legal', '/services'].some((b) => p.startsWith(b)) },
 ];
 
 export function MobileTabBar() {
@@ -37,7 +38,7 @@ export function MobileTabBar() {
         }`}
       >
         <nav
-          aria-label="Main"
+          aria-label={tx('Main')}
           className="pointer-events-auto w-full max-w-[480px] rounded-full bg-white border border-[#e1e2e4] shadow-[0_8px_30px_rgba(0,0,0,0.14)] p-1.5 select-none"
         >
           <ul className="grid grid-cols-4 gap-1 h-[62px]">

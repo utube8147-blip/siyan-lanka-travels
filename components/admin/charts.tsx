@@ -8,6 +8,7 @@ import { useStore } from '@/lib/store';
 import { PRESETS, daysIn, presetDates, type Preset, type Range } from '@/lib/analytics';
 import { formatDateLabel, routeLabel, todayISO } from '@/lib/trips';
 import { Card, inputClass } from './ui';
+import { tx, txn } from '@/lib/i18n';
 
 /** Date range + bus + route. `value` is controlled by the page. */
 export function RangeFilter({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
@@ -27,33 +28,32 @@ export function RangeFilter({ value, onChange }: { value: Range; onChange: (r: R
               if (p.id !== 'custom') onChange({ ...value, ...presetDates(p.id) });
             }}
           >
-            {p.label}
+            {tx(p.label)}
           </button>
         ))}
         {preset === 'custom' && (
           <span className="flex flex-wrap items-center gap-2">
-            <input type="date" aria-label="From" className={`${inputClass} !w-auto !h-9 !py-0`} value={value.from} max={value.to} onChange={(e) => e.target.value && onChange({ ...value, from: e.target.value })} />
+            <input type="date" aria-label={tx('From')} className={`${inputClass} !w-auto !h-9 !py-0`} value={value.from} max={value.to} onChange={(e) => e.target.value && onChange({ ...value, from: e.target.value })} />
             <span className="text-[13px] text-[#46464f]">to</span>
-            <input type="date" aria-label="To" className={`${inputClass} !w-auto !h-9 !py-0`} value={value.to} min={value.from} onChange={(e) => e.target.value && onChange({ ...value, to: e.target.value })} />
+            <input type="date" aria-label={tx('To')} className={`${inputClass} !w-auto !h-9 !py-0`} value={value.to} min={value.from} onChange={(e) => e.target.value && onChange({ ...value, to: e.target.value })} />
           </span>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <select aria-label="Bus" className={`${inputClass} !w-auto !h-9 !py-0`} value={value.busId} onChange={(e) => onChange({ ...value, busId: e.target.value })}>
-          <option value="">All buses</option>
+        <select aria-label={tx('Bus')} className={`${inputClass} !w-auto !h-9 !py-0`} value={value.busId} onChange={(e) => onChange({ ...value, busId: e.target.value })}>
+          <option value="">{tx('All buses')}</option>
           {data.buses.map((b) => (
             <option key={b.id} value={b.id}>{b.name} · {b.regNo}</option>
           ))}
         </select>
-        <select aria-label="Route" className={`${inputClass} !w-auto !h-9 !py-0`} value={value.routeId} onChange={(e) => onChange({ ...value, routeId: e.target.value })}>
-          <option value="">Both directions</option>
+        <select aria-label={tx('Route')} className={`${inputClass} !w-auto !h-9 !py-0`} value={value.routeId} onChange={(e) => onChange({ ...value, routeId: e.target.value })}>
+          <option value="">{tx('Both directions')}</option>
           {data.routes.map((r) => (
             <option key={r.id} value={r.id}>{routeLabel(r)}</option>
           ))}
         </select>
-        <span className="text-[12px] text-[#6b6d78]">
-          {formatDateLabel(value.from, false)} to {formatDateLabel(value.to, false)} · {daysIn(value)} day{daysIn(value) === 1 ? '' : 's'}
-          {value.to > todayISO() ? ' (includes days still to come)' : ''}
+        <span className="text-[12px] text-[#6b6d78]">{txn(daysIn(value), '{date} to {date2} · {n} day', '{date} to {date2} · {n} days', { date: formatDateLabel(value.from, false), date2: formatDateLabel(value.to, false) })}
+          {value.to > todayISO() ? tx(' (includes days still to come)') : ''}
         </span>
       </div>
     </Card>
@@ -73,7 +73,7 @@ export function Stat({ label, value, note, delta, goodWhenUp = true, tone }: { l
             {up ? '▲' : '▼'} {Math.abs(delta)}%{' '}
           </span>
         )}
-        {delta != null ? 'vs the same number of days before' : note ?? ''}
+        {delta != null ? tx('vs the same number of days before') : note ?? ''}
         {delta != null && note ? ` · ${note}` : ''}
       </p>
     </Card>
@@ -147,7 +147,7 @@ export function Bars({ labels, titles, series, format, height = 190, label }: { 
       {/* The figures for the column under the pointer (or the last one tapped). */}
       <p aria-live="polite" className="mt-2 min-h-[20px] text-[13px] text-[#46464f] flex flex-wrap gap-x-4 gap-y-0.5">
         {active == null ? (
-          <span className="text-[12px] text-[#6b6d78]">Hover or tap a {labels.length > 1 ? 'column' : 'bar'} to see its date and figures.</span>
+          <span className="text-[12px] text-[#6b6d78]">{labels.length > 1 ? tx('Hover or tap a column to see its date and figures.') : tx('Hover or tap a bar to see its date and figures.')}</span>
         ) : (
           <>
             <b className="text-[#050a44]">{name(active)}</b>
@@ -167,7 +167,7 @@ export function Bars({ labels, titles, series, format, height = 190, label }: { 
           <span key={s.name} className="contents">
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ background: s.color }} /> {s.name}</span>
             {s.negativeColor && s.values.some((v) => v < 0) && (
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ background: s.negativeColor }} /> {s.negativeName ?? `${s.name} (below zero)`}</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded" style={{ background: s.negativeColor }} /> {s.negativeName ?? tx('{name} (below zero)', { name: s.name })}</span>
             )}
           </span>
         ))}
@@ -236,7 +236,7 @@ export function Lines({ labels, titles, series, format, height = 200, label, dra
               onMouseEnter={() => setActive(i)}
               onFocus={() => setActive(i)}
               onClick={() => setActive(i)}
-              aria-label={i < shown ? `${name(i)}: ${series.map((s) => `${s.name} ${format(s.values[i] ?? 0)}`).join(', ')}` : `${name(i)}: still to come`}
+              aria-label={i < shown ? `${name(i)}: ${series.map((s) => `${s.name} ${format(s.values[i] ?? 0)}`).join(', ')}` : tx('{i}: still to come', { i: name(i) })}
               className="relative block flex-1 min-w-0 h-full p-0 m-0 border-0 outline-none cursor-default bg-transparent"
               style={i >= shown ? { background: 'repeating-linear-gradient(135deg, rgba(127,127,127,0.07) 0 6px, transparent 6px 12px)' } : undefined}
             >
@@ -252,12 +252,12 @@ export function Lines({ labels, titles, series, format, height = 200, label, dra
       </div>
       <p aria-live="polite" className="mt-2 min-h-[20px] text-[13px] text-[#46464f] flex flex-wrap gap-x-4 gap-y-0.5">
         {active == null ? (
-          <span className="text-[12px] text-[#6b6d78]">Hover or tap the chart to see a date and its figures.</span>
+          <span className="text-[12px] text-[#6b6d78]">{tx('Hover or tap the chart to see a date and its figures.')}</span>
         ) : (
           <>
             <b className="text-[#050a44]">{name(active)}</b>
             {active >= shown ? (
-              <span>still to come</span>
+              <span>{tx('still to come')}</span>
             ) : (
               series.map((s) => (
                 <span key={s.name} className="flex items-center gap-1.5">
@@ -280,7 +280,7 @@ export function Lines({ labels, titles, series, format, height = 200, label, dra
 /** Tabs for a page with several views. The active tab is kept in the address (#income), so a reload or a shared link opens the same one. */
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string }[]; value: T; onChange: (t: T) => void }) {
   return (
-    <div role="tablist" aria-label="Sections" className="flex gap-1 overflow-x-auto no-scrollbar border-b border-[#c7c5d1]/60 mb-6">
+    <div role="tablist" aria-label={tx('Sections')} className="flex gap-1 overflow-x-auto no-scrollbar border-b border-[#c7c5d1]/60 mb-6">
       {tabs.map((t) => (
         <button
           key={t.id}
@@ -289,7 +289,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
           onClick={() => onChange(t.id)}
           className={`shrink-0 px-4 h-11 text-[14px] font-bold border-b-2 -mb-px transition-colors ${value === t.id ? 'border-[#feb700] text-[#050a44]' : 'border-transparent text-[#6b6d78] hover:text-[#050a44]'}`}
         >
-          {t.label}
+          {tx(t.label)}
         </button>
       ))}
     </div>
@@ -304,12 +304,12 @@ export const PIE_COLORS = ['#3b82f6', '#feb700', '#16a34a', '#a855f7', '#f97316'
  * and share. Hovering or tapping a slice or a legend row highlights it and
  * puts its figure in the middle. Slices under 1% are still listed.
  */
-export function Pie({ rows, format, label, total: totalLabel = 'Total', stack = false, centerFormat, showZero = false }: { rows: { label: string; value: number }[]; format: (n: number) => string; label: string; total?: string; /** Also list the rows with nothing in them (greyed), so every category is visible. */ showZero?: boolean; /** Shorter wording for the figure in the middle of the ring. */ centerFormat?: (n: number) => string; /** Put the legend under the ring (for narrow cards). */ stack?: boolean }) {
+export function Pie({ rows, format, label, total: totalLabel = tx('Total'), stack = false, centerFormat, showZero = false }: { rows: { label: string; value: number }[]; format: (n: number) => string; label: string; total?: string; /** Also list the rows with nothing in them (greyed), so every category is visible. */ showZero?: boolean; /** Shorter wording for the figure in the middle of the ring. */ centerFormat?: (n: number) => string; /** Put the legend under the ring (for narrow cards). */ stack?: boolean }) {
   const [active, setActive] = useState<number | null>(null);
   const data = rows.filter((r) => r.value > 0);
   const zero = showZero ? rows.filter((r) => !(r.value > 0)) : [];
   const sum = data.reduce((n, r) => n + r.value, 0);
-  if (sum <= 0 && zero.length === 0) return <Empty>Nothing to show for this period.</Empty>;
+  if (sum <= 0 && zero.length === 0) return <Empty>{tx('Nothing to show for this period.')}</Empty>;
   const R = 54;
   const C = 2 * Math.PI * R;
   let run = 0;
@@ -400,7 +400,7 @@ export function HeatGrid({ rows, cols, value, note, label }: { rows: string[]; c
               return (
                 <span
                   key={c}
-                  title={v == null ? `${r}, ${c}: no trips` : `${r}, ${c}: ${v}% full${note ? ` · ${note(ri, ci)}` : ''}`}
+                  title={v == null ? tx('{r}, {c}: no trips', { r, c }) : tx('{r}, {c}: {v}% full', { r, c, v }) + (note ? ` · ${note(ri, ci)}` : '')}
                   className="h-11 rounded-lg flex items-center justify-center text-[12px] font-bold tabular-nums"
                   style={v == null ? { background: 'rgba(156,163,175,0.15)', color: '#9ca3af' } : { background: `rgba(59,130,246,${0.12 + (v / 100) * 0.83})`, color: v > 45 ? '#fff' : 'inherit' }}
                 >

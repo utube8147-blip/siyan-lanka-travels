@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import { useStore } from '@/lib/store';
+import { tx } from '@/lib/i18n';
 
 export function PaymentReturnNotice() {
   const { data, reload } = useStore();
@@ -30,18 +31,17 @@ export function PaymentReturnNotice() {
   if (ret.kind === 'unpaid')
     return (
       <p role="status" className="rounded-2xl bg-[#feb700]/15 border border-[#feb700]/40 text-[#46464f] text-[14px] px-5 py-4 flex gap-2">
-        <Info className="w-5 h-5 text-[#7c5800] shrink-0" />
-        The payment wasn&apos;t completed, so nothing was charged. {resale ? 'The ticket is back on sale.' : 'Your seat is still held until the time shown below; you can pay again from here.'}
+        <Info className="w-5 h-5 text-[#7c5800] shrink-0" />{tx('The payment wasn\'t completed, so nothing was charged.')}{' '}{resale ? tx('The ticket is back on sale.') : tx('Your seat is still held until the time shown below; you can pay again from here.')}
       </p>
     );
   return (
     <p role="status" className="rounded-2xl bg-[#e8f6ea] border border-[#006e1c]/25 text-[#0b4a1a] text-[14px] font-medium px-5 py-4 flex gap-2">
       <Check className="w-5 h-5 text-[#006e1c] shrink-0" />
       {confirmed
-        ? `Payment received. Booking ${ret.ref} is confirmed.`
+        ? tx('Payment received. Booking {ref} is confirmed.', { ref: ret.ref })
         : resale
-          ? 'Thank you. Your ticket appears below as soon as the payment is confirmed, usually within a minute.'
-          : `Thank you. We're confirming your payment for ${ret.ref}; this usually takes under a minute.`}
+          ? tx('Thank you. Your ticket appears below as soon as the payment is confirmed, usually within a minute.')
+          : tx('Thank you. We\'re confirming your payment for {ref}; this usually takes under a minute.', { ref: ret.ref })}
     </p>
   );
 }

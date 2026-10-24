@@ -7,6 +7,7 @@ import { isSupabaseConfigured as DB, supabase } from './supabase/client';
 import { km } from './extras';
 import { fetchRoadRoute } from './routing';
 import type { RouteStop } from './types';
+import { tx } from '@/lib/i18n';
 
 export type LatLng = [number, number];
 
@@ -31,14 +32,14 @@ export async function searchPlaces(q: string): Promise<{ places: Place[]; error?
   if (!q.trim()) return { places: [] };
   try {
     const res = await fetch(`${GEO}/search?format=jsonv2&addressdetails=1&limit=6&countrycodes=lk&q=${encodeURIComponent(q.trim())}`, { headers: { Accept: 'application/json' } });
-    if (!res.ok) return { places: [], error: `Place search answered ${res.status}. Try again in a moment.` };
+    if (!res.ok) return { places: [], error: tx('Place search answered {status}. Try again in a moment.', { status: res.status }) };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = (await res.json()) as any[];
     return {
       places: rows.map((r) => ({ name: r.name || shortName(r.address, r.display_name), detail: r.display_name, lat: Number(r.lat), lng: Number(r.lon) })),
     };
   } catch {
-    return { places: [], error: 'Could not reach the place search (offline?).' };
+    return { places: [], error: tx('Could not reach the place search (offline?).') };
   }
 }
 
@@ -261,7 +262,7 @@ const readLocal = (): RoutePlan[] => {
 export async function loadPlans(routeId: string): Promise<{ plans: RoutePlan[]; error?: string }> {
   if (!DB) return { plans: readLocal().filter((p) => p.routeId === routeId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)) };
   const { data, error } = await supabase().from('route_plans').select('id, name, route_id, stops, notes, updated_at').eq('route_id', routeId).order('updated_at', { ascending: false });
-  if (error) return { plans: [], error: /route_plans|route_id|schema cache/.test(error.message) ? 'Draft plans need the latest database update: run migration 33 again.' : error.message };
+  if (error) return { plans: [], error: /route_plans|route_id|schema cache/.test(error.message) ? tx('Draft plans need the latest database update: run migration 33 again.') : error.message };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { plans: ((data as any[]) ?? []).map((r) => ({ id: r.id, name: r.name, routeId: r.route_id, stops: r.stops ?? [], notes: r.notes ?? '', updatedAt: r.updated_at })) };
 }
@@ -273,7 +274,7 @@ export async function savePlan(plan: Omit<RoutePlan, 'id' | 'updatedAt'> & { id?
     try {
       localStorage.setItem(LOCAL, JSON.stringify([saved, ...readLocal().filter((p) => p.id !== saved.id)]));
     } catch {
-      return { ok: false, reason: 'Could not save in this browser' };
+      return { ok: false, reason: tx('Could not save in this browser') };
     }
     return { ok: true, plan: saved };
   }

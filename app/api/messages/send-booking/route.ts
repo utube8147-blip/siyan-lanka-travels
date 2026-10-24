@@ -38,6 +38,6 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const results = await deliverQueued(db, batch ?? []);
   // …and the push that goes with it ("Booking confirmed", "Payment received").
-  const push = await pushPendingNotifications(db).catch((e) => ({ error: String(e).slice(0, 200) }));
+  const push = await pushPendingNotifications(db, { onlyUsers: [booking.user_id, booking.created_by].filter(Boolean) as string[] }).catch((e) => ({ error: String(e).slice(0, 200) }));
   return NextResponse.json({ processed: batch?.length ?? 0, ...results, push });
 }

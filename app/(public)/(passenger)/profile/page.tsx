@@ -26,6 +26,7 @@ import { ThemeSegmented } from '@/components/ThemeToggle';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
 import { InstallAppButton } from '@/components/InstallAppButton';
 import { LanguageSwitcher, useT } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 type RowProps = { href: string; icon: React.ComponentType<{ className?: string }>; label: string; hint?: string; external?: boolean };
 
@@ -70,7 +71,7 @@ export default function ProfilePage() {
   const { user, logout } = useAuth();
   const resaleOn = useResaleEnabled();
   const router = useRouter();
-  const name = user?.user_metadata.full_name ?? 'Guest';
+  const name = user?.user_metadata.full_name ?? tx('Guest');
   const initials = name
     .split(' ')
     .map((w) => w[0])
@@ -80,7 +81,7 @@ export default function ProfilePage() {
 
   return (
     <main className="max-w-[640px] mx-auto px-4 py-5 md:py-10 space-y-6">
-      <h1 className="hidden md:block text-[28px] font-semibold text-[#050a44]">Profile & settings</h1>
+      <h1 className="hidden md:block text-[28px] font-semibold text-[#050a44]">{tx('Profile & settings')}</h1>
 
       {/* Account card */}
       <div className="bg-white rounded-2xl border border-[#edeef0] p-4 flex items-center gap-4">
@@ -89,25 +90,21 @@ export default function ProfilePage() {
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[17px] font-semibold text-[#050a44] truncate">{user ? name : t('Not signed in')}</p>
-          <p className="text-[13px] text-[#6b6d78] truncate">{user ? user.email : 'Sign in to see your tickets on any device'}</p>
+          <p className="text-[13px] text-[#6b6d78] truncate">{user ? user.email : tx('Sign in to see your tickets on any device')}</p>
         </div>
         {user ? (
-          <Link href="/dashboard" className="shrink-0 px-3 py-2 rounded-lg bg-[#f2f4f6] text-[13px] font-semibold text-[#050a44]">
-            Account
-          </Link>
+          <Link href="/dashboard" className="shrink-0 px-3 py-2 rounded-lg bg-[#f2f4f6] text-[13px] font-semibold text-[#050a44]">{tx('Account')}</Link>
         ) : (
-          <Link href="/auth/login" className="shrink-0 px-4 py-2 rounded-lg bg-[#050a44] text-white text-[13px] font-semibold">
-            Sign in
-          </Link>
+          <Link href="/auth/login" className="shrink-0 px-4 py-2 rounded-lg bg-[#050a44] text-white text-[13px] font-semibold">{tx('Sign in')}</Link>
         )}
       </div>
 
       <Group title={t('Travel')}>
         <Row href="/my-bookings" icon={Ticket} label={t('My trips')} hint={t('Tickets, seat changes, cancellations')} />
-        <Row href="/dashboard" icon={Wallet} label={t('My account')} hint="Trips, refunds, booking history" />
-        {resaleOn && <Row href="/marketplace" icon={Store} label={t('Resale tickets')} hint="Buy or sell a seat" />}
-        <Row href="/bus" icon={RouteIcon} label={t('Routes & timetables')} hint="Stops, times and fares" />
-        <Row href="/services" icon={Package} label={t('Send a parcel or hire a bus')} hint="Get a quote" />
+        <Row href="/dashboard" icon={Wallet} label={t('My account')} hint={tx('Trips, refunds, booking history')} />
+        {resaleOn && <Row href="/marketplace" icon={Store} label={t('Resale tickets')} hint={tx('Buy or sell a seat')} />}
+        <Row href="/bus" icon={RouteIcon} label={t('Routes & timetables')} hint={tx('Stops, times and fares')} />
+        <Row href="/services" icon={Package} label={t('Send a parcel or hire a bus')} hint={tx('Get a quote')} />
       </Group>
 
       <section className="space-y-3">

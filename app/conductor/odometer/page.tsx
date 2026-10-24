@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import OdometerPage from '@/app/admin/odometer/page';
+import { tx } from '@/lib/i18n';
 
 export default function ConductorOdometer() {
   return (
     <div className="min-h-screen bg-[#f2f4f7] px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-10">
       <div className="max-w-2xl mx-auto">
-        <Link href="/conductor" className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#050a44] mb-3"><ChevronLeft className="w-4 h-4" /> Back to boarding</Link>
+        <Link href="/conductor" className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#050a44] mb-3"><ChevronLeft className="w-4 h-4" />{' '}{tx('Back to the conductor app')}</Link>
         <OdometerPage />
       </div>
     </div>

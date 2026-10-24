@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card } from './ui';
 import { daysUntil } from '@/lib/erp';
 import { formatDateLabel } from '@/lib/trips';
+import { tx } from '@/lib/i18n';
 
 /** Business pages: super admins only. (The server and database also enforce this.) */
 export function AdminOnly({ children }: { children: React.ReactNode }) {
@@ -12,8 +13,8 @@ export function AdminOnly({ children }: { children: React.ReactNode }) {
   return (
     <Card className="p-8 text-center max-w-md mx-auto mt-10">
       <ShieldAlert className="w-8 h-8 mx-auto text-[#7c5800]" />
-      <h1 className="text-[18px] font-semibold text-[#050a44] mt-3">Super admin only</h1>
-      <p className="text-[14px] text-[#46464f] mt-1">Ask the owner if you need access to this page.</p>
+      <h1 className="text-[18px] font-semibold text-[#050a44] mt-3">{tx('Super admin only')}</h1>
+      <p className="text-[14px] text-[#46464f] mt-1">{tx('Ask the owner if you need access to this page.')}</p>
     </Card>
   );
 }
@@ -52,7 +53,7 @@ export function ExpiryBadge({ date }: { date?: string | null }) {
   if (!date) return <span className="text-[12px] text-[#6b6d78]">—</span>;
   const d = daysUntil(date);
   const cls = d < 0 ? 'bg-[#ba1a1a]/10 text-[#ba1a1a]' : d <= 30 ? 'bg-[#feb700]/15 text-[#7c5800]' : 'bg-[#006e1c]/10 text-[#006e1c]';
-  const text = d < 0 ? `Expired ${-d}d ago` : d === 0 ? 'Expires today' : d <= 30 ? `${d} days left` : formatDateLabel(date, true);
+  const text = d < 0 ? tx('Expired {v}d ago', { v: -d }) : d === 0 ? tx('Expires today') : d <= 30 ? tx('{d} days left', { d }) : formatDateLabel(date, true);
   return <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${cls}`}>{text}</span>;
 }
 

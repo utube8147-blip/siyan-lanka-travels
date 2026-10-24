@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css';
 import type { Map as LMap, LayerGroup } from 'leaflet';
 import type { BusLocation } from '@/lib/extras';
 import type { RouteStop } from '@/lib/types';
+import { tx } from '@/lib/i18n';
 
 export function BusMap({ trail, stops, boardingIndex, className = '' }: { trail: BusLocation[]; stops: RouteStop[]; boardingIndex: number; className?: string }) {
   const el = useRef<HTMLDivElement>(null);
@@ -50,10 +51,10 @@ export function BusMap({ trail, stops, boardingIndex, className = '' }: { trail:
     const routePts = stops.filter((s) => s.lat != null).map((s) => [s.lat!, s.lng!] as [number, number]);
     if (routePts.length > 1) L.polyline(routePts, { color: '#050a44', weight: 3, opacity: 0.25, dashArray: '6 8' }).addTo(layer.current);
     stops.forEach((s, i) => {
-      if (s.lat == null) return;
+      if (s.lat == null || s.hidden) return; // hidden points only shape the line
       const mine = i === boardingIndex;
       L.circleMarker([s.lat, s.lng!], { radius: mine ? 9 : 4, color: '#050a44', weight: mine ? 3 : 1, fillColor: mine ? '#ffffff' : '#050a44', fillOpacity: mine ? 1 : 0.5 })
-        .bindTooltip(mine ? `Your stop: ${s.name}` : s.name, { permanent: mine, direction: 'top', offset: [0, -8] })
+        .bindTooltip(mine ? tx('Your stop: {name}', { name: s.name }) : s.name, { permanent: mine, direction: 'top', offset: [0, -8] })
         .addTo(layer.current!);
     });
     if (trail.length > 1) {
@@ -72,7 +73,7 @@ export function BusMap({ trail, stops, boardingIndex, className = '' }: { trail:
         iconSize: [36, 36],
         iconAnchor: [18, 18],
       });
-      L.marker([bus.lat, bus.lng], { icon, zIndexOffset: 1000 }).bindTooltip('Your bus', { direction: 'top', offset: [0, -16] }).addTo(layer.current);
+      L.marker([bus.lat, bus.lng], { icon, zIndexOffset: 1000 }).bindTooltip(tx('Your bus'), { direction: 'top', offset: [0, -16] }).addTo(layer.current);
     }
     // Frame the bus and your stop the first time we have both.
     const stop = stops[boardingIndex];
@@ -87,5 +88,5 @@ export function BusMap({ trail, stops, boardingIndex, className = '' }: { trail:
     }
   }
 
-  return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-[#e1e2e4] bg-[#e8ecef] ${className}`} role="img" aria-label="Map showing where your bus is" />;
+  return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-[#e1e2e4] bg-[#e8ecef] ${className}`} role="img" aria-label={tx('Map showing where your bus is')} />;
 }

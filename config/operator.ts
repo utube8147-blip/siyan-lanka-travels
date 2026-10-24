@@ -1,3 +1,4 @@
+import { N_ } from '@/lib/i18n-core';
 // config/operator.ts
 // ---------------------------------------------------------------------------
 // The ONE place to rebrand the platform for your bus company.
@@ -29,7 +30,7 @@ export const OPERATOR = {
   wordmarkSub: 'TRAVELS',
   /** Two letters used on ticket badges when there's no logo. */
   initials: 'SL',
-  tagline: 'Luxury AC night coach between Colombo and the East: Polonnaruwa, Batticaloa, Kalmunai and Akkaraipattu.',
+  tagline: N_('Luxury AC night coach between Colombo and the East: Polonnaruwa, Batticaloa, Kalmunai and Akkaraipattu.'),
 
   contact: {
     // From NEXT_PUBLIC_HOTLINE / NEXT_PUBLIC_WHATSAPP in .env (see above).
@@ -92,17 +93,17 @@ export const OPERATOR = {
    */
   bikes: {
     kinds: {
-      scooter: { label: 'Scooter / e-bike', icon: 'moped', spaces: 2, fullRouteFee: 1200 },
-      motorbike: { label: 'Motorbike', icon: 'two_wheeler', spaces: 2, fullRouteFee: 1500 },
+      scooter: { label: N_('Scooter / e-bike'), icon: 'moped', spaces: 2, fullRouteFee: 1200 },
+      motorbike: { label: N_('Motorbike'), icon: 'two_wheeler', spaces: 2, fullRouteFee: 1500 },
     },
     minFee: 300,
     maxPerBooking: 2,
     maxPhotoMB: 10,
     rules: [
-      'Motorbike and scooter fuel tanks no more than a quarter full.',
-      'Take off helmets, bags and anything loose; they travel with you.',
-      'Be at the boarding point 30 minutes early so the crew can load it.',
-      'The crew will check the bike matches your photo before loading.',
+      N_('Motorbike and scooter fuel tanks no more than a quarter full.'),
+      N_('Take off helmets, bags and anything loose; they travel with you.'),
+      N_('Be at the boarding point 30 minutes early so the crew can load it.'),
+      N_('The crew will check the bike matches your photo before loading.'),
     ],
   },
 

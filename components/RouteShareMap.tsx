@@ -5,18 +5,22 @@ import { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import type { Map as LMap, LayerGroup } from 'leaflet';
 import { touchpadFriendlyWheel } from './admin/mapWheel';
+import { tx } from '@/lib/i18n';
 
 export function RouteShareMap({
   stops,
   path,
   selected,
   onSelect,
+  compactLabels = false,
   className = '',
 }: {
   stops: { name: string; lat: number; lng: number }[];
   path: [number, number][] | null;
   selected: number | null;
   onSelect: (i: number) => void;
+  /** Name only the first and last stops (and the one tapped), so a small map stays readable. */
+  compactLabels?: boolean;
   className?: string;
 }) {
   const el = useRef<HTMLDivElement>(null);
@@ -66,7 +70,7 @@ export function RouteShareMap({
         const size = on ? 30 : 24;
         const icon = L.divIcon({
           className: '',
-          html: `<div style="display:flex;align-items:center;gap:5px;width:max-content"><div style="flex:none;width:${size}px;height:${size}px;border-radius:50%;background:${end ? '#050a44' : '#feb700'};color:${end ? '#fff' : '#050a44'};border:3px solid ${on ? '#feb700' : '#050a44'};box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:800 11px system-ui,sans-serif">${i + 1}</div><span style="font:700 11px system-ui,sans-serif;color:#050a44;background:rgba(255,255,255,.92);padding:1px 6px;border-radius:6px;white-space:nowrap">${s.name.replace(/</g, '&lt;')}</span></div>`,
+          html: `<div style="display:flex;align-items:center;gap:5px;width:max-content"><div style="flex:none;width:${size}px;height:${size}px;border-radius:50%;background:${end ? '#050a44' : '#feb700'};color:${end ? '#fff' : '#050a44'};border:3px solid ${on ? '#feb700' : '#050a44'};box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:800 11px system-ui,sans-serif">${i + 1}</div>${!compactLabels || end || on ? `<span style="font:700 11px system-ui,sans-serif;color:#050a44;background:rgba(255,255,255,.92);padding:1px 6px;border-radius:6px;white-space:nowrap">${s.name.replace(/</g, '&lt;')}</span>` : ''}</div>`,
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
         });
@@ -79,7 +83,7 @@ export function RouteShareMap({
         fitted.current = true;
       }
     })();
-  }, [ready, stops, path, selected]);
+  }, [ready, stops, path, selected, compactLabels]);
 
   useEffect(() => {
     const s = selected != null ? stops[selected] : null;
@@ -87,5 +91,5 @@ export function RouteShareMap({
     if (!map.current.getBounds().pad(-0.15).contains([s.lat, s.lng])) map.current.panTo([s.lat, s.lng]);
   }, [selected, ready, stops]);
 
-  return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-[#e1e2e4] bg-[#e8ecef] ${className}`} role="img" aria-label="Map of the route" />;
+  return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-[#e1e2e4] bg-[#e8ecef] ${className}`} role="img" aria-label={tx('Map of the route')} />;
 }

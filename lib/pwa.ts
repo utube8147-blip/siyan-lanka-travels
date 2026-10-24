@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { isSupabaseConfigured, supabase } from './supabase/client';
+import { tx } from '@/lib/i18n';
 
 type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
 declare global {
@@ -150,6 +151,17 @@ export async function forgetPushSubscription() {
   }
 }
 
+/** Drop the offline copies of pages (public/sw.js keeps them in "sl-pages-…"), e.g. on sign-out. */
+export async function clearPageCache() {
+  try {
+    if (typeof caches === 'undefined') return;
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k.startsWith('sl-pages-')).map((k) => caches.delete(k)));
+  } catch {
+    /* best effort */
+  }
+}
+
 function urlBase64ToUint8Array(base64: string) {
   const padding = '='.repeat((4 - (base64.length % 4)) % 4);
   const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
@@ -181,21 +193,21 @@ export type ServerPushTest = { ok: boolean; message: string };
  * which works even when server push is broken.)
  */
 export async function testServerPush(): Promise<ServerPushTest> {
-  if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return { ok: false, message: 'Push is not set up on this site: the public push key (NEXT_PUBLIC_VAPID_PUBLIC_KEY) was missing when it was built. Add it in the hosting settings and redeploy.' };
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return { ok: false, message: "This browser can't receive push notifications. On iPhone, open the app from the Home Screen icon." };
+  if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return { ok: false, message: tx('Push is not set up on this site: the public push key (NEXT_PUBLIC_VAPID_PUBLIC_KEY) was missing when it was built. Add it in the hosting settings and redeploy.') };
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return { ok: false, message: tx('This browser can\'t receive push notifications. On iPhone, open the app from the Home Screen icon.') };
   const attempt = async () => {
     const res = await fetch('/api/messages/push-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ test: true }) });
     return (await res.json().catch(() => ({}))) as { devices?: number; delivered?: number; problem?: string | null; code?: number | null };
   };
   // Make sure this device is registered to the signed-in person first.
-  if (!(await subscribeToPush())) return { ok: false, message: 'This device could not register for push. Check that notifications are allowed for this site, then try again.' };
+  if (!(await subscribeToPush())) return { ok: false, message: tx('This device could not register for push. Check that notifications are allowed for this site, then try again.') };
   let r = await attempt();
   // Registered with other keys, or not saved yet: register again from scratch and try once more.
   if (r.problem === 'key_mismatch' || r.problem === 'no_device' || r.problem === 'refused') {
     await resubscribeToPush();
     r = await attempt();
   }
-  if ((r.delivered ?? 0) > 0) return { ok: true, message: 'Sent from the server. It should appear within a few seconds. If it does, reminders will reach this device.' };
+  if ((r.delivered ?? 0) > 0) return { ok: true, message: tx('Sent from the server. It should appear within a few seconds. If it does, reminders will reach this device.') };
   const why: Record<string, string> = {
     signed_out: 'Sign in first: reminders are sent to your account.',
     no_database: 'The site is not connected to its database.',
@@ -206,5 +218,5 @@ export async function testServerPush(): Promise<ServerPushTest> {
     key_mismatch: "The push service refused the server's keys: the public and private push keys on the server don't belong together, or were changed. Check both keys in the hosting settings.",
     refused: `The push service did not accept the message${r.code ? ` (code ${r.code})` : ''}. Try again in a minute.`,
   };
-  return { ok: false, message: why[r.problem ?? ''] ?? 'The server could not send it. Try again in a minute.' };
+  return { ok: false, message: why[r.problem ?? ''] ?? tx('The server could not send it. Try again in a minute.') };
 }

@@ -63,6 +63,19 @@ export interface RouteStop {
   /** Photo of the exact spot (URL). */
   photo?: string;
   notes?: string;
+  /**
+   * "On request": the bus only goes here when at least `minSeats` seats are
+   * booked to or from it by the cut-off (Settings, hours before departure).
+   * Otherwise those passengers are moved to the nearest main stop and told.
+   */
+  optional?: boolean;
+  minSeats?: number;
+  /**
+   * A point that only shapes the road (the bus goes this way) and isn't a stop:
+   * passengers don't see it and can't book to or from it. The first and last
+   * stops can't be hidden.
+   */
+  hidden?: boolean;
 }
 
 export interface Route {
@@ -205,4 +218,6 @@ export interface StoreData {
   bookings: Booking[];
   /** How many days ahead passengers can book (0 = no limit). Staff: always 0. */
   bookingWindowDays?: number;
+  /** On-request stops are decided this many hours before departure. */
+  optionalCutoffHours?: number;
 }

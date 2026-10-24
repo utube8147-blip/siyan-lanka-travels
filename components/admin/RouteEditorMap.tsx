@@ -7,11 +7,14 @@ import 'leaflet/dist/leaflet.css';
 import { touchpadFriendlyWheel } from './mapWheel';
 import type { Map as LMap, LayerGroup } from 'leaflet';
 import type { LatLng } from '@/lib/routeEditor';
+import { tx } from '@/lib/i18n';
 
 export interface EditorStop {
   name: string;
   lat?: number;
   lng?: number;
+  /** A shaping point, not shown to passengers. */
+  hidden?: boolean;
 }
 
 export function RouteEditorMap({
@@ -135,10 +138,10 @@ export function RouteEditorMap({
         if (run.length < 2) return;
         if (runEst) {
           L.polyline(run, { color: '#ffffff', weight: 6, opacity: 0.6, interactive: false }).addTo(layer.current!);
-          L.polyline(run, { color: '#ba1a1a', weight: 4, opacity: 0.9, dashArray: '1 8', lineCap: 'round' }).bindTooltip('No GPS here: likely road (estimated)', { sticky: true }).addTo(layer.current!);
+          L.polyline(run, { color: '#ba1a1a', weight: 4, opacity: 0.9, dashArray: '1 8', lineCap: 'round' }).bindTooltip(tx('No GPS here: likely road (estimated)'), { sticky: true }).addTo(layer.current!);
         } else {
           L.polyline(run, { color: '#7c5800', weight: 7, opacity: 0.25, interactive: false }).addTo(layer.current!);
-          L.polyline(run, { color: '#feb700', weight: 3, opacity: 0.95 }).bindTooltip('Road driven (GPS file)', { sticky: true }).addTo(layer.current!);
+          L.polyline(run, { color: '#feb700', weight: 3, opacity: 0.95 }).bindTooltip(tx('Road driven (GPS file)'), { sticky: true }).addTo(layer.current!);
         }
       };
       for (let i = 1; i < gps.line.length; i++) {
@@ -153,10 +156,10 @@ export function RouteEditorMap({
       }
       flush();
     }
-    if (savedRoad && savedRoad.length > 1) L.polyline(savedRoad, { color: '#050a44', weight: 4, opacity: 0.45, dashArray: '8 8' }).bindTooltip('Saved route', { sticky: true }).addTo(layer.current);
+    if (savedRoad && savedRoad.length > 1) L.polyline(savedRoad, { color: '#050a44', weight: 4, opacity: 0.45, dashArray: '8 8' }).bindTooltip(tx('Saved route'), { sticky: true }).addTo(layer.current);
     if (editedRoad && editedRoad.length > 1) {
       L.polyline(editedRoad, { color: '#ffffff', weight: 8, opacity: 0.7, interactive: false }).addTo(layer.current);
-      L.polyline(editedRoad, { color: '#1f7a3a', weight: 5, opacity: 0.9 }).bindTooltip('Route as edited', { sticky: true }).addTo(layer.current);
+      L.polyline(editedRoad, { color: '#1f7a3a', weight: 5, opacity: 0.9 }).bindTooltip(tx('Route as edited'), { sticky: true }).addTo(layer.current);
     }
 
     const last = stops.length - 1;
@@ -165,12 +168,13 @@ export function RouteEditorMap({
       const end = i === 0 || i === last;
       const on = i === selected;
       const seen = !on && i === follow;
-      const bg = end ? '#050a44' : '#ffffff';
-      const fg = end ? '#ffffff' : '#050a44';
-      const size = on ? 30 : 24;
+      const ghost = !!s.hidden && !end; // shaping point: small, grey, no name unless selected
+      const bg = end ? '#050a44' : ghost ? '#e5e7eb' : '#ffffff';
+      const fg = end ? '#ffffff' : ghost ? '#6b6d78' : '#050a44';
+      const size = on ? 30 : ghost ? 18 : 24;
       const icon = L.divIcon({
         className: '',
-        html: `<div style="display:flex;align-items:center;gap:5px;width:max-content"><div style="flex:none;width:${size}px;height:${size}px;border-radius:50%;background:${bg};color:${fg};border:${on ? 4 : 3}px solid ${on ? '#feb700' : '#050a44'};box-shadow:${seen ? '0 0 0 6px rgba(254,183,0,.45),' : ''}0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:800 11px system-ui,sans-serif">${i + 1}</div><span style="font:700 11px system-ui,sans-serif;color:#050a44;background:rgba(255,255,255,.92);padding:1px 6px;border-radius:6px;white-space:nowrap">${(s.name || `Stop ${i + 1}`).replace(/</g, '&lt;')}</span></div>`,
+        html: `<div style="display:flex;align-items:center;gap:5px;width:max-content"><div style="flex:none;width:${size}px;height:${size}px;border-radius:50%;background:${bg};color:${fg};border:${on ? 4 : 3}px solid ${on ? '#feb700' : '#050a44'};box-shadow:${seen ? '0 0 0 6px rgba(254,183,0,.45),' : ''}0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:800 ${ghost && !on ? 9 : 11}px system-ui,sans-serif">${i + 1}</div>${ghost && !on ? '' : `<span style="font:700 11px system-ui,sans-serif;color:#050a44;background:rgba(255,255,255,.92);padding:1px 6px;border-radius:6px;white-space:nowrap">${(s.name || `Stop ${i + 1}`).replace(/</g, '&lt;')}${ghost ? ' (hidden)' : ''}</span>`}</div>`,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
       });
@@ -193,7 +197,7 @@ export function RouteEditorMap({
         iconSize: [30, 30],
         iconAnchor: [15, 30],
       });
-      const m = L.marker([pending.lat, pending.lng], { icon, draggable: true, zIndexOffset: 3000 }).bindTooltip('New stop: drag to adjust', { direction: 'top', offset: [0, -28] }).addTo(layer.current);
+      const m = L.marker([pending.lat, pending.lng], { icon, draggable: true, zIndexOffset: 3000 }).bindTooltip(tx('New stop: drag to adjust'), { direction: 'top', offset: [0, -28] }).addTo(layer.current);
       m.on('dragend', () => {
         const ll = m.getLatLng();
         cb.current.onMovePending?.(ll.lat, ll.lng);
@@ -208,5 +212,5 @@ export function RouteEditorMap({
     }
   }
 
-  return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-[#e1e2e4] bg-[#e8ecef] ${className}`} role="application" aria-label="Route map: drag stops to move them, click the map to add one" />;
+  return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-[#e1e2e4] bg-[#e8ecef] ${className}`} role="application" aria-label={tx('Route map: drag stops to move them, click the map to add one')} />;
 }

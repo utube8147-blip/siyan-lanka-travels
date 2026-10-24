@@ -8,10 +8,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStore } from '@/lib/store';
 import { usePublicSettings } from '@/lib/extras';
 import { SLIP_ACCEPT, slipOnFile, submitSlip, useSlips } from '@/lib/money';
-import { formatDateLabel, formatLKR } from '@/lib/trips';
+import { formatDateLabel, formatLKR, dateLocale } from '@/lib/trips';
 import type { Booking } from '@/lib/types';
+import { tx, txr } from '@/lib/i18n';
 
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+import { fmtDate } from '@/lib/dates';
+const when = (iso: string) => fmtDate(new Date(iso), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export function PaymentSlipCard() {
   const { user } = useAuth();
@@ -22,14 +24,12 @@ export function PaymentSlipCard() {
   const waiting = data.bookings.filter((b) => b.userId === user.id && b.status === 'held' && b.paymentMethod === 'bank');
   if (waiting.length === 0) return null;
   return (
-    <section className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm overflow-hidden" aria-label="Bank transfer payments">
+    <section className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm overflow-hidden" aria-label={tx('Bank transfer payments')}>
       <div className="px-5 py-4 border-b border-[#edeef0] flex items-center gap-2">
         <Landmark className="w-4 h-4 text-[#7c5800]" />
-        <h3 className="text-[15px] font-bold text-[#050a44]">Pay by bank transfer</h3>
+        <h3 className="text-[15px] font-bold text-[#050a44]">{tx('Pay by bank transfer')}</h3>
       </div>
-      <p className="px-5 pt-4 text-[13px] text-[#46464f]">
-        Transfer to <b className="text-[#050a44]">{pub.bankDetails}</b>, put the booking reference in the remarks, then upload the slip: a photo, a screenshot or the bank&apos;s PDF receipt.
-      </p>
+      <p className="px-5 pt-4 text-[13px] text-[#46464f]">{txr("Transfer to <b>{bank}</b>, put the booking reference in the remarks, then upload the slip: a photo, a screenshot or the bank's PDF receipt.", { bank: pub.bankDetails, b: (c) => <b className="text-[#050a44]">{c}</b> })}</p>
       <ul className="divide-y divide-[#edeef0]">
         {waiting.map((b) => (
           <SlipRow key={b.id} booking={b} slip={slipFor(b)} onDone={reload} />
@@ -50,47 +50,41 @@ function SlipRow({ booking, slip, onDone }: { booking: Booking; slip: ReturnType
     setError(null);
     const r = await submitSlip(booking, file, reference.trim());
     setBusy(false);
-    if (!r.ok) return setError(r.reason ?? "Couldn't upload the slip.");
+    if (!r.ok) return setError(r.reason ?? tx('Couldn\'t upload the slip.'));
     onDone();
   };
   const sent = slipOnFile(slip);
   return (
     <li className="px-5 py-4 space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <p className="text-[14px] font-semibold text-[#050a44]">
-          {booking.from} → {booking.to} · {formatDateLabel(booking.date, false)} · seat {booking.seats.join(', ')}
-        </p>
+        <p className="text-[14px] font-semibold text-[#050a44]">{tx('{from} → {to} · {date} · seat {seats}', { from: booking.from, to: booking.to, date: formatDateLabel(booking.date, false), seats: booking.seats.join(', ') })}</p>
         <p className="text-[14px] font-bold text-[#050a44] tabular-nums">{formatLKR(booking.total)}</p>
       </div>
-      <p className="text-[12px] text-[#6b6d78]">
-        Reference <b className="text-[#050a44]">{booking.ref}</b>
+      <p className="text-[12px] text-[#6b6d78]">{txr('Reference <b>{ref}</b>', { ref: booking.ref, b: (c) => <b className="text-[#050a44]">{c}</b> })}
         {booking.holdExpiresAt && (
           <>
-            {' '}· <Clock3 className="inline w-3.5 h-3.5 -mt-0.5" /> seat kept until <b className="text-[#050a44]">{when(booking.holdExpiresAt)}</b>
+            {' '}· <Clock3 className="inline w-3.5 h-3.5 -mt-0.5" />{' '}{txr('seat kept until <b>{until}</b>', { until: when(booking.holdExpiresAt), b: (c) => <b className="text-[#050a44]">{c}</b> })}
           </>
         )}
       </p>
       {sent ? (
         <div className="rounded-xl bg-[#e8f6ea] text-[#006e1c] text-[13px] font-semibold px-3 py-2.5 flex items-start gap-2">
           <Check className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>
-            Slip received {when(slip.uploadedAt)}. We&apos;ll confirm your seat once we&apos;ve checked it.{' '}
-            <button className="underline font-bold" onClick={() => input.current?.click()} disabled={busy}>
-              Replace slip
-            </button>
+          <span>{tx('Slip received {uploadedAt}. We\'ll confirm your seat once we\'ve checked it.', { uploadedAt: when(slip.uploadedAt) })}{' '}
+            <button className="underline font-bold" onClick={() => input.current?.click()} disabled={busy}>{tx('Replace slip')}</button>
           </span>
         </div>
       ) : (
         <>
           {slip && 'rejectedReason' in slip && slip.rejectedReason && (
-            <p className="rounded-xl bg-[#ba1a1a]/10 text-[#ba1a1a] text-[13px] font-semibold px-3 py-2.5">We couldn&apos;t accept the last slip: {slip.rejectedReason}. Please upload it again.</p>
+            <p className="rounded-xl bg-[#ba1a1a]/10 text-[#ba1a1a] text-[13px] font-semibold px-3 py-2.5">{tx('We couldn\'t accept the last slip: {rejectedReason}. Please upload it again.', { rejectedReason: slip.rejectedReason })}</p>
           )}
           <div className="flex flex-wrap gap-2">
             <input
               value={reference}
               onChange={(e) => setReference(e.target.value)}
-              placeholder="Bank reference no. (optional)"
-              aria-label="Bank reference number"
+              placeholder={tx('Bank reference no. (optional)')}
+              aria-label={tx('Bank reference number')}
               className="flex-1 min-w-[180px] h-10 px-3 rounded-xl bg-[#f2f4f6] text-[14px] font-medium outline-none focus:ring-1 focus:ring-[#050a44]"
             />
             <button
@@ -98,7 +92,7 @@ function SlipRow({ booking, slip, onDone }: { booking: Booking; slip: ReturnType
               disabled={busy}
               className="inline-flex items-center gap-1.5 px-4 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold disabled:opacity-50"
             >
-              <Upload className="w-4 h-4" /> {busy ? 'Uploading…' : 'Upload slip'}
+              <Upload className="w-4 h-4" /> {busy ? tx('Uploading…') : tx('Upload slip')}
             </button>
           </div>
         </>

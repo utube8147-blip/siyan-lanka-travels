@@ -9,9 +9,9 @@ import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
-import { addDays, allStopNames, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO } from '@/lib/trips';
+import { addDays, allStopNames, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
-import { useT } from '@/lib/i18n';
+import { useT, txn } from '@/lib/i18n';
 import {
   MapPin,
   Calendar,
@@ -25,7 +25,9 @@ import {
 } from 'lucide-react';
 import { RouteMapOverlay, type RouteData, type RouteStop } from '@/components/RouteMapOverlay';
 import { km, useLiveTrip } from '@/lib/extras';
+import { tx } from '@/lib/i18n';
 
+import { fmtDate } from '@/lib/dates';
 interface Schedule {
   id: string;
   operator: string;
@@ -54,7 +56,7 @@ function toSchedule(t: Trip): Schedule {
     arrival: `${formatTime12(t.arrival)}${t.arrivalDayOffset ? ' +1' : ''}`,
     sortKey: t.departure,
     durationLabel: formatDuration(t.durationMin),
-    stopLabel: t.via.length === 0 ? 'Non-stop' : `${t.via.length} stop${t.via.length > 1 ? 's' : ''}`,
+    stopLabel: t.via.length === 0 ? tx('Non-stop') : txn(t.via.length, '{n} stop', '{n} stops'),
     seatsRemaining: t.seatsLeft,
     fare: t.fare,
     closed: t.closed,
@@ -81,7 +83,7 @@ function routeDistanceLabel(stops: { lat?: number; lng?: number }[]) {
   let total = 0;
   for (let i = 1; i < stops.length; i++) total += km({ lat: stops[i - 1].lat!, lng: stops[i - 1].lng! }, { lat: stops[i].lat!, lng: stops[i].lng! });
   const road = total * ROAD_FACTOR;
-  return `~${road < 20 ? Math.round(road) : Math.round(road / 5) * 5} km`;
+  return tx('~{v} km', { v: road < 20 ? Math.round(road) : Math.round(road / 5) * 5 });
 }
 /** A shared position older than this isn't shown as "live". */
 const LIVE_MAX_AGE_MIN = 20;
@@ -183,15 +185,12 @@ function SearchPageInner() {
   };
 
   const formatStripDate = (d: Date) => {
-    const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
-    const day = d.getDate().toString().padStart(2, '0');
-    const month = d.toLocaleDateString('en-US', { month: 'short' });
-    return `${weekday}, ${day} ${month}`;
+    return fmtDate(d, { weekday: 'short', day: '2-digit', month: 'short' });
   };
 
   // Compact pieces used for the mobile date card (day number over weekday abbreviation)
   const stripDayNumber = (d: Date) => d.getDate().toString().padStart(2, '0');
-  const stripWeekdayShort = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+  const stripWeekdayShort = (d: Date) => fmtDate(d, { weekday: 'short' }).toUpperCase();
 
   // Toggle sort: clicking the active field flips direction, clicking the other
   // field switches to it (ascending first).
@@ -260,6 +259,7 @@ function SearchPageInner() {
         progress: Math.round(((x.offsetMin - segment[0].offsetMin) / span) * 100),
         lat: x.lat,
         lng: x.lng,
+        hidden: x.hidden,
         status: 'upcoming',
       };
     });
@@ -290,7 +290,7 @@ function SearchPageInner() {
       distance: routeDistanceLabel(segment),
       busProgress,
       busPosition,
-      busSeen: busPosition ? (ageMin < 1 ? 'just now' : `${Math.round(ageMin)} min ago`) : undefined,
+      busSeen: busPosition ? (ageMin < 1 ? tx('just now') : tx('{m} min ago', { m: Math.round(ageMin) })) : undefined,
       stops,
     };
   };
@@ -322,13 +322,13 @@ function SearchPageInner() {
                   its 3 children slot directly into the outer desktop grid. */}
               <div className="grid grid-cols-[1fr_auto_1fr] gap-1.5 items-end md:contents">
                 <div className="space-y-1 sm:space-y-2 min-w-0">
-                  <label className="text-[10px] sm:text-[12px] font-bold text-[#46464f] px-1">Boarding point</label>
+                  <label className="text-[10px] sm:text-[12px] font-bold text-[#46464f] px-1">{tx('Boarding point')}</label>
                   <div className="relative">
                     <MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 text-[#c7c5d1]" />
                     <input
                       value={from}
                       list="search-stop-names"
-                      aria-label="Boarding point"
+                      aria-label={tx('Boarding point')}
                       onChange={(e) => setFrom(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && runSearch()}
                       className={`${inputClass} pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 text-xs sm:text-sm`}
@@ -341,20 +341,20 @@ function SearchPageInner() {
                   <button
                     onClick={swapCities}
                     className="bg-[#050a44] text-white p-1.5 sm:p-2.5 rounded-full hover:scale-105 transition-transform shadow-sm"
-                    aria-label="Swap boarding and drop-off points"
+                    aria-label={tx('Swap boarding and drop-off points')}
                   >
                     <ArrowLeftRight className="w-3.5 h-3.5 sm:w-5 sm:h-5 md:rotate-0 rotate-90" />
                   </button>
                 </div>
 
                 <div className="space-y-1 sm:space-y-2 min-w-0">
-                  <label className="text-[10px] sm:text-[12px] font-bold text-[#46464f] px-1">Drop-off point</label>
+                  <label className="text-[10px] sm:text-[12px] font-bold text-[#46464f] px-1">{tx('Drop-off point')}</label>
                   <div className="relative">
                     <MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 text-[#c7c5d1]" />
                     <input
                       value={to}
                       list="search-stop-names"
-                      aria-label="Drop-off point"
+                      aria-label={tx('Drop-off point')}
                       onChange={(e) => setTo(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && runSearch()}
                       className={`${inputClass} pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 text-xs sm:text-sm`}
@@ -410,9 +410,7 @@ function SearchPageInner() {
                       className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
                         sortBy === 'departure' && !sortAsc ? 'rotate-180' : ''
                       } ${sortBy === 'departure' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
-                    />
-                    Departure time
-                  </button>
+                    />{tx('Departure time')}</button>
 
                   {/* Price sort — plain toggle */}
                   <button
@@ -427,9 +425,7 @@ function SearchPageInner() {
                       className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform ${
                         sortBy === 'price' && !sortAsc ? 'rotate-180' : ''
                       } ${sortBy === 'price' ? 'text-white/70' : 'text-[#c7c5d1]'}`}
-                    />
-                    Price
-                  </button>
+                    />{tx('Price')}</button>
 
                   {/* Bus type — two compact toggle pills. Tapping a selected type
                       again clears it back to "all". */}
@@ -451,16 +447,14 @@ function SearchPageInner() {
                           ? 'border-[#050a44] bg-[#050a44] text-white'
                           : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f1f3f9]'
                       }`}
-                    >
-                      Non-AC
-                    </button>
+                    >{tx('Non-AC')}</button>
                   </div>
 
                   {/* Reset / remove filters — compact, icon-first */}
                   <button
                     onClick={resetFilters}
                     disabled={activeFilterCount === 0}
-                    aria-label="Reset filters"
+                    aria-label={tx('Reset filters')}
                     className={`flex items-center gap-1.5 pl-3 pr-3 py-2.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
                       activeFilterCount > 0
                         ? 'text-[#E74C3C] border border-[#E74C3C]/30 bg-[#E74C3C]/5 hover:bg-[#E74C3C]/10'
@@ -468,7 +462,7 @@ function SearchPageInner() {
                     }`}
                   >
                     <SlidersHorizontal className="w-3.5 h-3.5" />
-                    <span>Reset{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
+                    <span>{tx('Reset')}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
                   </button>
                 </div>
               )}
@@ -479,7 +473,7 @@ function SearchPageInner() {
                 <button
                   onClick={() => setDateWindowOffset((o) => Math.max(0, o - 1))}
                   className="p-1.5 sm:p-2 rounded-full text-[#46464f] hover:bg-white transition-colors shrink-0"
-                  aria-label="Earlier dates"
+                  aria-label={tx('Earlier dates')}
                 >
                   <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
@@ -513,7 +507,7 @@ function SearchPageInner() {
                 <button
                   onClick={() => setDateWindowOffset((o) => o + 1)}
                   className="p-1.5 sm:p-2 rounded-full text-[#46464f] hover:bg-white transition-colors shrink-0"
-                  aria-label="Later dates"
+                  aria-label={tx('Later dates')}
                 >
                   <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
@@ -527,8 +521,7 @@ function SearchPageInner() {
               <h1 className="text-lg sm:text-xl font-bold text-[#050a44]">
                 {t('Buses from {from} to {to}', { from: query.from, to: query.to })}
               </h1>
-              <span className="text-sm font-semibold text-[#46464f]">
-                {filteredSchedules.length} result{filteredSchedules.length !== 1 ? 's' : ''} found
+              <span className="text-sm font-semibold text-[#46464f]">{txn(filteredSchedules.length, '{n} result found', '{n} results found')}
               </span>
             </div>
 
@@ -538,26 +531,20 @@ function SearchPageInner() {
               </div>
             ) : schedules.length === 0 ? (
               <div className="py-20 text-center max-w-md mx-auto">
-                <p className="text-[#050a44] text-lg font-bold">No departures from {query.from} to {query.to} on this date</p>
+                <p className="text-[#050a44] text-lg font-bold">{tx('No departures from {from} to {to} on this date', { from: query.from, to: query.to })}</p>
                 {nextRunDate ? (
                   <button
                     onClick={() => setDate(nextRunDate)}
                     className="mt-5 px-6 py-3 bg-[#050a44] text-white rounded-xl text-sm font-bold hover:opacity-90"
-                  >
-                    Next bus: {formatDateLabel(nextRunDate, false)}
-                  </button>
+                  >{tx('Next bus: {date}', { date: formatDateLabel(nextRunDate, false) })}</button>
                 ) : (
-                  <p className="text-[#46464f] text-sm mt-2">
-                    We stop at {stopNames.join(', ')}. Check the spelling of your stops.
-                  </p>
+                  <p className="text-[#46464f] text-sm mt-2">{tx('We stop at {stopNames}. Check the spelling of your stops.', { stopNames: stopNames.join(', ') })}</p>
                 )}
               </div>
             ) : filteredSchedules.length === 0 ? (
               <div className="py-24 text-center">
-                <p className="text-[#46464f] text-lg">No buses match your filters</p>
-                <button onClick={resetFilters} className="mt-4 text-[#050a44] font-bold hover:underline">
-                  Reset filters
-                </button>
+                <p className="text-[#46464f] text-lg">{tx('No buses match your filters')}</p>
+                <button onClick={resetFilters} className="mt-4 text-[#050a44] font-bold hover:underline">{tx('Reset filters')}</button>
               </div>
             ) : (
               <div ref={resultsRef} className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
@@ -577,8 +564,15 @@ function SearchPageInner() {
                           <p className="text-[12px] font-medium text-[#46464f]">{s.busName}</p>
                         </div>
                       </div>
-                      <span className="inline-block bg-[#feb700]/15 text-[#7c5800] text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
-                        {s.busType === 'AC' ? 'AC Bus' : 'Non-AC Bus'}
+                      <span className="flex flex-col items-end gap-1">
+                        <span className="inline-block bg-[#feb700]/15 text-[#7c5800] text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
+                          {s.busType === 'AC' ? tx('AC Bus') : tx('Non-AC Bus')}
+                        </span>
+                        {data.routes.find((r) => r.id === s.trip.routeId)?.stops.some((x) => x.optional && (x.name === s.trip.from || x.name === s.trip.to)) && (
+                          <span className="inline-block bg-[#ede9fe] text-[#4c1d95] text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide" title={tx('The bus goes to this stop only if enough seats are booked. Details on the next page.')}>
+                            {tx('On-request stop')}
+                          </span>
+                        )}
                       </span>
                     </div>
 
@@ -586,7 +580,7 @@ function SearchPageInner() {
                     <button
                       type="button"
                       onClick={() => setRouteSchedule(s)}
-                      title="View route on map"
+                      title={tx('View route on map')}
                       className="w-full text-left rounded-2xl bg-[#f2f4f6] border border-[#e6e8ec] p-4 sm:p-5 mb-4 group cursor-pointer hover:border-[#050a44]/30 transition-colors"
                     >
                       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4">
@@ -628,9 +622,7 @@ function SearchPageInner() {
 
                       {/* Footer hint */}
                       <div className="mt-4 pt-3 border-t border-[#e1e2e4] flex items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#050a44] group-hover:gap-2.5 transition-all">
-                        <MapPin className="w-3.5 h-3.5" />
-                        View route on map
-                        <ChevronRight className="w-3.5 h-3.5" />
+                        <MapPin className="w-3.5 h-3.5" />{tx('View route on map')}<ChevronRight className="w-3.5 h-3.5" />
                       </div>
                     </button>
 
@@ -646,17 +638,17 @@ function SearchPageInner() {
                             className={`ml-2 inline-flex items-center gap-1 text-[12px] font-bold rounded-full px-2 py-0.5 ${
                               s.trip.bikeSpacesLeft > 0 ? 'bg-[#feb700]/15 text-[#7c5800]' : 'bg-[#e1e2e4] text-[#686873]'
                             }`}
-                            title="Space for bikes in the luggage compartment"
+                            title={tx('Space for bikes in the luggage compartment')}
                           >
                             <span className="material-symbols-outlined text-[15px]">two_wheeler</span>
-                            {s.trip.bikeSpacesLeft > 0 ? t('Bike space') : 'No bike space'}
+                            {s.trip.bikeSpacesLeft > 0 ? t('Bike space') : tx('No bike space')}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-[16px] ml-auto">
                         <p className="text-[22px] font-extrabold text-[#050a44]">{formatLKR(s.fare)}</p>
                         {s.closed ? (
-                          <span className="bg-[#e1e2e4] text-[#46464f] rounded-xl px-6 py-2.5 text-[13px] font-bold whitespace-nowrap">{s.trip.opensOn ? `${t('Booking opens')} ${formatDateLabel(s.trip.opensOn, false)}` : t('Booking closed')}</span>
+                          <span className="bg-[#e1e2e4] text-[#46464f] rounded-xl px-6 py-2.5 text-[13px] font-bold whitespace-nowrap">{s.trip.opensOn ? tx('Booking opens {date}', { date: formatDateLabel(s.trip.opensOn, false) }) : t('Booking closed')}</span>
                         ) : s.seatsRemaining === 0 ? (
                           <WaitlistButton scheduleId={s.id} date={s.trip.date} from={s.trip.from} to={s.trip.to} />
                         ) : (

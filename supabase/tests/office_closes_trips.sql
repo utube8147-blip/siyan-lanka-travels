@@ -2,6 +2,7 @@
 -- Run after local_supabase_stub.sql and setup.sql. One select is meant to fail.
 \set ON_ERROR_STOP 1
 \pset pager off
+update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 begin;
 insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000d1','con@x.lk'),('00000000-0000-0000-0000-0000000000d2','desk@x.lk'),('00000000-0000-0000-0000-0000000000d3','con2@x.lk');
 insert into public.profiles (id, full_name, role) values ('00000000-0000-0000-0000-0000000000d1','Suresh','conductor'),('00000000-0000-0000-0000-0000000000d2','Desk','staff'),('00000000-0000-0000-0000-0000000000d3','Other conductor','conductor')

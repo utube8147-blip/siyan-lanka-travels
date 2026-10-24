@@ -1,3 +1,4 @@
+import { jsonLdScript } from '@/lib/seo';
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import '@fontsource-variable/plus-jakarta-sans';
@@ -100,7 +101,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       </head>
       <body>
         <div className="min-h-screen bg-[#f8f9fb] font-sans text-[#191c1e] selection:bg-[#bdc2ff] selection:text-[#0f144c] flex flex-col">

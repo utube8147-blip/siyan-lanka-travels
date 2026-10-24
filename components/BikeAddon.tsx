@@ -11,16 +11,18 @@ import { useId, useState } from 'react';
 import { OPERATOR } from '@/config/operator';
 import type { BikeItem, BikeKind, Trip } from '@/lib/types';
 import { bikeFee, bikeSpacesFor, compressPhoto, formatLKR, genId } from '@/lib/trips';
-import { useT } from '@/lib/i18n';
+import { useT, txn } from '@/lib/i18n';
+import { tx } from '@/lib/i18n';
 
 
 /** Human-readable reason the bikes can't be booked yet, or null when all good. */
 export function bikesProblem(bikes: BikeItem[]): string | null {
   for (const [i, b] of bikes.entries()) {
-    const n = bikes.length > 1 ? ` for bike ${i + 1}` : '';
-    if (!b.photo) return `Upload a photo${n}.`;
-    if (b.description.trim().length < 3) return `Add the make and colour${n}.`;
-    if (bikeKind(b.kind).needsPlate && b.regNo.trim().length < 4) return `Add the number plate${n}.`;
+    const many = bikes.length > 1;
+    const n = i + 1;
+    if (!b.photo) return many ? tx('Upload a photo for bike {n}.', { n }) : tx('Upload a photo of the bike.');
+    if (b.description.trim().length < 3) return many ? tx('Add the make and colour for bike {n}.', { n }) : tx('Add the make and colour of the bike.');
+    if (bikeKind(b.kind).needsPlate && b.regNo.trim().length < 4) return many ? tx('Add the number plate for bike {n}.', { n }) : tx('Add the number plate of the bike.');
   }
   return null;
 }
@@ -71,8 +73,8 @@ export function BikeAddon({
             <h2 className="text-[16px] font-semibold">{t('Bringing a bike?')}</h2>
             <p className="text-[13px] text-[#46464f] mt-0.5">
               {full
-                ? 'The luggage compartment is full on this departure. Try another date.'
-                : `It rides in the luggage compartment under the bus, from ${formatLKR(cheapest)}. ${trip.bikeSpacesLeft} of ${trip.bikeSpaces} spaces left.`}
+                ? tx('The luggage compartment is full on this departure. Try another date.')
+                : tx('It rides in the luggage compartment under the bus, from {amount}. {bikeSpacesLeft} of {bikeSpaces} spaces left.', { amount: formatLKR(cheapest), bikeSpacesLeft: trip.bikeSpacesLeft, bikeSpaces: trip.bikeSpaces })}
             </p>
           </div>
         </div>
@@ -80,7 +82,7 @@ export function BikeAddon({
           type="button"
           role="switch"
           aria-checked={on}
-          aria-label="Add a bike to this booking"
+          aria-label={tx('Add a bike to this booking')}
           disabled={full && !on}
           onClick={toggle}
           className={`relative w-12 h-7 rounded-full shrink-0 transition-colors disabled:opacity-40 ${on ? 'bg-[#050a44]' : 'bg-[#c7c5d1]'}`}
@@ -113,9 +115,7 @@ export function BikeAddon({
               }}
               className="w-full h-11 rounded-xl border border-dashed border-[#c7c5d1] text-[13px] font-bold text-[#050a44] hover:bg-[#f2f4f6] flex items-center justify-center gap-1.5"
             >
-              <span className="material-symbols-outlined text-[18px]">add</span>
-              Add another bike
-            </button>
+              <span className="material-symbols-outlined text-[18px]">add</span>{tx('Add another bike')}</button>
           )}
 
           <div className="rounded-xl bg-[#f2f4f6] px-4 py-3">
@@ -124,14 +124,12 @@ export function BikeAddon({
               onClick={() => setShowRules((v) => !v)}
               aria-expanded={showRules}
               className="w-full flex items-center justify-between text-[13px] font-bold text-[#050a44]"
-            >
-              Before you travel with a bike
-              <span className={`material-symbols-outlined text-[18px] transition-transform ${showRules ? 'rotate-180' : ''}`}>expand_more</span>
+            >{tx('Before you travel with a bike')}<span className={`material-symbols-outlined text-[18px] transition-transform ${showRules ? 'rotate-180' : ''}`}>expand_more</span>
             </button>
             {showRules && (
               <ul className="mt-2 space-y-1.5 text-[12px] text-[#46464f] list-disc pl-4">
                 {OPERATOR.bikes.rules.map((r) => (
-                  <li key={r}>{r}</li>
+                  <li key={r}>{tx(r)}</li>
                 ))}
               </ul>
             )}
@@ -174,7 +172,7 @@ function BikeCard({
     try {
       onChange({ photo: await compressPhoto(file) });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Couldn’t use that photo.');
+      setError(e instanceof Error ? e.message : tx('Couldn’t use that photo.'));
     } finally {
       setBusy(false);
     }
@@ -186,16 +184,14 @@ function BikeCard({
   return (
     <div className="rounded-xl border border-[#e1e2e4] p-[16px]">
       <div className="flex items-center justify-between mb-[12px]">
-        <p className="text-[13px] font-bold text-[#050a44]">{total > 1 ? `Bike ${index + 1}` : 'Your bike'}</p>
+        <p className="text-[13px] font-bold text-[#050a44]">{total > 1 ? tx('Bike {n}', { n: index + 1 }) : tx('Your bike')}</p>
         <div className="flex items-center gap-3">
           <span className="text-[13px] font-bold text-[#050a44]">{formatLKR(bike.fee)}</span>
-          <button type="button" onClick={onRemove} className="text-[12px] font-bold text-[#ba1a1a] hover:underline">
-            Remove
-          </button>
+          <button type="button" onClick={onRemove} className="text-[12px] font-bold text-[#ba1a1a] hover:underline">{tx('Remove')}</button>
         </div>
       </div>
 
-      <div className={`grid grid-cols-2 ${KINDS.length > 2 ? 'sm:grid-cols-3' : ''} gap-[8px]`} role="radiogroup" aria-label="Kind of bike">
+      <div className={`grid grid-cols-2 ${KINDS.length > 2 ? 'sm:grid-cols-3' : ''} gap-[8px]`} role="radiogroup" aria-label={tx('Kind of bike')}>
         {KINDS.map((k) => {
           const meta = bikeKind(k);
           const selected = bike.kind === k;
@@ -213,7 +209,7 @@ function BikeCard({
               }`}
             >
               <span className="material-symbols-outlined text-[24px] block">{meta.icon}</span>
-              <span className="block text-[12px] font-bold mt-1 leading-tight">{meta.label}</span>
+              <span className="block text-[12px] font-bold mt-1 leading-tight">{tx(meta.label)}</span>
               <span className={`block text-[11px] mt-0.5 ${selected ? 'text-white/70' : 'text-[#46464f]'}`}>{formatLKR(bikeFee(k, trip.routeShare))}</span>
             </button>
           );
@@ -224,13 +220,11 @@ function BikeCard({
         {bike.photo ? (
           <div className="relative rounded-xl overflow-hidden border border-[#e1e2e4] aspect-[4/3] sm:aspect-auto sm:h-full min-h-[132px] bg-[#f2f4f6]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={bike.photo} alt="Your bike" className="absolute inset-0 w-full h-full object-cover" />
+            <img src={bike.photo} alt={tx('Your bike')} className="absolute inset-0 w-full h-full object-cover" />
             <label
               htmlFor={inputId}
               className="absolute bottom-2 left-2 right-2 text-center bg-black/55 backdrop-blur-sm text-white text-[12px] font-bold rounded-lg py-1.5 cursor-pointer hover:bg-black/70"
-            >
-              Replace photo
-            </label>
+            >{tx('Replace photo')}</label>
           </div>
         ) : (
           <label
@@ -250,8 +244,8 @@ function BikeCard({
             }`}
           >
             <span className="material-symbols-outlined text-[28px] text-[#050a44]">{busy ? 'hourglass_top' : 'add_a_photo'}</span>
-            <span className="text-[12px] font-bold text-[#050a44] mt-1">{busy ? 'Preparing photo…' : 'Upload a photo'}</span>
-            <span className="text-[11px] text-[#46464f] mt-0.5">Whole bike, side view</span>
+            <span className="text-[12px] font-bold text-[#050a44] mt-1">{busy ? tx('Preparing photo…') : tx('Upload a photo')}</span>
+            <span className="text-[11px] text-[#46464f] mt-0.5">{tx('Whole bike, side view')}</span>
           </label>
         )}
         <input
@@ -267,32 +261,27 @@ function BikeCard({
 
         <div className="space-y-[12px]">
           <div>
-            <label className="text-[11px] font-bold text-[#46464f] px-1" htmlFor={`${inputId}-desc`}>
-              Make, model and colour
-            </label>
+            <label className="text-[11px] font-bold text-[#46464f] px-1" htmlFor={`${inputId}-desc`}>{tx('Make, model and colour')}</label>
             <input
               id={`${inputId}-desc`}
               value={bike.description}
               onChange={(e) => onChange({ description: e.target.value })}
-              placeholder="e.g. Honda Dio, red"
+              placeholder={tx('e.g. Honda Dio, red')}
               className={fieldClass}
             />
           </div>
           <div>
-            <label className="text-[11px] font-bold text-[#46464f] px-1" htmlFor={`${inputId}-reg`}>
-              Number plate{bikeKind(bike.kind).needsPlate ? '' : ' (if it has one)'}
+            <label className="text-[11px] font-bold text-[#46464f] px-1" htmlFor={`${inputId}-reg`}>{bikeKind(bike.kind).needsPlate ? tx('Number plate') : tx('Number plate (if it has one)')}
             </label>
             <input
               id={`${inputId}-reg`}
               value={bike.regNo}
               onChange={(e) => onChange({ regNo: e.target.value.toUpperCase() })}
-              placeholder="e.g. EP BGK-1234"
+              placeholder={tx('e.g. EP BGK-1234')}
               className={fieldClass}
             />
           </div>
-          <p className="text-[11px] text-[#46464f]">
-            Uses {bikeKind(bike.kind).spaces} space{bikeKind(bike.kind).spaces > 1 ? 's' : ''} in the compartment. The crew checks it against your photo at loading.
-          </p>
+          <p className="text-[11px] text-[#46464f]">{txn(bikeKind(bike.kind).spaces, 'Uses {n} space in the compartment. The crew checks it against your photo at loading.', 'Uses {n} spaces in the compartment. The crew checks it against your photo at loading.')}</p>
         </div>
       </div>
       {error && (

@@ -15,8 +15,11 @@ import type { Run } from '@/lib/trips';
 import { Button, Card, Field, Modal, inputClass, useToast } from './ui';
 import { QrScanner } from '@/components/staff/QrScanner';
 import { scanTicket } from '@/lib/manifest';
+import { tx, txr, N_ } from '@/lib/i18n';
 
 export type SharingStatus = { lastSentAt: number | null; accuracy: number | null; problem: string | null };
+// How each kind of trip update is named in the staff note above.
+const EVENT_LABEL: Record<string, string> = { departed: N_('departed'), delayed: N_('delayed'), arriving: N_('arriving'), arrived: N_('arrived'), note: N_('note') };
 const intentKey = (s: string, d: string) => `share-location:${s}|${d}`;
 
 /**
@@ -50,7 +53,7 @@ export function useLocationSharing(scheduleId: string, date: string, notify: (ms
       setStatus({ lastSentAt: Date.now(), accuracy: Math.round(pos.coords.accuracy), problem: null });
     } else {
       pending.current = true; // retry when back online / next heartbeat
-      setStatus((st) => ({ ...st, problem: navigator.onLine ? r.reason ?? 'Could not send location' : 'No signal: will send when back online' }));
+      setStatus((st) => ({ ...st, problem: navigator.onLine ? r.reason ?? tx('Could not send location') : tx('No signal: will send when back online') }));
     }
   };
 
@@ -67,7 +70,7 @@ export function useLocationSharing(scheduleId: string, date: string, notify: (ms
     if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
     watchId.current = navigator.geolocation.watchPosition(
       (pos) => send(pos),
-      (err) => setStatus((st) => ({ ...st, problem: err.code === 1 ? 'Location permission is off for this site' : 'Looking for GPS signal…' })),
+      (err) => setStatus((st) => ({ ...st, problem: err.code === 1 ? tx('Location permission is off for this site') : tx('Looking for GPS signal…') })),
       { enableHighAccuracy: true, maximumAge: 10_000, timeout: 30_000 },
     );
     if (heartbeat.current) clearInterval(heartbeat.current);
@@ -143,16 +146,16 @@ export function useLocationSharing(scheduleId: string, date: string, notify: (ms
         /* ignore */
       }
       await stopAll();
-      return notify('Stopped sharing location');
+      return notify(tx('Stopped sharing location'));
     }
-    if (!('geolocation' in navigator)) return notify('This phone can\u2019t share its location', 'error');
+    if (!('geolocation' in navigator)) return notify(tx('This phone can’t share its location'), 'error');
     try {
       localStorage.setItem(intentKey(scheduleId, date), 'on');
     } catch {
       /* ignore */
     }
     await begin();
-    notify('Sharing this phone\u2019s location with passengers. Keep this page open.');
+    notify(tx('Sharing this phone’s location with passengers. Keep this page open.'));
   };
 
   return { sharing, toggle, status };
@@ -165,7 +168,7 @@ export function TripTools({ run, bookings }: { run: Run; bookings: Booking[] }) 
   const { confirmPayment } = useStore();
   const [posting, setPosting] = useState<TripEvent['kind'] | null>(null);
   const [scanning, setScanning] = useState(false);
-  const stops = run.route.stops.map((s) => s.name);
+  const stops = run.route.stops.filter((s) => !s.hidden).map((s) => s.name);
 
   const scan = (text: string) =>
     scanTicket(text, bookings, {
@@ -186,37 +189,42 @@ export function TripTools({ run, bookings }: { run: Run; bookings: Booking[] }) 
   return (
     <Card className="p-4 space-y-3">
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => setScanning(true)}><QrCode className="w-4 h-4" /> Scan tickets</Button>
-        <Button variant="secondary" onClick={() => setPosting('departed')}><Megaphone className="w-4 h-4" /> Update passengers</Button>
+        <Button variant="secondary" onClick={() => setScanning(true)}><QrCode className="w-4 h-4" />{' '}{tx('Scan tickets')}</Button>
+        <Button variant="secondary" onClick={() => setPosting('departed')}><Megaphone className="w-4 h-4" />{' '}{tx('Update passengers')}</Button>
       </div>
       <div role="status" className={`rounded-xl px-3 py-2.5 text-[13px] ${live ? 'bg-[#e8f6ea]' : location ? 'bg-[#feb700]/15' : 'bg-[#f2f4f6]'}`}>
         <p className="flex items-center gap-2 font-bold text-[#050a44]">
           {live ? <Radio className="w-4 h-4 text-[#006e1c] animate-pulse" /> : <MapPin className="w-4 h-4" />}
           {live
-            ? `Bus location: live from the conductor's phone (${ageMin === 0 ? 'just now' : `${ageMin} min ago`})`
+            ? tx("Bus location: live from the conductor's phone ({v})", { v: ageMin === 0 ? tx('just now') : tx('{m} min ago', { m: ageMin }) })
             : location
-              ? `Bus location: the conductor's phone stopped sharing at ${at} (${ageMin! < 90 ? `${ageMin} min` : `${Math.round(ageMin! / 60)} h`} ago)`
-              : 'Bus location: the conductor is not sharing it yet'}
+              ? ageMin! < 90
+                ? tx("Bus location: the conductor's phone stopped sharing at {at} ({m} min ago)", { at, m: ageMin })
+                : tx("Bus location: the conductor's phone stopped sharing at {at} ({h} h ago)", { at, h: Math.round(ageMin! / 60) })
+              : tx('Bus location: the conductor is not sharing it yet')}
         </p>
         <p className="text-[12px] text-[#46464f] mt-0.5">
           {location ? (
             <>
-              {live ? 'Passengers see the bus on their ticket. ' : 'Passengers see this last position. '}
-              <a href={`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`} target="_blank" rel="noopener" className="font-semibold text-[#050a44] underline">Open on the map</a>
-              {live ? '' : '. Ask the conductor to open the conductor app and turn on Share location.'}
+              {txr(
+                live
+                  ? 'Passengers see the bus on their ticket. <a>Open on the map</a>'
+                  : 'Passengers see this last position. <a>Open on the map</a>. Ask the conductor to open the conductor app and turn on Share location.',
+                { a: (c) => <a href={`https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}`} target="_blank" rel="noopener" className="font-semibold text-[#050a44] underline">{c}</a> },
+              )}
             </>
           ) : (
-            'It is shared from the phone on the bus: conductor app, Share location. This computer is never used as the bus position.'
+            tx('It is shared from the phone on the bus: conductor app, Share location. This computer is never used as the bus position.')
           )}
-          {events[0] && ` Last update to passengers: ${events[0].kind}${events[0].stop ? ` (${events[0].stop})` : ''}.`}
+          {events[0] && ' ' + (events[0].stop ? tx('Last update to passengers: {kind} ({stop}).', { kind: tx(EVENT_LABEL[events[0].kind] ?? events[0].kind), stop: events[0].stop }) : tx('Last update to passengers: {kind}.', { kind: tx(EVENT_LABEL[events[0].kind] ?? events[0].kind) }))}
         </p>
       </div>
 
       {posting && <UpdateModal stops={stops} initial={posting} onClose={() => setPosting(null)} onSend={async (ev) => {
         const r = await postTripEvent(run.schedule.id, run.date, ev);
-        if (!r.ok) return toast(r.reason ?? 'Could not post', 'error');
+        if (!r.ok) return toast(r.reason ?? tx('Could not post'), 'error');
         setPosting(null);
-        toast('Update sent to passengers');
+        toast(tx('Update sent to passengers'));
       }} />}
       {scanning && <QrScanner onClose={() => setScanning(false)} onCode={scan} />}
       <Toast />
@@ -230,23 +238,23 @@ export function UpdateModal({ stops, initial, onClose, onSend }: { stops: string
   const [minutes, setMinutes] = useState(15);
   const [message, setMessage] = useState('');
   const preview =
-    kind === 'departed' ? `Your bus has left ${stop}.` : kind === 'delayed' ? `Your bus is running about ${minutes} min late.` : kind === 'arriving' ? `Your bus is about ${minutes} min from ${stop}.` : kind === 'arrived' ? `Your bus has reached ${stop}.` : message;
+    kind === 'departed' ? tx('Your bus has left {stop}.', { stop }) : kind === 'delayed' ? tx('Your bus is running about {minutes} min late.', { minutes }) : kind === 'arriving' ? tx('Your bus is about {minutes} min from {stop}.', { minutes, stop }) : kind === 'arrived' ? tx('Your bus has reached {stop}.', { stop }) : message;
   return (
-    <Modal title="Update passengers" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="gold" disabled={kind === 'note' && message.trim().length < 3} onClick={() => onSend({ kind, stop: kind === 'delayed' || kind === 'note' ? '' : stop, minutes: kind === 'delayed' || kind === 'arriving' ? minutes : null, message: kind === 'note' ? message.trim() : message.trim() })}>Send to everyone on board</Button></>}>
+    <Modal title={tx('Update passengers')} onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>{tx('Cancel')}</Button><Button variant="gold" disabled={kind === 'note' && message.trim().length < 3} onClick={() => onSend({ kind, stop: kind === 'delayed' || kind === 'note' ? '' : stop, minutes: kind === 'delayed' || kind === 'arriving' ? minutes : null, message: kind === 'note' ? message.trim() : message.trim() })}>{tx('Send to everyone on board')}</Button></>}>
       <div className="grid grid-cols-3 gap-1.5">
         {(['departed', 'delayed', 'arriving', 'arrived', 'note'] as const).map((k) => (
-          <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k} className={`h-10 rounded-lg text-[13px] font-bold border capitalize ${kind === k ? 'bg-[#050a44] text-white border-[#050a44]' : 'border-[#c7c5d1] text-[#46464f]'}`}>{k === 'note' ? 'Message' : k}</button>
+          <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k} className={`h-10 rounded-lg text-[13px] font-bold border capitalize ${kind === k ? 'bg-[#050a44] text-white border-[#050a44]' : 'border-[#c7c5d1] text-[#46464f]'}`}>{k === 'note' ? tx('Message') : tx(EVENT_LABEL[k] ?? k)}</button>
         ))}
       </div>
       {kind !== 'delayed' && kind !== 'note' && (
-        <Field label="Stop"><select className={inputClass} value={stop} onChange={(e) => setStop(e.target.value)}>{stops.map((s) => <option key={s}>{s}</option>)}</select></Field>
+        <Field label={tx('Stop')}><select className={inputClass} value={stop} onChange={(e) => setStop(e.target.value)}>{stops.map((s) => <option key={s}>{s}</option>)}</select></Field>
       )}
       {(kind === 'delayed' || kind === 'arriving') && (
-        <Field label="Minutes"><input type="number" min={1} className={inputClass} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} /></Field>
+        <Field label={tx('Minutes')}><input type="number" min={1} className={inputClass} value={minutes} onChange={(e) => setMinutes(Number(e.target.value))} /></Field>
       )}
-      <Field label={kind === 'note' ? 'Message' : 'Extra detail (optional)'}><input className={inputClass} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={kind === 'delayed' ? 'e.g. Traffic at Kadawatha' : ''} /></Field>
-      <p className="text-[13px] text-[#46464f] bg-[#f2f4f6] rounded-lg p-3">Passengers will see: <b className="text-[#050a44]">{preview}{message && kind !== 'note' ? ` ${message}` : ''}</b></p>
-      <p className="text-[12px] text-[#6b6d78]">Sent as a notification to passengers who have reminders on for this trip, and shown on the tracking page. No text messages are sent.</p>
+      <Field label={kind === 'note' ? tx('Message') : tx('Extra detail (optional)')}><input className={inputClass} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={kind === 'delayed' ? tx('e.g. Traffic at Kadawatha') : ''} /></Field>
+      <p className="text-[13px] text-[#46464f] bg-[#f2f4f6] rounded-lg p-3">{tx('Passengers will see:')}{' '}<b className="text-[#050a44]">{preview}{message && kind !== 'note' ? ` ${message}` : ''}</b></p>
+      <p className="text-[12px] text-[#6b6d78]">{tx('Sent as a notification to passengers who have reminders on for this trip, and shown on the tracking page. No text messages are sent.')}</p>
     </Modal>
   );
 }

@@ -9,18 +9,7 @@ import { ChevronLeft, ChevronRight, Printer } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
 import { useStore } from '@/lib/store';
 import type { Booking, BookingChannel, Gender } from '@/lib/types';
-import {
-  addDays,
-  formatDateLabel,
-  formatLKR,
-  formatTime12,
-  getTrip,
-  listRuns,
-  routeLabel,
-  seatIds,
-  takenSeats,
-  todayISO,
-  type Run, seatsBesideLoneWoman } from '@/lib/trips';
+import { addDays, formatDateLabel, formatLKR, formatTime12, getTrip, listRuns, routeLabel, seatIds, takenSeats, todayISO, type Run, seatsBesideLoneWoman, dateLocale } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, inputClass, stackTable, useToast } from '@/components/admin/ui';
 import { BikeLoadingList } from '@/components/admin/BikeList';
 import { TripTools } from '@/components/admin/TripTools';
@@ -33,6 +22,7 @@ import { busSeatMap, layoutSegments } from '@/lib/seatLayout';
 import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
 import { FileDown } from 'lucide-react';
+import { tx, txn } from '@/lib/i18n';
 
 export default function DeparturesPage() {
   return (
@@ -55,19 +45,17 @@ function Departures() {
 
   return (
     <>
-      <PageHeader title="Departures" description="Seat map and passenger list for each trip. Sell seats at the counter and check people in on the night." />
+      <PageHeader title={tx('Departures')} description={tx('Seat map and passenger list for each trip. Sell seats at the counter and check people in on the night.')} />
 
       <Card className="p-3 mb-6 flex flex-wrap items-center gap-2 print:hidden">
-        <Button variant="ghost" size="sm" aria-label="Previous day" onClick={() => go(addDays(date, -1))}>
+        <Button variant="ghost" size="sm" aria-label={tx('Previous day')} onClick={() => go(addDays(date, -1))}>
           <ChevronLeft className="w-4 h-4" />
         </Button>
-        <input type="date" value={date} onChange={(e) => e.target.value && go(e.target.value)} className={`${inputClass} !w-auto`} aria-label="Date" />
-        <Button variant="ghost" size="sm" aria-label="Next day" onClick={() => go(addDays(date, 1))}>
+        <input type="date" value={date} onChange={(e) => e.target.value && go(e.target.value)} className={`${inputClass} !w-auto`} aria-label={tx('Date')} />
+        <Button variant="ghost" size="sm" aria-label={tx('Next day')} onClick={() => go(addDays(date, 1))}>
           <ChevronRight className="w-4 h-4" />
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => go(todayISO())}>
-          Today
-        </Button>
+        <Button variant="secondary" size="sm" onClick={() => go(todayISO())}>{tx('Today')}</Button>
         <div className="flex gap-2 flex-wrap ml-auto">
           {runs.map((r) => (
             <button
@@ -86,8 +74,8 @@ function Departures() {
 
       {!run ? (
         <Card className="p-10 text-center">
-          <p className="text-[16px] font-bold text-[#050a44]">No departures on {formatDateLabel(date)}</p>
-          <p className="text-[14px] text-[#46464f] mt-1">The bus isn&apos;t timetabled that day. Try the next day, or add a departure in Routes &amp; timetable.</p>
+          <p className="text-[16px] font-bold text-[#050a44]">{tx('No departures on {date}', { date: formatDateLabel(date) })}</p>
+          <p className="text-[14px] text-[#46464f] mt-1">{tx('The bus isn\'t timetabled that day. Try the next day, or add a departure in Routes & timetable.')}</p>
         </Card>
       ) : (
         <Manifest key={`${run.schedule.id}-${date}`} run={run} />
@@ -105,7 +93,7 @@ function Manifest({ run }: { run: Run }) {
   const [selling, setSelling] = useState(false);
   const [viewing, setViewing] = useState<Booking | null>(null);
   const slipFor = useSlips();
-  const payLabel: Record<string, string> = { bank: 'bank transfer', counter: 'pay at counter', bus: 'pay on the bus' };
+  const payLabel: Record<string, string> = { bank: tx('bank transfer'), counter: tx('pay at counter'), bus: tx('pay on the bus') };
 
   const bookings = data.bookings.filter((b) => b.scheduleId === run.schedule.id && b.date === run.date);
   const live = bookings.filter((b) => b.status === 'confirmed' || b.status === 'boarded' || b.status === 'held');
@@ -122,7 +110,7 @@ function Manifest({ run }: { run: Run }) {
     const t = setTimeout(async () => {
       const r = await holdSeats(run.schedule.id, run.date, selectedKey ? selectedKey.split(',') : []);
       if (!r.ok) {
-        toast(r.reason ?? 'One of those seats is no longer free.', 'error');
+        toast(r.reason ?? tx('One of those seats is no longer free.'), 'error');
         setSelected([]);
       }
       reloadHolds();
@@ -148,7 +136,7 @@ function Manifest({ run }: { run: Run }) {
 
   const setStatus = async (b: Booking, status: Booking['status']) => {
     const res = await updateBooking(b.id, { status, ...(status === 'cancelled' ? { refund: { amount: b.total - b.fee, at: new Date().toISOString() } } : {}) });
-    toast(res.ok ? `${b.passenger.name}: ${status.replace('-', ' ')}` : res.reason ?? 'Could not update', res.ok ? 'ok' : 'error');
+    toast(res.ok ? tx('{name}: {status}', { name: b.passenger.name, status: status === 'boarded' ? tx('on board') : status === 'no-show' ? tx('no-show') : status === 'cancelled' ? tx('cancelled') : status === 'held' ? tx('held') : tx('confirmed') }) : res.reason ?? tx('Could not update'), res.ok ? 'ok' : 'error');
     setViewing(null);
   };
 
@@ -169,30 +157,28 @@ function Manifest({ run }: { run: Run }) {
             <p className="text-[20px] font-extrabold text-[#050a44] tabular-nums">
               {run.sold}/{run.capacity}
             </p>
-            <p className="text-[11px] text-[#46464f]">seats sold</p>
+            <p className="text-[11px] text-[#46464f]">{tx('seats sold')}</p>
           </div>
         </div>
 
         <SeatGrid run={run} taken={taken} owner={seatOwner} selected={selected} onToggle={toggle} heldUntil={heldUntil} />
         {heldUntil.size > 0 && (
-          <p className="mt-2 text-[12px] font-semibold text-[#9a5b00]">
-            {heldUntil.size} seat{heldUntil.size === 1 ? ' is' : 's are'} being booked online right now ({[...heldUntil.keys()].join(', ')}). They come free again if the passenger doesn&apos;t finish in time.
-          </p>
+          <p className="mt-2 text-[12px] font-semibold text-[#9a5b00]">{txn(heldUntil.size, "{n} seat is being booked online right now ({seats}). It comes free again if the passenger doesn't finish in time.", "{n} seats are being booked online right now ({seats}). They come free again if the passenger doesn't finish in time.", { seats: [...heldUntil.keys()].join(', ') })}</p>
         )}
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 text-[11px] font-medium text-[#46464f]">
-          <Legend className="border border-[#c7c5d1] bg-white" label="Free" />
-          <Legend className="bg-[#050a44]" label="Selected" />
-          <Legend className="bg-[#dc2626]" label="Booked, paid" />
-          <Legend className="bg-[#f97316]" label="Booked, not paid yet" />
-          <Legend className="border-2 border-dashed border-[#f59e0b] bg-[#fef3c7]" label="Being booked online (held)" />
-          <Legend className="bg-[#006e1c]" label="Boarded" />
-          <Legend className="border border-rose-400 bg-rose-50" label="Ladies" />
-          <Legend className="border border-dashed border-[#6d28d9] bg-[#ede9fe]" label="Reserved" />
+          <Legend className="border border-[#c7c5d1] bg-white" label={tx('Free')} />
+          <Legend className="bg-[#050a44]" label={tx('Selected')} />
+          <Legend className="bg-[#dc2626]" label={tx('Booked, paid')} />
+          <Legend className="bg-[#f97316]" label={tx('Booked, not paid yet')} />
+          <Legend className="border-2 border-dashed border-[#f59e0b] bg-[#fef3c7]" label={tx('Being booked online (held)')} />
+          <Legend className="bg-[#006e1c]" label={tx('Boarded')} />
+          <Legend className="border border-rose-400 bg-rose-50" label={tx('Ladies')} />
+          <Legend className="border border-dashed border-[#6d28d9] bg-[#ede9fe]" label={tx('Reserved')} />
         </div>
 
         <Button variant="gold" className="w-full mt-5" disabled={selected.length === 0 || departed} onClick={() => setSelling(true)}>
-          {departed ? 'This bus has left' : selected.length ? `Sell ${selected.length} seat${selected.length > 1 ? 's' : ''}` : 'Tap free seats to sell'}
+          {departed ? tx('This bus has left') : selected.length ? txn(selected.length, 'Sell {n} seat', 'Sell {n} seats') : tx('Tap free seats to sell')}
         </Button>
       </Card>
 
@@ -201,17 +187,13 @@ function Manifest({ run }: { run: Run }) {
       <Card className="min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-[#edeef0]">
           <div>
-            <h2 className="text-[16px] font-bold text-[#050a44]">Passenger list</h2>
-            <p className="text-[12px] text-[#46464f]">
-              {boarded} of {run.sold} seats boarded · {formatLKR(run.revenue)} collected
-            </p>
+            <h2 className="text-[16px] font-bold text-[#050a44]">{tx('Passenger list')}</h2>
+            <p className="text-[12px] text-[#46464f]">{tx('{boarded} of {sold} seats boarded · {amount} collected', { boarded, sold: run.sold, amount: formatLKR(run.revenue) })}</p>
           </div>
           <Button variant="secondary" size="sm" onClick={() => downloadManifestPdf(data, run.schedule.id, run.date, { lastOdometer: lastReading(odometer.logs, run.bus.id) })} className="print:hidden">
-            <FileDown className="w-4 h-4" /> Download PDF
-          </Button>
+            <FileDown className="w-4 h-4" />{' '}{tx('Download PDF')}</Button>
           <Button variant="secondary" size="sm" onClick={() => window.print()} className="print:hidden">
-            <Printer className="w-4 h-4" /> Print list
-          </Button>
+            <Printer className="w-4 h-4" />{' '}{tx('Print list')}</Button>
         </div>
         <div className="hidden print:block px-5 pt-4">
           <p className="font-bold">
@@ -219,7 +201,7 @@ function Manifest({ run }: { run: Run }) {
           </p>
         </div>
         {manifest.length === 0 ? (
-          <p className="p-6 text-[14px] text-[#46464f]">No bookings yet for this departure.</p>
+          <p className="p-6 text-[14px] text-[#46464f]">{tx('No bookings yet for this departure.')}</p>
         ) : (
           <div className="overflow-x-auto">
             {/* A normal table on wide screens. On phones each row becomes a block that wraps onto a few
@@ -227,13 +209,13 @@ function Manifest({ run }: { run: Run }) {
             <table className="w-full text-[13px] stack-table" ref={stackTable}>
               <thead>
                 <tr className="text-left text-[11px] font-bold text-[#46464f] bg-[#f8f9fb]">
-                  <th className="px-4 py-2.5">Seats</th>
-                  <th className="px-4 py-2.5">Passenger</th>
-                  <th className="px-4 py-2.5">Gets on → off</th>
-                  <th className="px-4 py-2.5">Paid</th>
-                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5">{tx('Seats')}</th>
+                  <th className="px-4 py-2.5">{tx('Passenger')}</th>
+                  <th className="px-4 py-2.5">{tx('Gets on → off')}</th>
+                  <th className="px-4 py-2.5">{tx('Paid')}</th>
+                  <th className="px-4 py-2.5">{tx('Status')}</th>
                   <th className="px-4 py-2.5 print:hidden">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{tx('Actions')}</span>
                   </th>
                 </tr>
               </thead>
@@ -243,7 +225,7 @@ function Manifest({ run }: { run: Run }) {
                     <td className="px-4 py-3 font-bold text-[#050a44] whitespace-nowrap">
                       {b.seats.join(', ')}
                       {b.bikes?.length ? (
-                        <span className="material-symbols-outlined text-[16px] text-[#7c5800] align-middle ml-1" title={`${b.bikes.length} bike(s) in the compartment`}>
+                        <span className="material-symbols-outlined text-[16px] text-[#7c5800] align-middle ml-1" title={txn(b.bikes.length, '{n} bike in the compartment', '{n} bikes in the compartment')}>
                           two_wheeler
                         </span>
                       ) : null}
@@ -261,23 +243,19 @@ function Manifest({ run }: { run: Run }) {
                       <p className={`font-bold tabular-nums ${b.status === 'cancelled' ? 'text-[#6b6d78]' : b.paymentStatus === 'unpaid' ? 'text-[#ba1a1a]' : 'text-[#006e1c]'}`}>{formatLKR(b.total)}</p>
                       <Badge value={b.channel} />
                       {b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') && (
-                        <p className="text-[11px] font-bold text-[#ba1a1a] mt-1">Not paid · {payLabel[b.paymentMethod ?? ''] ?? b.paymentMethod}</p>
+                        <p className="text-[11px] font-bold text-[#ba1a1a] mt-1">{tx('Not paid · {method}', { method: payLabel[b.paymentMethod ?? ''] ?? b.paymentMethod ?? '' })}</p>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <Badge value={b.status} />
-                      {b.status === 'held' && slipOnFile(slipFor(b)) && <div className="mt-1"><Badge value="new" label="Slip to check" /></div>}
+                      {b.status === 'held' && slipOnFile(slipFor(b)) && <div className="mt-1"><Badge value="new" label={tx('Slip to check')} /></div>}
                     </td>
                     <td className="px-4 py-3 print:hidden">
                       <div className="flex flex-wrap gap-1.5 md:justify-end">
                       {b.status === 'confirmed' && (
                         <div className="flex flex-wrap gap-1.5">
-                          <Button size="sm" onClick={() => setStatus(b, 'boarded')}>
-                            Boarded
-                          </Button>
-                          <Button size="sm" variant="secondary" onClick={() => setViewing(b)}>
-                            More
-                          </Button>
+                          <Button size="sm" onClick={() => setStatus(b, 'boarded')}>{tx('Boarded')}</Button>
+                          <Button size="sm" variant="secondary" onClick={() => setViewing(b)}>{tx('More')}</Button>
                         </div>
                       )}
                       {b.paymentStatus === 'unpaid' && (b.status === 'held' || b.status === 'boarded') && (
@@ -286,26 +264,22 @@ function Manifest({ run }: { run: Run }) {
                             <Button size="sm" variant="secondary" onClick={async () => {
                               const u = await slipUrl(b);
                               if (u) window.open(u, '_blank', 'noopener');
-                              else toast("Couldn't open the slip", 'error');
-                            }}>
-                              View slip
-                            </Button>
+                              else toast(tx('Couldn\'t open the slip'), 'error');
+                            }}>{tx('View slip')}</Button>
                           )}
                           {/* Bank transfers are recorded as bank payments (after checking the slip); everything else as cash. */}
                           <Button size="sm" variant="gold" onClick={async () => {
                             const bank = b.paymentMethod === 'bank';
                             const r = await confirmPayment(b.id, bank ? 'bank' : 'cash', bank ? b.slip?.reference || undefined : undefined);
-                            toast(r.ok ? `${b.passenger.name}: ${bank ? 'bank transfer recorded' : 'paid in cash'}` : r.reason ?? 'Could not take payment', r.ok ? 'ok' : 'error');
+                            toast(r.ok ? (bank ? tx('{name}: bank transfer recorded', { name: b.passenger.name }) : tx('{name}: paid in cash', { name: b.passenger.name })) : r.reason ?? tx('Could not take payment'), r.ok ? 'ok' : 'error');
                           }}>
-                            {b.paymentMethod === 'bank' ? 'Mark paid' : 'Take cash'}
+                            {b.paymentMethod === 'bank' ? tx('Mark paid') : tx('Take cash')}
                           </Button>
                         </div>
                       )}
                       {(b.status === 'boarded' || b.status === 'no-show') && (
                         <div className="flex">
-                          <Button size="sm" variant="ghost" onClick={() => setStatus(b, b.paymentStatus === 'unpaid' ? 'held' : 'confirmed')}>
-                            Undo
-                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setStatus(b, b.paymentStatus === 'unpaid' ? 'held' : 'confirmed')}>{tx('Undo')}</Button>
                         </div>
                       )}
                       </div>
@@ -332,7 +306,7 @@ function Manifest({ run }: { run: Run }) {
               toast(res.reason, 'error');
               return;
             }
-            toast(`Sold ${input.seats.join(', ')} to ${input.passenger.name} · ${res.booking.ref}`);
+            toast(tx('Sold {seats} to {name} · {ref}', { seats: input.seats.join(', '), name: input.passenger.name, ref: res.booking.ref }));
             setSelected([]);
             setSelling(false);
           }}
@@ -346,29 +320,25 @@ function Manifest({ run }: { run: Run }) {
           footer={
             viewing.status === 'confirmed' ? (
               <>
-                <Button variant="danger" onClick={() => setStatus(viewing, 'cancelled')}>
-                  Cancel booking
-                </Button>
-                <Button variant="secondary" onClick={() => setStatus(viewing, 'no-show')}>
-                  No-show
-                </Button>
-                <Button onClick={() => setStatus(viewing, 'boarded')}>Boarded</Button>
+                <Button variant="danger" onClick={() => setStatus(viewing, 'cancelled')}>{tx('Cancel booking')}</Button>
+                <Button variant="secondary" onClick={() => setStatus(viewing, 'no-show')}>{tx('No-show')}</Button>
+                <Button onClick={() => setStatus(viewing, 'boarded')}>{tx('Boarded')}</Button>
               </>
             ) : undefined
           }
         >
           <dl className="grid grid-cols-2 gap-3 text-[14px]">
-            <Info label="Seats" value={viewing.seats.join(', ')} />
-            <Info label="Status" value={<Badge value={viewing.status} />} />
-            <Info label="Gets on" value={viewing.from} />
-            <Info label="Gets off" value={viewing.to} />
-            <Info label="Phone" value={viewing.passenger.phone || '—'} />
-            <Info label="Email" value={viewing.contact.email || '—'} />
-            <Info label="Paid" value={formatLKR(viewing.total)} />
-            <Info label="Booked" value={`${new Date(viewing.createdAt).toLocaleString('en-GB')} (${viewing.channel})`} />
+            <Info label={tx('Seats')} value={viewing.seats.join(', ')} />
+            <Info label={tx('Status')} value={<Badge value={viewing.status} />} />
+            <Info label={tx('Gets on')} value={viewing.from} />
+            <Info label={tx('Gets off')} value={viewing.to} />
+            <Info label={tx('Phone')} value={viewing.passenger.phone || '—'} />
+            <Info label={tx('Email')} value={viewing.contact.email || '—'} />
+            <Info label={tx('Paid')} value={formatLKR(viewing.total)} />
+            <Info label={tx('Booked')} value={`${new Date(viewing.createdAt).toLocaleString(dateLocale())} (${viewing.channel})`} />
           </dl>
           {viewing.status === 'confirmed' && (
-            <p className="text-[12px] text-[#46464f]">Cancelling here refunds the fare in full (the booking fee is kept) and frees the seats.</p>
+            <p className="text-[12px] text-[#46464f]">{tx('Cancelling here refunds the fare in full (the booking fee is kept) and frees the seats.')}</p>
           )}
         </Modal>
       )}
@@ -443,8 +413,8 @@ function SeatGrid({
         key={id}
         type="button"
         onClick={() => onToggle(id)}
-        title={o ? `${id}: ${o.passenger.name} (${o.from} → ${o.to}) · ${due ? `NOT PAID, ${formatLKR(o.total)} to collect` : `paid ${formatLKR(o.total)}`}${o.status === 'boarded' ? ' · on board' : ''}` : held ? `${id}: being booked online right now, held until ${heldTime}. Free again after that if the passenger doesn't finish.` : (run.bus.reservedSeats ?? []).includes(id) ? `${id}: reserved. Needs the owner's code to sell` : run.bus.ladiesSeats.includes(id) ? `${id}: free, ladies only` : `${id}: free`}
-        aria-label={o ? `Seat ${id}, sold to ${o.passenger.name}` : held ? `Seat ${id}, being booked online, held until ${heldTime}${isSel ? ', selected' : ''}` : `Seat ${id}, free${isSel ? ', selected' : ''}`}
+        title={o ? [`${id}: ${o.passenger.name} (${o.from} → ${o.to})`, due ? tx('NOT PAID, {amount} to collect', { amount: formatLKR(o.total) }) : tx('paid {amount}', { amount: formatLKR(o.total) }), o.status === 'boarded' ? tx('on board') : ''].filter(Boolean).join(' · ') : held ? tx('{id}: being booked online right now, held until {heldTime}. Free again after that if the passenger doesn\'t finish.', { id, heldTime }) : (run.bus.reservedSeats ?? []).includes(id) ? tx('{id}: reserved. Needs the owner\'s code to sell', { id }) : run.bus.ladiesSeats.includes(id) ? tx('{id}: free, ladies only', { id }) : tx('{id}: free', { id })}
+        aria-label={o ? tx('Seat {id}, sold to {name}', { id, name: o.passenger.name }) : held ? (isSel ? tx('Seat {id}, being booked online, held until {heldTime}, selected', { id, heldTime }) : tx('Seat {id}, being booked online, held until {heldTime}', { id, heldTime })) : (isSel ? tx('Seat {id}, free, selected', { id }) : tx('Seat {id}, free', { id }))}
         aria-pressed={isSel}
         className={`h-9 rounded-lg text-[11px] font-bold transition-colors ${cls} ${taken.has(id) ? 'cursor-pointer' : ''}`}
       >
@@ -455,7 +425,7 @@ function SeatGrid({
 
   return (
     <div className="rounded-2xl bg-[#f2f4f6] p-3">
-      <p className="text-[10px] font-bold text-[#686873] text-right mb-2 pr-1">Front · driver</p>
+      <p className="text-[10px] font-bold text-[#686873] text-right mb-2 pr-1">{tx('Front · driver')}</p>
       <div className="space-y-2">
         {layoutSegments(seatMap).map((seg, i) =>
           seg.kind === 'row' ? (
@@ -532,7 +502,7 @@ function SellSeatsModal({
   const askOwner = async () => {
     if (!isSupabaseConfigured) {
       setApproved(true); // demo mode has no owner to text
-      return setApprovalMsg({ text: 'Demo mode: approval skipped.' });
+      return setApprovalMsg({ text: tx('Demo mode: approval skipped.') });
     }
     setApprovalBusy(true);
     setApprovalMsg(null);
@@ -543,10 +513,10 @@ function SellSeatsModal({
     }).catch(() => null);
     const j = res ? await res.json().catch(() => ({})) : {};
     setApprovalBusy(false);
-    if (!res || !res.ok) return setApprovalMsg({ text: j.error ?? "Couldn't send the code. Check the connection and try again.", bad: true });
+    if (!res || !res.ok) return setApprovalMsg({ text: j.error ?? tx('Couldn\'t send the code. Check the connection and try again.'), bad: true });
     setApprovalId(j.id);
     setOwnerCode('');
-    setApprovalMsg({ text: `Code sent to the owner (${j.sentTo}). Ask them for it; it works for 10 minutes.` });
+    setApprovalMsg({ text: tx('Code sent to the owner ({sentTo}). Ask them for it; it works for 10 minutes.', { sentTo: j.sentTo }) });
   };
   const checkOwnerCode = async () => {
     if (!approvalId) return;
@@ -554,9 +524,9 @@ function SellSeatsModal({
     const { data: ok, error } = await supabase().rpc('verify_seat_approval', { p_id: approvalId, p_code: ownerCode });
     setApprovalBusy(false);
     if (error) return setApprovalMsg({ text: friendlyError(error), bad: true });
-    if (!ok) return setApprovalMsg({ text: "That code isn't right. Check it with the owner (5 tries).", bad: true });
+    if (!ok) return setApprovalMsg({ text: tx('That code isn\'t right. Check it with the owner (5 tries).'), bad: true });
     setApproved(true);
-    setApprovalMsg({ text: 'Owner approved. Issue the ticket within 15 minutes.' });
+    setApprovalMsg({ text: tx('Owner approved. Issue the ticket within 15 minutes.') });
   };
 
   const valid =
@@ -564,13 +534,11 @@ function SellSeatsModal({
 
   return (
     <Modal
-      title={`Sell seat${seats.length > 1 ? 's' : ''} ${seats.join(', ')}`}
+      title={txn(seats.length, 'Sell seat {seats}', 'Sell seats {seats}', { seats: seats.join(', ') })}
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
+          <Button variant="secondary" onClick={onClose}>{tx('Cancel')}</Button>
           <Button
             variant="gold"
             disabled={!valid}
@@ -591,21 +559,19 @@ function SellSeatsModal({
                 overrideLadies: ladiesClash && canOverride && overrideLadies,
               })
             }
-          >
-            Take {formatLKR(fare * seats.length)} and issue ticket
-          </Button>
+          >{tx('Take {amount} and issue ticket', { amount: formatLKR(fare * seats.length) })}</Button>
         </>
       }
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Gets on at">
+        <Field label={tx('Gets on at')}>
           <select className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)}>
             {stops.slice(0, -1).map((s) => (
               <option key={s}>{s}</option>
             ))}
           </select>
         </Field>
-        <Field label="Gets off at">
+        <Field label={tx('Gets off at')}>
           <select className={inputClass} value={to} onChange={(e) => setTo(e.target.value)}>
             {stops.slice(1).map((s) => (
               <option key={s}>{s}</option>
@@ -613,63 +579,57 @@ function SellSeatsModal({
           </select>
         </Field>
       </div>
-      {!validSegment && <p className="text-[12px] font-semibold text-[#ba1a1a]">The drop-off must come after the boarding stop on this route.</p>}
-      <Field label="Passenger name">
-        <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" />
+      {!validSegment && <p className="text-[12px] font-semibold text-[#ba1a1a]">{tx('The drop-off must come after the boarding stop on this route.')}</p>}
+      <Field label={tx('Passenger name')}>
+        <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} placeholder={tx('Full name')} />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Mobile number">
-          <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07X XXX XXXX" inputMode="tel" />
+        <Field label={tx('Mobile number')}>
+          <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={tx('07X XXX XXXX')} inputMode="tel" />
         </Field>
-        <Field label="Gender" hint="Needed for ladies-only seats">
+        <Field label={tx('Gender')} hint={tx('Needed for ladies-only seats')}>
           <select className={inputClass} value={gender} onChange={(e) => setGender(e.target.value as Gender)}>
-            <option value="">Select</option>
-            <option>Female</option>
-            <option>Male</option>
+            <option value="">{tx('Select')}</option>
+            <option>{tx('Female')}</option>
+            <option>{tx('Male')}</option>
           </select>
         </Field>
       </div>
       {(ladiesClash || besideClash.length > 0) && (
         <div className="rounded-xl bg-pink-50 border border-pink-200 p-3 space-y-2">
-          {ladiesClash && <p className="text-[12px] font-semibold text-[#9d174d]">Seats {run.bus.ladiesSeats.join(', ')} are for female passengers.</p>}
+          {ladiesClash && <p className="text-[12px] font-semibold text-[#9d174d]">{tx('Seats {ladiesSeats} are for female passengers.', { ladiesSeats: run.bus.ladiesSeats.join(', ') })}</p>}
           {besideClash.length > 0 && (
-            <p className="text-[12px] font-semibold text-[#9d174d]">
-              Seat {besideClash.join(', ')} is beside a woman travelling alone, so it is kept for women. Offer another seat if you can; override only if the two are travelling together or she agrees.
-            </p>
+            <p className="text-[12px] font-semibold text-[#9d174d]">{tx('Seat {besideClash} is beside a woman travelling alone, so it is kept for women. Offer another seat if you can; override only if the two are travelling together or she agrees.', { besideClash: besideClash.join(', ') })}</p>
           )}
           {canOverride ? (
             <label className="flex items-start gap-2 text-[13px] font-semibold text-[#050a44]">
-              <input type="checkbox" className="mt-0.5 w-4 h-4" checked={overrideLadies} onChange={(e) => setOverrideLadies(e.target.checked)} />
-              Override the ladies seating rule for this sale
-            </label>
+              <input type="checkbox" className="mt-0.5 w-4 h-4" checked={overrideLadies} onChange={(e) => setOverrideLadies(e.target.checked)} />{tx('Override the ladies seating rule for this sale')}</label>
           ) : (
-            <p className="text-[12px] text-[#46464f]">Only office staff can override this.</p>
+            <p className="text-[12px] text-[#46464f]">{tx('Only office staff can override this.')}</p>
           )}
         </div>
       )}
       {heldPicked.length > 0 && (
         <div className="rounded-xl bg-[#fef3c7] border border-[#f59e0b]/50 p-3">
-          <p className="text-[13px] font-bold text-[#7c5800]">Seat {heldPicked.join(', ')} is being booked online right now</p>
+          <p className="text-[13px] font-bold text-[#7c5800]">{tx('Seat {heldPicked} is being booked online right now', { heldPicked: heldPicked.join(', ') })}</p>
           <p className="text-[12px] text-[#46464f]">
             {canOverride
-              ? 'A passenger chose it and is at checkout. Selling it here takes it from them: they will be told the seat is gone. Offer another seat if you can.'
-              : 'A passenger chose it and is at checkout. Only office staff can sell over a hold; pick another seat or wait a few minutes.'}
+              ? tx('A passenger chose it and is at checkout. Selling it here takes it from them: they will be told the seat is gone. Offer another seat if you can.')
+              : tx('A passenger chose it and is at checkout. Only office staff can sell over a hold; pick another seat or wait a few minutes.')}
           </p>
         </div>
       )}
       {reservedPicked.length > 0 && (
         <div className="rounded-xl bg-[#f5f3ff] border border-[#ddd6fe] p-3 space-y-2">
-          <p className="text-[13px] font-bold text-[#4c1d95]">
-            Seat{reservedPicked.length > 1 ? 's' : ''} {reservedPicked.join(', ')} {reservedPicked.length > 1 ? 'are' : 'is'} reserved: the owner must agree
-          </p>
+          <p className="text-[13px] font-bold text-[#4c1d95]">{txn(reservedPicked.length, 'Seat {seats} is reserved: the owner must agree', 'Seats {seats} are reserved: the owner must agree', { seats: reservedPicked.join(', ') })}</p>
           {approved ? (
-            <p className="text-[13px] font-semibold text-[#006e1c]">✓ Owner approved</p>
+            <p className="text-[13px] font-semibold text-[#006e1c]">{tx('✓ Owner approved')}</p>
           ) : (
             <>
-              <p className="text-[12px] text-[#46464f]">We text a code to the owner. If they agree, they give it to you.</p>
+              <p className="text-[12px] text-[#46464f]">{tx('We text a code to the owner. If they agree, they give it to you.')}</p>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" disabled={approvalBusy} onClick={askOwner}>
-                  {approvalId ? 'Send a new code' : 'Send code to the owner'}
+                  {approvalId ? tx('Send a new code') : tx('Send code to the owner')}
                 </Button>
                 {approvalId && (
                   <>
@@ -678,12 +638,10 @@ function SellSeatsModal({
                       value={ownerCode}
                       onChange={(e) => setOwnerCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       inputMode="numeric"
-                      placeholder="6-digit code"
-                      aria-label="Owner's code"
+                      placeholder={tx('6-digit code')}
+                      aria-label={tx('Owner\'s code')}
                     />
-                    <Button size="sm" disabled={approvalBusy || ownerCode.length < 6} onClick={checkOwnerCode}>
-                      Check code
-                    </Button>
+                    <Button size="sm" disabled={approvalBusy || ownerCode.length < 6} onClick={checkOwnerCode}>{tx('Check code')}</Button>
                   </>
                 )}
               </div>
@@ -692,7 +650,7 @@ function SellSeatsModal({
           {approvalMsg && <p className={`text-[12px] font-semibold ${approvalMsg.bad ? 'text-[#ba1a1a]' : 'text-[#46464f]'}`}>{approvalMsg.text}</p>}
         </div>
       )}
-      <Field label="Sold via">
+      <Field label={tx('Sold via')}>
         <div className="flex gap-2">
           {(['counter', 'phone'] as const).map((c) => (
             <button
@@ -702,14 +660,13 @@ function SellSeatsModal({
               aria-pressed={channel === c}
               className={`flex-1 h-10 rounded-lg text-[13px] font-bold border capitalize ${channel === c ? 'bg-[#050a44] text-white border-[#050a44]' : 'border-[#c7c5d1] text-[#46464f]'}`}
             >
-              {c === 'counter' ? 'Counter / cash' : 'Phone booking'}
+              {c === 'counter' ? tx('Counter / cash') : tx('Phone booking')}
             </button>
           ))}
         </div>
       </Field>
       <p className="text-[13px] text-[#46464f]">
-        {seats.length} × {formatLKR(fare)} = <span className="font-bold text-[#050a44]">{formatLKR(fare * seats.length)}</span>. No online booking fee on counter sales.
-      </p>
+        {seats.length} × {formatLKR(fare)} = <span className="font-bold text-[#050a44]">{formatLKR(fare * seats.length)}</span>{tx('. No online booking fee on counter sales.')}</p>
     </Modal>
   );
 }

@@ -1,6 +1,8 @@
 'use client';
 // Staff / super admin sign-in — separate from the passenger sign-in.
-// Only accounts whose profile role is 'staff' or 'admin' get in.
+// Staff use their work email + password (passengers use their mobile number).
+// Only accounts whose profile role is 'conductor', 'staff' or 'admin' get in.
+// "Forgot password?" emails a link to /auth/reset.
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -8,16 +10,30 @@ import { Lock } from 'lucide-react';
 import { isStaffRole, useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Wordmark } from '@/components/Wordmark';
+import { safeNext } from '@/lib/safeNext';
+import { tx } from '@/lib/i18n';
 
 function nextPath(role?: string | null) {
-  const n = new URLSearchParams(window.location.search).get('next');
+  const n = safeNext(new URLSearchParams(window.location.search).get('next'), '');
   if (role === 'conductor') return n && n.startsWith('/conductor') ? n : '/conductor';
   return n && (n.startsWith('/admin') || n.startsWith('/conductor')) ? n : '/admin';
 }
 
 export default function StaffLoginPage() {
   const router = useRouter();
-  const { mode, login, signIn, logout, user } = useAuth();
+  const { mode, login, signIn, logout, user, resetPassword } = useAuth();
+  const [info, setInfo] = useState<string | null>(null);
+
+  const forgot = async () => {
+    setError(null);
+    setInfo(null);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError(tx('Type your work email first, then tap "Forgot password?".'));
+    setBusy(true);
+    const r = await resetPassword(email);
+    setBusy(false);
+    if (!r.ok) return setError(r.reason);
+    setInfo(tx('If {email} has a staff account, a link to set a new password is on its way. Check your inbox.', { email: email.trim() }));
+  };
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -38,7 +54,7 @@ export default function StaffLoginPage() {
     if (!['staff', 'admin', 'conductor'].includes(prof?.role ?? '')) {
       await logout();
       setBusy(false);
-      return setError("This account doesn't have staff access. Ask the owner to give you access.");
+      return setError(tx('This account doesn\'t have staff access. Ask the owner to give you access.'));
     }
     router.replace(nextPath(prof?.role));
   };
@@ -58,15 +74,13 @@ export default function StaffLoginPage() {
               <Lock className="w-5 h-5" />
             </span>
             <div>
-              <h1 className="text-[20px] font-semibold">Staff sign-in</h1>
-              <p className="text-[13px] text-white/60">Operations and management</p>
+              <h1 className="text-[20px] font-semibold">{tx('Staff sign-in')}</h1>
+              <p className="text-[13px] text-white/60">{tx('Operations and management')}</p>
             </div>
           </div>
 
           {user && isStaffRole(user.role) ? (
-            <button onClick={() => router.replace(nextPath(user.role === 'conductor' ? 'conductor' : null))} className="w-full h-12 rounded-xl bg-[#feb700] text-[#14120a] font-semibold">
-              Continue as {user.user_metadata.full_name}
-            </button>
+            <button onClick={() => router.replace(nextPath(user.role === 'conductor' ? 'conductor' : null))} className="w-full h-12 rounded-xl bg-[#feb700] text-[#14120a] font-semibold">{tx('Continue as {full_name}', { full_name: user.user_metadata.full_name })}</button>
           ) : mode === 'demo' ? (
             <div className="space-y-2">
               <button
@@ -75,37 +89,31 @@ export default function StaffLoginPage() {
                   router.replace(nextPath());
                 }}
                 className="w-full h-12 rounded-xl bg-white/10 border border-white/15 font-semibold hover:bg-white/15"
-              >
-                Continue as staff (demo)
-              </button>
+              >{tx('Continue as staff (demo)')}</button>
               <button
                 onClick={() => {
                   login({ role: 'conductor' });
                   router.replace('/conductor');
                 }}
                 className="w-full h-12 rounded-xl bg-white/10 border border-white/15 font-semibold hover:bg-white/15"
-              >
-                Continue as conductor (demo)
-              </button>
+              >{tx('Continue as conductor (demo)')}</button>
               <button
                 onClick={() => {
                   login({ role: 'admin' });
                   router.replace(nextPath());
                 }}
                 className="w-full h-12 rounded-xl bg-[#feb700] text-[#14120a] font-semibold"
-              >
-                Continue as super admin (demo)
-              </button>
-              <p className="text-[12px] text-white/50 pt-1">Demo mode: connect Supabase for real staff accounts.</p>
+              >{tx('Continue as super admin (demo)')}</button>
+              <p className="text-[12px] text-white/50 pt-1">{tx('Demo mode: connect Supabase for real staff accounts.')}</p>
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-3">
               <label className="block">
-                <span className="text-[12px] font-semibold text-white/70">Work email</span>
+                <span className="text-[12px] font-semibold text-white/70">{tx('Work email')}</span>
                 <input className={`${field} mt-1`} type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </label>
               <label className="block">
-                <span className="text-[12px] font-semibold text-white/70">Password</span>
+                <span className="text-[12px] font-semibold text-white/70">{tx('Password')}</span>
                 <input className={`${field} mt-1`} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
               </label>
               {error && (
@@ -113,13 +121,19 @@ export default function StaffLoginPage() {
                   {error}
                 </p>
               )}
+              {info && (
+                <p role="status" className="text-[13px] font-semibold text-[#9be7a5]">
+                  {info}
+                </p>
+              )}
               <button disabled={busy} className="w-full h-12 rounded-xl bg-[#feb700] text-[#14120a] font-semibold disabled:opacity-60">
-                {busy ? 'Signing in…' : 'Sign in'}
+                {busy ? tx('Signing in…') : tx('Sign in')}
               </button>
+              <button type="button" onClick={forgot} disabled={busy} className="w-full text-[13px] font-semibold text-white/70 hover:text-white underline">{tx('Forgot password?')}</button>
             </form>
           )}
         </div>
-        <p className="text-center text-[12px] text-white/40 mt-6">Authorised staff only. Access is logged.</p>
+        <p className="text-center text-[12px] text-white/40 mt-6">{tx('Authorised staff only. Access is logged.')}</p>
       </div>
     </main>
   );

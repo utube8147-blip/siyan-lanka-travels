@@ -8,6 +8,7 @@ import { formatLKR } from '@/lib/trips';
 import { FLEET_PARTNERS } from '@/data/resale-tickets';
 import { useResaleListings } from '@/lib/resale';
 import { ArrowUpDown, ChevronDown, SlidersHorizontal, Shield } from 'lucide-react';
+import { tx } from '@/lib/i18n';
 
 // ---------------------------------------------------------------------------
 // Filter bar now matches the search page's pattern exactly: pill toggles +
@@ -122,10 +123,10 @@ export default function TicketResaleMarketplace() {
 
   const operatorsLabel =
     operatorFilter.length === 0
-      ? 'Direction'
+      ? tx('Direction')
       : operatorFilter.length === 1
-      ? FLEET_PARTNERS.find((f) => f.id === operatorFilter[0])?.name ?? 'Direction'
-      : 'Both directions';
+      ? FLEET_PARTNERS.find((f) => f.id === operatorFilter[0])?.name ?? tx('Direction')
+      : tx('Both directions');
 
   const activeFilterCount = operatorFilter.length + (sortByPrice ? 1 : 0);
 
@@ -142,23 +143,15 @@ export default function TicketResaleMarketplace() {
         />
         <div className="relative flex flex-col md:flex-row justify-between items-center gap-[24px]">
           <div className="space-y-[12px] max-w-lg text-center md:text-left">
-            <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-[#ffd54a]">
-              Seat resale
-            </span>
-            <h1 className="text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">
-              Turn Your Unused Tickets Into Cash
-            </h1>
-            <p className="text-white/70 text-[14px] md:text-[15px]">
-              Change of plans? List your seat here and another passenger can take it.
-            </p>
+            <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-[#ffd54a]">{tx('Seat resale')}</span>
+            <h1 className="text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">{tx('Turn Your Unused Tickets Into Cash')}</h1>
+            <p className="text-white/70 text-[14px] md:text-[15px]">{tx('Change of plans? List your seat here and another passenger can take it.')}</p>
             <button className="mt-[8px] inline-flex items-center gap-[8px] bg-[#feb700] text-[#6b4b00] px-6 py-3 rounded-xl font-bold text-[13px] hover:opacity-90 active:scale-95 transition-all">
-              <span className="material-symbols-outlined text-[18px]">sell</span>
-              Sell Your Ticket
-            </button>
+              <span className="material-symbols-outlined text-[18px]">sell</span>{tx('Sell Your Ticket')}</button>
           </div>
           <div className="relative w-full md:w-80 h-40 md:h-48 rounded-xl overflow-hidden shadow-xl border-4 border-white/10 flex-shrink-0">
             <img
-              alt="Siyan Lanka coach interior"
+              alt={tx('Siyan Lanka coach interior')}
               className="w-full h-full object-cover"
               src="/brand/interior.png"
             />
@@ -171,33 +164,33 @@ export default function TicketResaleMarketplace() {
         <div className="flex flex-col md:flex-row gap-[16px] md:items-end">
           <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-[16px] w-full">
             <div>
-              <label className="text-[11px] font-bold text-[#46464f] px-1">From</label>
+              <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('From')}</label>
               <div className="flex items-center gap-[8px] mt-1 bg-[#f2f4f6] rounded-lg px-3 py-2.5">
                 <span className="material-symbols-outlined text-[18px] text-[#6b6d78]">location_on</span>
                 <input
                   value={fromQuery}
                   onChange={(e) => setFromQuery(e.target.value)}
-                  placeholder="Departure city"
+                  placeholder={tx('Departure city')}
                   className="w-full bg-transparent border-none outline-none text-sm font-medium placeholder:text-[#9a9ba5] placeholder:font-normal"
                   type="text"
                 />
               </div>
             </div>
             <div>
-              <label className="text-[11px] font-bold text-[#46464f] px-1">To</label>
+              <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('To')}</label>
               <div className="flex items-center gap-[8px] mt-1 bg-[#f2f4f6] rounded-lg px-3 py-2.5">
                 <span className="material-symbols-outlined text-[18px] text-[#6b6d78]">directions_bus</span>
                 <input
                   value={toQuery}
                   onChange={(e) => setToQuery(e.target.value)}
-                  placeholder="Arrival city"
+                  placeholder={tx('Arrival city')}
                   className="w-full bg-transparent border-none outline-none text-sm font-medium placeholder:text-[#9a9ba5] placeholder:font-normal"
                   type="text"
                 />
               </div>
             </div>
             <div>
-              <label className="text-[11px] font-bold text-[#46464f] px-1">Travel date</label>
+              <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Travel date')}</label>
               <div className="flex items-center gap-[8px] mt-1 bg-[#f2f4f6] rounded-lg px-3 py-2.5">
                 <span className="material-symbols-outlined text-[18px] text-[#6b6d78]">calendar_today</span>
                 <input
@@ -210,9 +203,7 @@ export default function TicketResaleMarketplace() {
             </div>
           </div>
           <button className="h-[46px] px-8 bg-[#050a44] text-white rounded-xl font-bold text-[13px] hover:opacity-90 transition-all flex items-center justify-center gap-2 whitespace-nowrap">
-            <span className="material-symbols-outlined text-[18px]">search</span>
-            Search Resale
-          </button>
+            <span className="material-symbols-outlined text-[18px]">search</span>{tx('Search Resale')}</button>
         </div>
       </div>
 
@@ -232,9 +223,7 @@ export default function TicketResaleMarketplace() {
             className={`w-4 h-4 transition-transform ${sortByPrice && !sortAsc ? 'rotate-180' : ''} ${
               sortByPrice ? 'text-white/70' : 'text-[#c7c5d1]'
             }`}
-          />
-          Price
-        </button>
+          />{tx('Price')}</button>
 
         {/* Operators dropdown — multi-select checkboxes, sourced from FLEET_PARTNERS */}
         <div className="relative shrink-0">
@@ -283,23 +272,20 @@ export default function TicketResaleMarketplace() {
         <button
           onClick={resetFilters}
           disabled={activeFilterCount === 0}
-          aria-label="Reset filters"
+          aria-label={tx('Reset filters')}
           className={`flex items-center gap-1.5 pl-3 pr-3 py-2.5 rounded-full text-xs font-bold whitespace-nowrap shrink-0 transition-colors ${
             activeFilterCount > 0
               ? 'text-[#E74C3C] border border-[#E74C3C]/30 bg-[#E74C3C]/5 hover:bg-[#E74C3C]/10'
               : 'text-[#c7c5d1] border border-[#e1e2e4] cursor-not-allowed'
           }`}
         >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          Reset{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+          <SlidersHorizontal className="w-3.5 h-3.5" />{tx('Reset')}{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
         </button>
 
         {/* Safety tip — compact inline note, takes the sidebar's place in the row */}
         <div className="hidden md:flex items-center gap-1.5 ml-auto pl-3 pr-4 py-2 rounded-full bg-[#f2f4f6] border border-[#e1e2e4] shrink-0">
           <Shield className="w-3.5 h-3.5 text-[#050a44]" />
-          <span className="text-[11px] font-medium text-[#46464f] whitespace-nowrap">
-            All resale tickets verified &amp; transferred instantly
-          </span>
+          <span className="text-[11px] font-medium text-[#46464f] whitespace-nowrap">{tx('All resale tickets verified & transferred instantly')}</span>
         </div>
       </div>
 
@@ -307,13 +293,11 @@ export default function TicketResaleMarketplace() {
       <div className="space-y-[16px]">
         {filteredTickets.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#c7c5d1] shadow-sm p-[32px] text-center">
-            <p className="text-[13px] text-[#46464f]">No resale tickets match your filters.</p>
+            <p className="text-[13px] text-[#46464f]">{tx('No resale tickets match your filters.')}</p>
             <button
               onClick={resetFilters}
               className="mt-[12px] text-[#050a44] font-bold text-[13px] hover:underline"
-            >
-              Reset filters
-            </button>
+            >{tx('Reset filters')}</button>
           </div>
         ) : (
           filteredTickets.map((ticket) =>
@@ -325,7 +309,7 @@ export default function TicketResaleMarketplace() {
                 <img
                   className="absolute inset-0 w-full h-full object-cover opacity-10"
                   src="/brand/interior.png"
-                  alt="Coach interior"
+                  alt={tx('Coach interior')}
                 />
                 <div className="relative z-10 flex-1">
                   {ticket.tag && (
@@ -333,20 +317,15 @@ export default function TicketResaleMarketplace() {
                       {ticket.tag}
                     </span>
                   )}
-                  <h3 className="text-[22px] font-bold mb-[4px]">Exclusive {ticket.busType}</h3>
-                  <p className="text-[13px] text-white/70 max-w-md">
-                    Single seat available on {ticket.operator}&apos;s {ticket.from} → {ticket.to} route. Priced well
-                    below counter rate.
-                  </p>
+                  <h3 className="text-[22px] font-bold mb-[4px]">{tx('Exclusive {busType}', { busType: ticket.busType })}</h3>
+                  <p className="text-[13px] text-white/70 max-w-md">{tx('Single seat available on {operator}\'s {from} → {to} route. Priced well below counter rate.', { operator: ticket.operator, from: ticket.from, to: ticket.to })}</p>
                 </div>
                 <div className="relative z-10 text-center md:text-right">
                   <p className="text-[32px] font-extrabold mb-[12px]">{formatLKR(ticket.listedPrice)}</p>
                   <Link
                     href={`/marketplace/buy/${ticket.id}`}
                     className="inline-block bg-white text-[#050a44] rounded-xl px-6 py-3 text-[13px] font-bold hover:opacity-90 transition-all"
-                  >
-                    Grab Now
-                  </Link>
+                  >{tx('Grab Now')}</Link>
                 </div>
               </div>
             ) : (
@@ -367,7 +346,7 @@ export default function TicketResaleMarketplace() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-0.5">Seat</p>
+                        <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-0.5">{tx('Seat')}</p>
                         <p className="text-[14px] font-bold text-[#050a44]">{ticket.seats}</p>
                       </div>
                     </div>
@@ -380,9 +359,7 @@ export default function TicketResaleMarketplace() {
                       <div className="flex flex-col items-center px-[16px]">
                         <span className="material-symbols-outlined text-[#050a44] mb-1">directions_bus</span>
                         <span className="flex items-center gap-1 bg-[#006e1c]/10 text-[#006e1c] px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide">
-                          <span className="material-symbols-outlined text-[13px]">verified</span>
-                          Verified
-                        </span>
+                          <span className="material-symbols-outlined text-[13px]">verified</span>{tx('Verified')}</span>
                       </div>
                       <div className="text-right">
                         <p className="text-[11px] font-bold text-[#46464f] uppercase tracking-wide mb-1">{ticket.to}</p>
@@ -404,14 +381,12 @@ export default function TicketResaleMarketplace() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] font-medium text-[#46464f] mt-1">Listed by {ticket.sellerHandle}</p>
+                      <p className="text-[11px] font-medium text-[#46464f] mt-1">{tx('Listed by {sellerHandle}', { sellerHandle: ticket.sellerHandle })}</p>
                     </div>
                     <Link
                       href={`/marketplace/buy/${ticket.id}`}
                       className="w-full md:w-auto text-center bg-[#050a44] text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-90 active:scale-95 transition-all whitespace-nowrap"
-                    >
-                      Buy Now
-                    </Link>
+                    >{tx('Buy Now')}</Link>
                   </div>
                 </div>
               </div>

@@ -8,6 +8,7 @@ import { touchpadFriendlyWheel } from './mapWheel';
 import type { Map as LMap, LayerGroup, CircleMarker } from 'leaflet';
 import type { Fill, Gap, GpsPoint, Stop } from '@/lib/gpsLog';
 import type { RouteStop } from '@/lib/types';
+import { tx } from '@/lib/i18n';
 
 const time = (iso: string) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -129,18 +130,18 @@ export function GpsRouteMap({
       if (!next) return;
       const fill = fillTo.get(i + 1);
       const gap = gaps.find((g) => g.from === p.at);
-      const quiet = gap ? `No GPS for ${gap.minutes} min` : fill ? `No GPS for ${fill.minutes} min` : '';
+      const quiet = gap ? tx('No GPS for {minutes} min', { minutes: gap.minutes }) : fill ? tx('No GPS for {minutes} min', { minutes: fill.minutes }) : '';
       if (fill?.path) {
         flush();
         L.polyline(fill.path, { color: '#ffffff', weight: 7, opacity: 0.6, interactive: false }).addTo(layer.current!);
         L.polyline(fill.path, { color: '#ba1a1a', weight: 4, opacity: 0.9, dashArray: '1 8', lineCap: 'round' })
-          .bindTooltip(`${quiet}: likely road ${fill.roadKm!.toFixed(1)} km (estimated, ${fill.straightKm.toFixed(1)} km straight)`, { sticky: true })
+          .bindTooltip(tx('{quiet}: likely road {roadKm} km (estimated, {straightKm} km straight)', { quiet, roadKm: fill.roadKm!.toFixed(1), straightKm: fill.straightKm.toFixed(1) }), { sticky: true })
           .addTo(layer.current!);
         seg = [];
       } else if (fill || gapStarts.has(p.at)) {
         flush();
         L.polyline([[p.lat, p.lng], [next.lat, next.lng]], { color: '#ba1a1a', weight: 3, opacity: 0.8, dashArray: '4 8' })
-          .bindTooltip(fill ? `${quiet}: ${fill.straightKm.toFixed(1)} km straight (no road found yet)` : quiet, { sticky: true })
+          .bindTooltip(fill ? tx('{quiet}: {straightKm} km straight (no road found yet)', { quiet, straightKm: fill.straightKm.toFixed(1) }) : quiet, { sticky: true })
           .addTo(layer.current!);
         seg = [];
       }
@@ -158,7 +159,7 @@ export function GpsRouteMap({
     // Where it stood still.
     stops.forEach((s) =>
       L.circleMarker([s.lat, s.lng], { radius: 8, color: '#050a44', weight: 2, fillColor: '#feb700', fillOpacity: 0.6 })
-        .bindTooltip(`Stopped ${s.minutes} min (${time(s.from).slice(0, 5)}–${time(s.to).slice(0, 5)})`, { direction: 'top' })
+        .bindTooltip(tx('Stopped {minutes} min ({slice}–{slice2})', { minutes: s.minutes, slice: time(s.from).slice(0, 5), slice2: time(s.to).slice(0, 5) }), { direction: 'top' })
         .addTo(layer.current!),
     );
 
@@ -171,8 +172,8 @@ export function GpsRouteMap({
       });
     const first = points[0];
     const last = points[points.length - 1];
-    L.marker([first.lat, first.lng], { icon: pin('Start', '#ffffff', '#050a44'), zIndexOffset: 900 }).bindTooltip(`First point ${time(first.at)}`).addTo(layer.current);
-    if (points.length > 1) L.marker([last.lat, last.lng], { icon: pin('End', '#feb700', '#050a44'), zIndexOffset: 1000 }).bindTooltip(`Last point ${time(last.at)}`).addTo(layer.current);
+    L.marker([first.lat, first.lng], { icon: pin(tx('Start'), '#ffffff', '#050a44'), zIndexOffset: 900 }).bindTooltip(tx('First point {at}', { at: time(first.at) })).addTo(layer.current);
+    if (points.length > 1) L.marker([last.lat, last.lng], { icon: pin(tx('End'), '#feb700', '#050a44'), zIndexOffset: 1000 }).bindTooltip(tx('Last point {at}', { at: time(last.at) })).addTo(layer.current);
 
     // Frame the whole journey once per trip (not on every refresh, so zooming in stays put).
     const key = `${first.at}`;
@@ -182,5 +183,5 @@ export function GpsRouteMap({
     }
   }
 
-  return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-[#e1e2e4] bg-[#e8ecef] ${className}`} role="img" aria-label="Map of the road the bus took" />;
+  return <div ref={el} className={`relative z-0 w-full rounded-2xl overflow-hidden border border-[#e1e2e4] bg-[#e8ecef] ${className}`} role="img" aria-label={tx('Map of the road the bus took')} />;
 }
