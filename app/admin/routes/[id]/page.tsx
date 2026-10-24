@@ -802,7 +802,7 @@ function Editor({
                                   Only if at least
                                   <input type="number" min={1} max={60} aria-label={`Seats needed for ${s.name || `stop ${i + 1}`}`} value={s.minSeats ?? 4}
                                     onChange={(e) => update(i, { minSeats: Math.max(1, Math.min(60, Number(e.target.value) || 1)) })}
-                                    className="w-16 h-8 px-2 rounded-md border border-[#c7c5d1] text-[13px] font-bold text-[#050a44]" />
+                                    className="w-16 h-8 px-2 rounded-md border border-[#c7c5d1] bg-white text-[13px] font-bold text-[#050a44]" />
                                   seats are booked to or from here. Otherwise those passengers are moved to the nearest main stop and told.
                                 </p>
                               )}
