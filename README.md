@@ -757,6 +757,24 @@ dispatcher settles each trip:
   the same.
 The dispatcher (`/api/messages/dispatch`) must be running on its cron for this.
 
+**Variants (other ways for when on-request stops don't fill).** Made
+automatically: every mix of a route's on-request stops gets one (two
+on-request stops → "Without A", "Without B", "Without A, B"; with the route
+itself that's four ways). Each is the route without the stops it skips and
+the shaping points of those detours, keeping the route's times. They are
+rebuilt whenever the route is saved. Open one under **Version** in the
+editor to change its road, stop order or times and press **Save variant**;
+edited variants are kept when the route changes (**Reset to automatic**
+brings back the automatic one). Each trip uses the main route when every
+on-request stop fills, otherwise the variant covering exactly the ones that
+filled. A variant can leave out main stops too (not the first one): the
+editor warns, and passengers booked there are shown the nearest stop on the
+way instead (the conductor's list counts them there). A main stop added to
+the route after a variant was edited makes that variant unused until it's
+looked at again. Up to 5 on-request stops per route get
+variants automatically. Passengers' trip map and Track page, the home map
+and the conductor's map all follow the variant in use.
+
 **Boarding and money are two separate jobs** (Board and Cash tabs):
 - **Boarding**: scan the ticket or tap **Board**. Nobody is asked for money
   at the door: an unpaid passenger is simply on board and stays on the

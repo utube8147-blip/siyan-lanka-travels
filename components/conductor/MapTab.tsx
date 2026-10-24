@@ -13,13 +13,13 @@ import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { ArrowDown, ArrowUp, Check, ChevronDown, Crosshair, ExternalLink, Layers, Navigation, Plus, RotateCcw, Shuffle, X } from 'lucide-react';
 import {
-  REPORT_KINDS, applyOrder, isLive, kindOf, kmBetween, minutesToStop, nearestFirst, reportRoad, saveOrder, savedOrder, tonightsStops, useMyPosition, useNearbyAlerts, useOptionalStatus, useRoadReports, voteReport,
+  REPORT_KINDS, applyOrder, goesTo, isLive, kindOf, kmBetween, minutesToStop, nearestFirst, reportRoad, saveOrder, savedOrder, tonightsStops, useMyPosition, useNearbyAlerts, useOptionalStatus, useRoadReports, voteReport,
   type ReportKind, type RoadReport,
 } from '@/lib/conductor';
 import { fetchRoadRoute } from '@/lib/routing';
 import { googleMapsParts } from '@/lib/routeShare';
 import { loadPlans, type RoutePlan } from '@/lib/routeEditor';
-import { formatDuration, formatTime12, roadStops, routeLabel } from '@/lib/trips';
+import { formatDuration, formatTime12, routeLabel, tripWay } from '@/lib/trips';
 import { tx, txn } from '@/lib/i18n';
 import type { Booking, Route, Schedule, StoreData } from '@/lib/types';
 
@@ -79,7 +79,8 @@ export function MapTab({
   // so it follows the exact way the route was drawn.
   const tonight = new Set(stops.map((s) => s.name.toLowerCase()));
   // A detour that isn't running loses its shaping points too (roadStops).
-  const pins = (inRouteOrder ? roadStops(route.stops, (n) => tonight.has(n.toLowerCase())).filter((s) => s.hidden || tonight.has(s.name.toLowerCase())) : stops)
+  // Tonight's way (a variant, when one fits) with its shaping points.
+  const pins = (inRouteOrder ? tripWay(route, goesTo(optional)).stops.filter((s) => s.hidden || tonight.has(s.name.toLowerCase())) : stops)
     .filter((s) => s.lat != null && s.lng != null)
     .map((s) => [s.lat!, s.lng!] as [number, number]);
   const pinKey = pins.map((p) => p.join(',')).join(';') + (fromBus && here ? `|${here.lat.toFixed(3)},${here.lng.toFixed(3)}` : '');

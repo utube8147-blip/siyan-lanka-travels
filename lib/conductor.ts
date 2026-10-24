@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { friendlyError, isSupabaseConfigured as DB, supabase } from './supabase/client';
-import { departureDate } from './trips';
+import { departureDate, tripWay } from './trips';
 import type { Booking, Route, RouteStop } from './types';
 import { N_, tx } from '@/lib/i18n';
 
@@ -291,13 +291,30 @@ export interface PlanStop {
  */
 export function tonightsStops(route: Route, bookings: Booking[], optional: OptionalStopStatus[]): PlanStop[] {
   const live = bookings.filter((b) => ['confirmed', 'held', 'boarded'].includes(b.status));
-  return route.stops
+  // Tonight's way: a variant drawn for the on-request stops that are running, if there is one.
+  const way = tripWay(route, goesTo(optional)).stops;
+  // A stop the bus doesn't go to tonight (left out of the variant, or an on-request
+  // stop that didn't fill): its passengers get on at the next stop on the way and
+  // off at the one before, so they're counted there.
+  const low = (x: string) => x.trim().toLowerCase();
+  const onWay = way.filter((s) => !s.hidden).map((s) => low(s.name));
+  const order = route.stops.map((s) => low(s.name));
+  const place = (name: string, part: 'on' | 'off') => {
+    const n = low(name);
+    if (onWay.includes(n)) return n;
+    const k = order.indexOf(n);
+    if (k < 0) return n;
+    const after = order.slice(k + 1).find((x) => onWay.includes(x));
+    const before = [...order.slice(0, k)].reverse().find((x) => onWay.includes(x));
+    return part === 'on' ? after ?? before ?? n : before ?? after ?? n;
+  };
+  return way
     .map((s, i) => {
-      const n = s.name.toLowerCase();
-      const on = live.filter((b) => b.from.toLowerCase() === n).reduce((k, b) => k + b.seats.length, 0);
-      const off = live.filter((b) => b.to.toLowerCase() === n).reduce((k, b) => k + b.seats.length, 0);
+      const n = low(s.name);
+      const on = live.filter((b) => place(b.from, 'on') === n).reduce((k, b) => k + b.seats.length, 0);
+      const off = live.filter((b) => place(b.to, 'off') === n).reduce((k, b) => k + b.seats.length, 0);
       const st = optional.find((o) => o.stop.toLowerCase() === n);
-      return { stop: { name: s.name, lat: s.lat, lng: s.lng, offsetMin: s.offsetMin, on, off, optional: !!s.optional, detour: st ? detourState(st) : null }, keep: i === 0 || i === route.stops.length - 1 || on > 0 || off > 0 };
+      return { stop: { name: s.name, lat: s.lat, lng: s.lng, offsetMin: s.offsetMin, on, off, optional: !!s.optional, detour: st ? detourState(st) : null }, keep: !s.hidden && (i === 0 || i === way.length - 1 || on > 0 || off > 0) };
     })
     .filter((x) => x.keep && x.stop.detour !== 'skipped' && x.stop.detour !== 'unlikely')
     .map((x) => x.stop);

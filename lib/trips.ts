@@ -7,7 +7,7 @@ import { OPERATOR } from '@/config/operator';
 import { busSeatMap, seatIdsOf } from './seatLayout';
 import { fmtDate } from './dates';
 import { bikeKind, getBikeConfig } from './bikeConfig';
-import type { BikeKind, Booking, Bus, Gender, Route, RouteStop, Schedule, StoreData, Trip } from './types';
+import type { BikeKind, Booking, Bus, Gender, Route, RouteStop, RouteVariant, Schedule, StoreData, Trip } from './types';
 import { tx } from '@/lib/i18n-core';
 
 // ---------------------------------------------------------------- money ----
@@ -243,6 +243,93 @@ export function roadStops<T extends Pick<RouteStop, 'name' | 'optional' | 'hidde
     for (let i = p + 1; i < n; i++) if (stops[i].hidden) keep[i] = false;
   });
   return stops.filter((_, i) => keep[i]);
+}
+
+/** The route's on-request stops (names, lower case) that a list of stops goes to. */
+export function onRequestCovered(route: Route, stops: RouteStop[]) {
+  const opt = new Set(route.stops.filter((s) => s.optional && !s.hidden).map((s) => s.name.trim().toLowerCase()));
+  return stops.filter((s) => !s.hidden && opt.has(s.name.trim().toLowerCase())).map((s) => s.name.trim().toLowerCase());
+}
+
+/**
+ * The way the bus goes on one trip, from which on-request stops are running.
+ * All running (or none on the route): the main route. Otherwise the variant
+ * drawn for exactly those stops, if there is one; else the main route with the
+ * stops that aren't running left out (roadStops).
+ */
+export function tripWay(route: Route, runs: (name: string) => boolean): { stops: RouteStop[]; variant: RouteVariant | null } {
+  const opt = route.stops.filter((s) => s.optional && !s.hidden);
+  const running = new Set(opt.filter((s) => runs(s.name)).map((s) => s.name.trim().toLowerCase()));
+  if (running.size === opt.length) return { stops: route.stops, variant: null };
+  // Up to date even for a route last saved before its on-request stops changed.
+  for (const v of syncVariants(route).variants ?? []) {
+    if (!variantComplete(route, v)) continue; // missing a main stop (route changed since it was edited): not used
+    const cov = onRequestCovered(route, v.stops);
+    if (cov.length === running.size && cov.every((n) => running.has(n))) return { stops: v.stops, variant: v };
+  }
+  return { stops: roadStops(route.stops, runs), variant: null };
+}
+
+/**
+ * Whether a variant has every main stop of the route, apart from the ones staff
+ * took out of it on purpose. A main stop added to the route after the variant
+ * was edited makes it incomplete (not used until it's looked at again).
+ */
+export function variantComplete(route: Route, v: RouteVariant) {
+  const low = (x: string) => x.trim().toLowerCase();
+  const has = new Set(v.stops.filter((s) => !s.hidden).map((s) => low(s.name)));
+  const out = new Set((v.removed ?? []).map(low));
+  return route.stops.every((s) => s.hidden || s.optional || has.has(low(s.name)) || out.has(low(s.name)));
+}
+
+/** More on-request stops than this on one route: variants aren't made automatically (2^n of them). */
+export const MAX_AUTO_ON_REQUEST = 5;
+
+/**
+ * Keeps a route's variants in step with its on-request stops: one for every
+ * mix of them that isn't "all" (two on-request stops → three variants: only
+ * the first, only the second, neither). Each automatic variant is the route
+ * without the on-request stops it skips and the shaping points of those
+ * detours; its times stay those of the route (the bus waits rather than
+ * leaving a stop early). Variants staff have edited are kept as they are.
+ */
+export function syncVariants(route: Route): Route {
+  const low = (x: string) => x.trim().toLowerCase();
+  const opt = route.stops.filter((s) => s.optional && !s.hidden);
+  const existing = route.variants ?? [];
+  if (opt.length === 0) return { ...route, variants: [] };
+  if (opt.length > MAX_AUTO_ON_REQUEST) return { ...route, variants: existing };
+  const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+  const out: RouteVariant[] = [];
+  const full = (1 << opt.length) - 1;
+  // Most stops first: "Without X" before "Without X, Y".
+  const masks = Array.from({ length: full }, (_, m) => m).sort((a, b) => popcount(b) - popcount(a) || a - b);
+  for (const mask of masks) {
+    const keep = opt.filter((_, i) => mask & (1 << i)).map((s) => low(s.name));
+    const skip = opt.filter((_, i) => !(mask & (1 << i))).map((s) => s.name);
+    const found = existing.find((v) => sameSet(onRequestCovered(route, v.stops), keep));
+    if (found?.edited) {
+      out.push(found);
+      continue;
+    }
+    out.push({
+      id: found?.id ?? `auto-${route.id}-${keep.join('+') || 'none'}`,
+      name: `Without ${skip.join(', ')}`,
+      stops: roadStops(route.stops, (n) => keep.includes(low(n))),
+    });
+  }
+  // Edited variants that no longer match a mix (a stop renamed or no longer on request): kept, so nothing drawn is lost.
+  for (const v of existing) if (v.edited && !out.includes(v)) out.push(v);
+  return { ...route, variants: out };
+}
+const popcount = (m: number) => m.toString(2).replace(/0/g, '').length;
+
+/** The main stop nearest in time to an on-request stop: where its passengers go if it doesn't fill. */
+export function fallbackStop(stops: RouteStop[], name: string): string | undefined {
+  const k = name.trim().toLowerCase();
+  const at = stops.find((x) => x.name.trim().toLowerCase() === k);
+  if (!at) return undefined;
+  return [...stops].filter((x) => !x.optional && !x.hidden).sort((a, b) => Math.abs(a.offsetMin - at.offsetMin) - Math.abs(b.offsetMin - at.offsetMin))[0]?.name;
 }
 
 export function allStopNames(data: Pick<StoreData, 'routes' | 'schedules' | 'buses'>) {

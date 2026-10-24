@@ -28,12 +28,20 @@ export interface RouteStop {
    * or not on their ticket (before boarding / after the drop-off). Missing = all of it is theirs.
    */
   part?: 'board' | 'ride' | 'alight' | 'outside';
+  /** An on-request stop that isn't running (yet): beside the road, not on it. */
+  side?: boolean;
+  /** For a side stop: the main stop the passenger uses if it doesn't fill. */
+  fallback?: string;
 }
 
 export interface RouteData {
   busNumber: string;
   /** The bus's own route ("Colombo → Akkaraipattu"), when it differs from the ticket. */
   routeName?: string;
+  /** A line about tonight's road, e.g. the variant in use. */
+  notice?: string;
+  /** How the way would look if the passenger's on-request stop fills: drawn faintly. */
+  alt?: { points: { lat: number; lng: number }[]; stop: { name: string; lat: number; lng: number; time: string } };
   origin: string;
   destination: string;
   departureTime: string;
@@ -165,7 +173,9 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
 
-      const stopCoords: LatLng[] = located.map((s) => [s.lat, s.lng]);
+      // The road goes through every stop except side stops (on-request, not running).
+      const onRoad = located.filter((s) => !s.side);
+      const stopCoords: LatLng[] = onRoad.map((s) => [s.lat, s.lng]);
       const progress = route.busProgress;
 
       // Stops (drawn once)
@@ -173,24 +183,47 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
         const done = s.status === 'passed' || s.status === 'current';
         const mine = s.part === 'board' || s.part === 'alight';
         const outside = s.part === 'outside';
-        const size = mine ? 20 : s.status === 'current' ? 18 : outside ? 10 : 14;
-        const ring = outside ? '#9a99a8' : '#050a44';
-        const fill = mine ? (s.part === 'board' ? '#feb700' : '#050a44') : done ? '#050a44' : '#fff';
+        const size = mine ? 20 : s.status === 'current' ? 18 : outside ? 12 : 14;
+        const ring = s.side ? '#7c3aed' : outside ? '#6b6d78' : '#050a44';
+        const fill = s.side ? '#f5f3ff' : mine ? (s.part === 'board' ? '#feb700' : '#050a44') : done ? '#050a44' : '#fff';
         const m = L.marker([s.lat, s.lng], {
           zIndexOffset: mine ? 500 : 0,
           icon: L.divIcon({
             className: '',
             iconSize: [size, size],
             iconAnchor: [size / 2, size / 2],
-            html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;border:${outside ? 2 : 3}px solid ${ring};background:${fill}"></div>`,
+            html: `<div style="width:${size}px;height:${size}px;border-radius:9999px;border:3px ${s.side ? 'dashed' : 'solid'} ${ring};background:${fill}"></div>`,
           }),
         });
-        if (mine) m.bindTooltip(`${s.part === 'board' ? tx('Get on') : tx('Get off')}: ${s.name} · ${s.time}`, { permanent: true, direction: 'top', offset: [0, -12] });
+        // A side stop: dashed line from the main stop used if it doesn't fill.
+        const fb = s.side && s.fallback ? onRoad.find((x) => x.name === s.fallback) : undefined;
+        if (fb) L.polyline([[fb.lat, fb.lng], [s.lat, s.lng]], { color: '#7c3aed', weight: 3, opacity: 0.8, dashArray: '4 6' }).addTo(map);
+        if (mine) m.bindTooltip(`${s.part === 'board' ? tx('Get on') : tx('Get off')}: ${s.name}${s.side ? ` (${tx('on request')})` : ''} · ${s.time}`, { permanent: true, direction: 'top', offset: [0, -12] });
         else m.bindTooltip(`${s.name} · ${s.time}`, { direction: 'top', offset: [0, -8] });
         m.addTo(map);
       });
 
       // Route line + bus: redrawn when the road geometry arrives
+      // Faint "if it fills" way first, so tonight's road is drawn over it and
+      // only the detour itself shows.
+      const altLayer = L.layerGroup().addTo(map);
+      // Its own pane under the route line, whichever arrives first from the road server.
+      map.createPane('ifFilled').style.zIndex = '390';
+      if (route.alt) {
+        const a = route.alt;
+        const drawAlt = (path: LatLng[]) => {
+          altLayer.clearLayers();
+          L.polyline(path, { pane: 'ifFilled', color: '#7c3aed', weight: 4, opacity: 0.45, dashArray: '6 8', lineCap: 'round' }).addTo(altLayer);
+          L.marker([a.stop.lat, a.stop.lng], {
+            icon: L.divIcon({ className: '', iconSize: [14, 14], iconAnchor: [7, 7], html: '<div style="width:14px;height:14px;border-radius:9999px;border:2px dashed #7c3aed;background:rgba(245,243,255,.85)"></div>' }),
+          })
+            .bindTooltip(tx('If it fills: {stop} · {time}', { stop: a.stop.name, time: a.stop.time }), { direction: 'top', offset: [0, -8], opacity: 0.85 })
+            .addTo(altLayer);
+        };
+        const pts: LatLng[] = a.points.map((p) => [p.lat, p.lng]);
+        drawAlt(pts);
+        fetchRoadPath(pts, abort.signal).then((road) => !cancelled && road && drawAlt(road));
+      }
       const routeLayer = L.layerGroup().addTo(map);
 
       const drawRoute = (road: LatLng[] | null) => {
@@ -207,9 +240,9 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
         let busPos: LatLng | null = route.busPosition ?? null;
         if (!busPos && progress != null) {
           busPos = path[path.length - 1];
-          for (let i = 0; i < located.length - 1; i++) {
-            const a = located[i];
-            const b = located[i + 1];
+          for (let i = 0; i < onRoad.length - 1; i++) {
+            const a = onRoad[i];
+            const b = onRoad[i + 1];
             if (progress >= a.progress && progress <= b.progress) {
               const t = b.progress === a.progress ? 0 : (progress - a.progress) / (b.progress - a.progress);
               busPos = pointAlongPath(path, stopIdx[i], stopIdx[i + 1], t);
@@ -219,22 +252,26 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
         }
 
         // The whole road the bus drives, light; the passenger's stretch in navy on top.
-        const bi = located.findIndex((s) => s.part === 'board');
-        const ai = located.findIndex((s) => s.part === 'alight');
+        // The passenger's stretch; a side stop counts as the main stop they'd use.
+        const at = (part: 'board' | 'alight') => {
+          const p = located.find((s) => s.part === part);
+          return p ? onRoad.findIndex((s) => s.name === (p.side ? p.fallback : p.name)) : -1;
+        };
+        const bi = at('board');
+        const ai = at('alight');
         const marked = bi >= 0 && ai > bi;
         L.polyline(path, {
-          color: marked || busPos ? '#b9b8c6' : '#050a44',
+          color: marked ? '#5f6475' : busPos ? '#c7c5d1' : '#050a44',
           weight: marked ? 4 : busPos ? 6 : 5,
-          opacity: marked ? 0.9 : busPos ? 1 : 0.75,
-          dashArray: marked ? '2 8' : undefined,
+          opacity: marked ? 0.75 : busPos ? 1 : 0.75,
           lineCap: 'round',
           lineJoin: 'round',
         }).addTo(routeLayer);
         if (marked) {
           L.polyline(path.slice(stopIdx[bi], stopIdx[ai] + 1), {
             color: '#050a44',
-            weight: busPos ? 6 : 5,
-            opacity: busPos ? 0.45 : 0.85,
+            weight: busPos ? 7 : 6,
+            opacity: busPos ? 0.5 : 0.95,
             lineCap: 'round',
             lineJoin: 'round',
           }).addTo(routeLayer);
@@ -244,15 +281,15 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
           let travelled: LatLng[];
           if (road) {
             let lastPassed = -1;
-            located.forEach((s, i) => {
+            onRoad.forEach((s, i) => {
               if (s.progress < progress) lastPassed = i;
             });
             const lo = lastPassed >= 0 ? stopIdx[lastPassed] : 0;
-            const hi = stopIdx[Math.min(lastPassed + 1, located.length - 1)];
+            const hi = stopIdx[Math.min(lastPassed + 1, onRoad.length - 1)];
             const k = nearestIndex(path, busPos, lo, Math.max(lo, hi));
             travelled = [...path.slice(0, k + 1), busPos];
           } else {
-            travelled = [...located.filter((s) => s.progress < progress).map((s): LatLng => [s.lat, s.lng]), busPos];
+            travelled = [...onRoad.filter((s) => s.progress < progress).map((s): LatLng => [s.lat, s.lng]), busPos];
           }
           if (travelled.length > 1) {
             L.polyline(travelled, { color: '#050a44', weight: 6, lineCap: 'round', lineJoin: 'round' }).addTo(routeLayer);
@@ -277,18 +314,20 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
 
       const fit = (pts: LatLng[]) => {
         if (pts.length === 1) map.setView(pts[0], 15);
-        else map.fitBounds(L.latLngBounds(pts), { padding: [32, 32] });
+        else map.fitBounds(L.latLngBounds(pts), { paddingTopLeft: [110, 56], paddingBottomRight: [110, 32] }); // room for the Get on / Get off labels
       };
 
       // 1) Show something immediately (straight lines between stops)…
       drawRoute(null);
-      fit(stopCoords);
+      const allCoords: LatLng[] = located.map((x) => [x.lat, x.lng]);
+      if (route.alt) allCoords.push([route.alt.stop.lat, route.alt.stop.lng]);
+      fit(allCoords);
 
       // 2) …then swap in the real road geometry once it loads
       fetchRoadPath(stopCoords, abort.signal).then((road) => {
         if (cancelled || !road) return;
         drawRoute(road);
-        fit(road);
+        fit([...road, ...allCoords]);
       });
 
       // Keep tiles correct while the sheet resizes (drag / snap / rotate / layout switch)
@@ -431,16 +470,21 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
               </div>
             </div>
 
+            {route.notice && (
+              <p role="note" className="mx-4 md:mx-6 mt-3 rounded-xl bg-[#fef3c7] text-[#92400e] text-[12px] md:text-[13px] font-semibold px-3 py-2.5 leading-snug">{route.notice}</p>
+            )}
             {/* Stop list */}
             <div className="px-4 py-4 md:px-6 md:py-5">
               <p className="text-[10px] md:text-[11px] font-bold text-[#46464f] tracking-[0.06em] mb-3">{tx('STOP SCHEDULE')}</p>
               <div>
                 {route.stops.filter((s) => !s.hidden).map((stop, i, list) => (
-                  <div key={stop.id} className={`flex items-start gap-3 ${stop.part === 'outside' ? 'opacity-55' : ''}`}>
+                  <div key={stop.id} className={`flex items-start gap-3 ${stop.part === 'outside' ? 'opacity-80' : ''}`}>
                     <div className="flex flex-col items-center">
                       <div
                         className={`rounded-full border-2 shrink-0 ${stop.part === 'board' || stop.part === 'alight' ? 'w-3.5 h-3.5 -mx-0.5' : 'w-2.5 h-2.5'} ${
-                          stop.part === 'board'
+                          stop.side
+                            ? 'bg-[#f5f3ff] border-dashed border-[#7c3aed]'
+                            : stop.part === 'board'
                             ? 'bg-[#feb700] border-[#050a44]'
                             : stop.part === 'alight'
                             ? 'bg-[#050a44] border-[#050a44]'
@@ -475,8 +519,13 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
                           <span className="ml-2 text-[9px] md:text-[10px] font-bold text-[#feb700] bg-[#050a44] px-2 py-0.5 rounded-full align-middle">{tx('BUS HERE')}</span>
                         )}
                         {stop.note && <span className="block text-[11px] font-semibold text-[#6d28d9]">{stop.note}</span>}
+                        {stop.side && (
+                          <span className="block text-[11px] font-medium text-[#6d28d9]">
+                            {stop.fallback ? tx('Not on the road yet. If it doesn’t fill, you use {stop}.', { stop: stop.fallback }) : tx('Not on the road yet.')}
+                          </span>
+                        )}
                       </p>
-                      <p className={`text-[12px] md:text-[13px] ${stop.part === 'board' || stop.part === 'alight' ? 'font-bold text-[#050a44]' : 'font-semibold text-[#46464f]'}`}>{stop.time}</p>
+                      <p className={`shrink-0 whitespace-nowrap self-start pl-3 text-[12px] md:text-[13px] ${stop.part === 'board' || stop.part === 'alight' ? 'font-bold text-[#050a44]' : 'font-semibold text-[#46464f]'}`}>{stop.time}</p>
                     </div>
                   </div>
                 ))}

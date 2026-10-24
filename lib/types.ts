@@ -99,6 +99,26 @@ export interface Route {
   /** Route editor timing: bus time = car time × busFactor, plus stopMin at each stop. */
   busFactor?: number;
   stopMin?: number;
+  /**
+   * Other ways the bus can go, drawn by staff, for when some on-request stops
+   * don't fill. Each has every main stop, plus the on-request stops it covers.
+   * A trip uses the variant that covers exactly the on-request stops running.
+   */
+  variants?: RouteVariant[];
+}
+
+export interface RouteVariant {
+  id: string;
+  name: string;
+  stops: RouteStop[];
+  /**
+   * Changed by staff in the route editor. Automatic variants (one for every
+   * mix of on-request stops) are rebuilt from the route whenever it's saved;
+   * edited ones are kept as they are.
+   */
+  edited?: boolean;
+  /** Main stops staff took out of this variant on purpose (passengers booked there use the nearest point on the way). */
+  removed?: string[];
 }
 
 /** 0 = Sunday ... 6 = Saturday */

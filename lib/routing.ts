@@ -49,3 +49,30 @@ export async function fetchRoadRoute(stops: LatLng[], signal?: AbortSignal): Pro
     return { route: null, error: tx('Could not reach the routing server (offline?).') };
   }
 }
+
+const tableCache = new Map<string, number[][]>();
+
+/**
+ * Car minutes between every pair of points (OSRM "table" service, same server
+ * as the routes). matrix[i][j] = minutes from point i to point j. Null when
+ * the server can't be reached or doesn't offer it.
+ */
+export async function fetchDriveTable(points: LatLng[], signal?: AbortSignal): Promise<number[][] | null> {
+  if (points.length < 2) return null;
+  const key = points.map(([lat, lng]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(';');
+  const hit = tableCache.get(key);
+  if (hit) return hit;
+  try {
+    const base = ROUTING_URL.replace(/\/$/, '').replace('/route/', '/table/');
+    const res = await fetch(`${base}/${key}?annotations=duration`, { signal });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const m = data?.durations as (number | null)[][] | undefined;
+    if (!m || m.length !== points.length) return null;
+    const minutes = m.map((row) => row.map((s) => (s == null ? Infinity : s / 60)));
+    tableCache.set(key, minutes);
+    return minutes;
+  } catch {
+    return null;
+  }
+}

@@ -9,7 +9,7 @@ import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
-import { addDays, allStopNames, nearbyOptions, routeLabel, roadStops, runningRoutes, type NearbyOption, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
+import { addDays, allStopNames, nearbyOptions, routeLabel, roadStops, tripWay, runningRoutes, type NearbyOption, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
 import { useT, txn } from '@/lib/i18n';
 import {
@@ -26,6 +26,8 @@ import {
 import { RouteMapOverlay, type RouteData, type RouteStop } from '@/components/RouteMapOverlay';
 import { OnRequestChip } from '@/components/OnRequestNotice';
 import { detourState, goesTo, useOptionalStatus } from '@/lib/conductor';
+import { useJunction } from '@/lib/detour';
+import type { RouteStop as RouteStopT } from '@/lib/types';
 import { km, useLiveTrip } from '@/lib/extras';
 import { tx } from '@/lib/i18n';
 
@@ -260,6 +262,14 @@ function SearchPageInner() {
     routeSchedule?.trip.date,
     data.bookings,
   );
+  // A booked on-request stop that hasn't filled: where the bus would turn off for it.
+  const selRoute = routeSchedule ? data.routes.find((r) => r.id === routeSchedule.trip.routeId) : undefined;
+  // The way the bus goes tonight: the main route, the variant drawn for the
+  // on-request stops that are running, or the main route without the others.
+  const tonight = useMemo(() => (selRoute ? tripWay(selRoute, goesTo(optStatus)) : { stops: [], variant: null }), [selRoute, optStatus]);
+  const selRoad = tonight.stops;
+  const jFrom = useJunction(selRoute?.stops, selRoad, routeSchedule?.trip.from ?? null, 'board');
+  const jTo = useJunction(selRoute?.stops, selRoad, routeSchedule?.trip.to ?? null, 'alight');
 
   // RouteMapOverlay data for a departure: the passenger's part of the route
   // with each stop's map pin and timetable time, the road distance, and the
@@ -274,21 +284,70 @@ function SearchPageInner() {
   const buildRouteData = (s: Schedule): RouteData => {
     const trip = s.trip;
     const route = data.routes.find((r) => r.id === trip.routeId);
-    // The passenger's own stops always stay on the map.
-    const going = goesTo(optStatus);
-    const all = route ? roadStops(route.stops, (n) => n === trip.from || n === trip.to || going(n)) : [];
-    // The whole route the bus drives (so a Katunayake → Akkaraipattu ticket
-    // still shows the bus starting in Colombo); the passenger's part is marked.
-    const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
-    const fi = all.findIndex((x) => same(x.name, trip.from));
-    const ti = all.findIndex((x) => same(x.name, trip.to));
+    // On-request stops that haven't filled are left out completely (passengers
+    // don't see them on the map or in the list, and the road joins the stops
+    // either side). A passenger who booked one is shown the main stop they'll
+    // use until it fills.
+    const eq = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    const all: (RouteStopT & { turnOff?: string })[] = route ? [...tonight.stops] : [];
+    // Until it fills, the passenger gets off (or on) where the bus would turn off
+    // for their stop: a point on the usual road, not the stop before it.
+    const turnOff = (booked: string, j: typeof jTo) => {
+      if (!route || !j.skipped) return booked;
+      if (j.junction) {
+        const pt = { name: tx('Turn-off for {stop}', { stop: booked }), offsetMin: j.junction.offsetMin, fareFromStart: 0, lat: j.junction.lat, lng: j.junction.lng, turnOff: booked };
+        const at = all.findIndex((x) => x.offsetMin > pt.offsetMin);
+        all.splice(at < 0 ? all.length : at, 0, pt);
+        return pt.name;
+      }
+      return j.fallback != null ? route.stops[j.fallback].name : booked;
+    };
+    const boardAt = turnOff(trip.from, jFrom);
+    const alightAt = turnOff(trip.to, jTo);
+    const fi = all.findIndex((x) => eq(x.name, boardAt));
+    const ti = all.findIndex((x) => eq(x.name, alightAt));
     const segment = fi >= 0 && ti > fi ? all.slice(fi, ti + 1) : [];
     const span = all.length > 1 ? Math.max(1, all[all.length - 1].offsetMin - all[0].offsetMin) : 1;
-    const boardMin = parseInt(trip.departure.slice(0, 2), 10) * 60 + parseInt(trip.departure.slice(3), 10);
-    const boardOffset = fi >= 0 ? all[fi].offsetMin : 0;
+    // Clock times from the departure at the first stop and tonight's way (a variant has its own times).
+    const sch = data.schedules.find((x) => x.id === trip.scheduleId);
+    const startMin = sch ? parseInt(sch.departure.slice(0, 2), 10) * 60 + parseInt(sch.departure.slice(3), 10) : 0;
+    const instead = (booked: string, at: string, part: 'board' | 'alight') => {
+      if (eq(booked, at)) return undefined;
+      // A main stop the bus doesn't go to tonight (the variant in use leaves it out).
+      if (!route?.stops.find((x) => eq(x.name, booked))?.optional)
+        return part === 'board' ? tx('The bus doesn’t go to {stop} on this trip. You get on here instead.', { stop: booked }) : tx('The bus doesn’t go to {stop} on this trip. You get off here instead.', { stop: booked });
+      const st = optStatus.find((o) => eq(o.stop, booked));
+      const seats = st ? ` (${st.seats}/${st.minSeats})` : '';
+      const j = part === 'board' ? jFrom.junction : jTo.junction;
+      if (j && at.startsWith(tx('Turn-off for {stop}', { stop: booked }))) {
+        const km = j.kmToStop < 1 ? j.kmToStop.toFixed(1) : String(Math.round(j.kmToStop));
+        return part === 'board'
+          ? tx('You booked {stop}{seats}. Until enough seats are booked there, you get on where the road turns off for it, about {km} km away.', { stop: booked, seats, km })
+          : tx('You booked {stop}{seats}. Until enough seats are booked there, you get off where the road turns off for it, about {km} km away.', { stop: booked, seats, km });
+      }
+      return part === 'board'
+        ? tx('You booked {stop}{seats}. Until enough seats are booked there, you get on here.', { stop: booked, seats })
+        : tx('You booked {stop}{seats}. Until enough seats are booked there, you get off here.', { stop: booked, seats });
+    };
+    const clock = (offset: number) => {
+      const mins = (((startMin + offset) % 1440) + 1440) % 1440;
+      return formatTime12(`${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`);
+    };
+    // The passenger's on-request stop that hasn't filled: how the way looks if
+    // only it fills (on top of the ones already filled). Shown faintly on the map.
+    const runsNow = goesTo(optStatus);
+    const pending = route ? [trip.to, trip.from].find((n) => route.stops.find((x) => eq(x.name, n))?.optional && !runsNow(n)) : undefined;
+    const ifFilled = route && pending ? tripWay(route, (n) => runsNow(n) || eq(n, pending)).stops : null;
+    const pendingAt = ifFilled?.find((x) => eq(x.name, pending!) && x.lat != null && x.lng != null);
+    const alt = ifFilled && pendingAt
+      ? { points: ifFilled.filter((x) => x.lat != null && x.lng != null).map((x) => ({ lat: x.lat!, lng: x.lng! })), stop: { name: pendingAt.name, lat: pendingAt.lat!, lng: pendingAt.lng!, time: clock(pendingAt.offsetMin) } }
+      : undefined;
+    const altNote = alt ? tx('If it fills, the bus goes to {stop} at {time} (dashed line on the map).', { stop: alt.stop.name, time: alt.stop.time }) : '';
+    const withAlt = (note: string | undefined, booked: string) => (note && alt && pending && eq(booked, pending) ? `${note} ${altNote}` : note);
     const stops: RouteStop[] = all.map((x, i) => {
-      const mins = (((boardMin + (x.offsetMin - boardOffset)) % 1440) + 1440) % 1440;
+      const mins = (((startMin + x.offsetMin) % 1440) + 1440) % 1440;
       const hhmm = `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+      const part = i === fi ? 'board' : i === ti ? 'alight' : i > fi && i < ti ? 'ride' : 'outside';
       return {
         id: `${i}-${x.name}`,
         name: x.name,
@@ -298,8 +357,8 @@ function SearchPageInner() {
         lng: x.lng,
         hidden: x.hidden,
         status: 'upcoming',
-        note: x.optional ? optNote(x.name) : undefined,
-        part: i === fi ? 'board' : i === ti ? 'alight' : i > fi && i < ti ? 'ride' : 'outside',
+        note: part === 'board' ? withAlt(instead(trip.from, x.name, 'board'), trip.from) : part === 'alight' ? withAlt(instead(trip.to, x.name, 'alight'), trip.to) : x.optional ? optNote(x.name) : undefined,
+        part,
       };
     });
 
@@ -322,10 +381,13 @@ function SearchPageInner() {
     return {
       busNumber: trip.bus.regNo,
       routeName: route ? routeLabel(route) : undefined,
+      alt,
+      notice: tonight.variant ? tx('Not every on-request stop filled, so tonight the bus goes the “{name}” way.', { name: tonight.variant.name }) : undefined,
       origin: trip.from,
       destination: trip.to,
       departureTime: s.departure,
-      arrivalTime: s.arrival,
+      // Until a booked on-request stop fills, the time where the passenger actually gets off.
+      arrivalTime: (alightAt !== trip.to || tonight.variant) && ti >= 0 ? stops[ti].time : s.arrival,
       duration: s.durationLabel,
       distance: routeDistanceLabel(segment),
       busProgress,
@@ -340,7 +402,7 @@ function SearchPageInner() {
   const routeData = useMemo(
     () => (routeSchedule ? buildRouteData(routeSchedule) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routeSchedule, live.location, data.routes, optStatus],
+    [routeSchedule, live.location, data.routes, optStatus, jFrom.junction, jTo.junction, tonight],
   );
 
   const inputClass = 'w-full bg-white border-none rounded-xl font-medium outline-none focus:ring-1 focus:ring-[#050a44]';

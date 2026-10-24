@@ -10,8 +10,10 @@ import { Navigation, Phone, RefreshCw, Share2 } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageSkeleton, useStore } from '@/lib/store';
-import { departureDate, formatDateLabel, formatTime12, getTrip, roadStops } from '@/lib/trips';
+import { departureDate, formatDateLabel, formatTime12, getTrip, tripWay } from '@/lib/trips';
 import { goesTo, useOptionalStatus } from '@/lib/conductor';
+import { useJunction } from '@/lib/detour';
+import type { RouteStop } from '@/lib/types';
 import { useTripContact, whatsappShareUrl } from '@/lib/extras';
 import { estimateArrival, TRAIL_SIZE, useBusTrail } from '@/lib/tracking';
 import { useT, txn } from '@/lib/i18n';
@@ -42,6 +44,10 @@ function Track() {
   const contact = useTripContact(booking);
   // On-request stops with too few seats aren't on tonight's road.
   const optStatus = useOptionalStatus(trip ? data.routes.find((r) => r.id === trip.routeId) : undefined, booking?.scheduleId, booking?.date, data.bookings);
+  const tRoute = trip ? data.routes.find((r) => r.id === trip.routeId) : undefined;
+  const tRoad = useMemo(() => (tRoute ? tripWay(tRoute, goesTo(optStatus)).stops : []), [tRoute, optStatus]);
+  // Booked an on-request stop that hasn't filled: picked up where the bus would turn off for it.
+  const jFrom = useJunction(tRoute?.stops, tRoad, booking?.from ?? null, 'board');
 
   if (!ready) return <PageSkeleton />;
   if (!booking || !trip) {
@@ -55,9 +61,19 @@ function Track() {
   }
 
   const route = data.routes.find((r) => r.id === trip.routeId);
-  const going = goesTo(optStatus);
-  const stops = route ? roadStops(route.stops, (n) => n === booking.from || n === booking.to || going(n)) : [];
-  const bi = stops.findIndex((s) => s.name === booking.from);
+  // An on-request stop that hasn't filled isn't on the road: the bus picks up
+  // where it would turn off for it (or, until that's worked out, the stop after).
+  const stops: RouteStop[] = [...tRoad];
+  let boardAt = booking.from;
+  if (route && jFrom.skipped) {
+    if (jFrom.junction) {
+      const pt: RouteStop = { name: tx('Turn-off for {stop}', { stop: booking.from }), offsetMin: jFrom.junction.offsetMin, fareFromStart: 0, lat: jFrom.junction.lat, lng: jFrom.junction.lng, landmark: tx('Where the road turns off for {stop}, about {km} km from it', { stop: booking.from, km: jFrom.junction.kmToStop < 1 ? jFrom.junction.kmToStop.toFixed(1) : Math.round(jFrom.junction.kmToStop) }) };
+      const at = stops.findIndex((x) => x.offsetMin > pt.offsetMin);
+      stops.splice(at < 0 ? stops.length : at, 0, pt);
+      boardAt = pt.name;
+    } else if (jFrom.fallback != null) boardAt = route.stops[jFrom.fallback].name;
+  }
+  const bi = stops.findIndex((s) => s.name === boardAt);
   const stop = stops[bi];
   const leaves = departureDate(trip.boardingDate, trip.departure);
   const minsToDep = Math.round((leaves.getTime() - now) / 60000);

@@ -14,7 +14,7 @@ import { OPERATOR } from '@/config/operator';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActionResult, Booking, BookingResult, Bus, NewBooking, Route, Schedule, StoreData } from './types';
 import { createSeedData, SEED_BUSES, SEED_ROUTES, SEED_SCHEDULES, STORE_VERSION } from './seed';
-import { addDays, bikeSpacesFor, bikeSpacesUsed, genId, genRef, isLiveBooking, takenSeats, todayISO } from './trips';
+import { addDays, bikeSpacesFor, bikeSpacesUsed, genId, genRef, isLiveBooking, syncVariants, takenSeats, todayISO } from './trips';
 import { friendlyError, isSupabaseConfigured, supabase } from './supabase/client';
 import { bookingFromRow, busFromRow, busToRow, routeFromRow, routeToRow, scheduleFromRow, scheduleToRow } from './supabase/mappers';
 import { isStaffRole, useAuth } from '@/contexts/AuthContext';
@@ -318,7 +318,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [mode, remoteWrite],
   );
   const saveRoute = useCallback<StoreContextValue['saveRoute']>(
-    async (route) => {
+    async (input) => {
+      // One variant for every mix of on-request stops, kept up to date (edited ones are left alone).
+      const route = syncVariants(input);
       if (mode === 'supabase') return remoteWrite(() => supabase().from('routes').upsert(routeToRow(route)));
       setData((d) => ({ ...d, routes: upsert(d.routes, route) }));
       return { ok: true };

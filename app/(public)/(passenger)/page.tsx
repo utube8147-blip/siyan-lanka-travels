@@ -15,7 +15,7 @@ import { goesTo, useOptionalStatus } from '@/lib/conductor';
 import { OnRequestChip } from '@/components/OnRequestNotice';
 import { useStore } from '@/lib/store';
 import { StopsMap } from '@/components/StopsMap';
-import { addDays, allStopNames, roadStops, runningRoutes, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
+import { addDays, allStopNames, tripWay, runningRoutes, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route, Trip } from '@/lib/types';
 import { useT, N_ } from '@/lib/i18n';
 import { tx } from '@/lib/i18n';
@@ -108,9 +108,10 @@ export default function LandingPage() {
   }, [ready, data, shownRoute]);
   const optStatus = useOptionalStatus(shownRoute, nextTrip?.scheduleId, nextTrip?.date, data.bookings);
   const hasOptional = !!shownRoute?.stops.some((s) => s.optional && !s.hidden);
-  const mapStops = useMemo(() => (shownRoute ? roadStops(shownRoute.stops, goesTo(optStatus)) : []), [shownRoute, optStatus]);
+  const mapStops = useMemo(() => (shownRoute ? tripWay(shownRoute, goesTo(optStatus)).stops : []), [shownRoute, optStatus]);
   // Points that only shape the road aren't shown as stops (the map still follows them).
-  const stopRoute = shownRoute ? { ...shownRoute, stops: shownRoute.stops.filter((s) => !s.hidden) } : shownRoute;
+  // On-request stops that haven't filled on the next trip aren't listed either.
+  const stopRoute = shownRoute ? { ...shownRoute, stops: mapStops.filter((s) => !s.hidden) } : shownRoute;
   // Clock time at each stop, when this direction always leaves at the same time.
   const stopStart = (() => {
     if (!stopRoute) return null;

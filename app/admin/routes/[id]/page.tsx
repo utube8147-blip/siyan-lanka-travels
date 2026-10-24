@@ -19,7 +19,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpDown, Crosshair, Share2, Eye, Eye
 import { useStore } from '@/lib/store';
 import { km } from '@/lib/extras';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
-import { compressPhoto, formatDuration, formatTime12, genId, routeLabel, dateLocale } from '@/lib/trips';
+import { compressPhoto, formatDuration, formatTime12, genId, routeLabel, dateLocale, syncVariants, variantComplete } from '@/lib/trips';
 import { uuid } from '@/lib/uuid';
 import type { Route, RouteStop } from '@/lib/types';
 import { fetchRoadRoute, type RoadRoute } from '@/lib/routing';
@@ -566,12 +566,51 @@ function Editor({
   }
   const unpinned = stops.filter((s) => s.lat == null).length;
 
-  const finalRoute = (): Route => ({ ...route, name: name.trim() || undefined, busFactor, stopMin: dwell, active, flatFare: flat, stops: (flat ? flatStops(stops, price) : stops).map((s) => ({ ...s, name: s.name.trim() })) });
+  const finalRoute = (): Route => ({ ...route, variants: savedRoute?.variants ?? route.variants, name: name.trim() || undefined, busFactor, stopMin: dwell, active, flatFare: flat, stops: (flat ? flatStops(stops, price) : stops).map((s) => ({ ...s, name: s.name.trim() })) });
+  // ---- variants: other ways for when on-request stops don't fill ----
+  // Every mix of on-request stops has a variant (made automatically, shown here even before the next save).
+  const variants = useMemo(() => (savedRoute ? syncVariants(savedRoute).variants ?? [] : []), [savedRoute]);
+  const variantId = planId.startsWith('v:') ? planId.slice(2) : null;
+  const openVariant = variantId ? variants.find((v) => v.id === variantId) ?? null : null;
+  const mainOptional = (savedRoute?.stops ?? []).filter((s) => s.optional && !s.hidden);
+  const covers = (list: RouteStop[]) => mainOptional.filter((o) => list.some((s) => !s.hidden && s.name.trim().toLowerCase() === o.name.trim().toLowerCase())).map((o) => o.name);
+  const variantProblems = (list: RouteStop[], selfId: string | null): string[] => {
+    if (!savedRoute) return [];
+    const out: string[] = [];
+    const has = (n: string) => list.some((s) => !s.hidden && s.name.trim().toLowerCase() === n.trim().toLowerCase());
+    if (list[0] && savedRoute.stops[0] && list[0].name.trim().toLowerCase() !== savedRoute.stops[0].name.trim().toLowerCase()) out.push(`A variant starts where the route starts (${savedRoute.stops[0].name}).`);
+    const extra = list.filter((s) => !s.hidden && !savedRoute.stops.some((m) => m.name.trim().toLowerCase() === s.name.trim().toLowerCase())).map((s) => s.name);
+    if (extra.length) out.push(`A variant can only use the route's stops (add new stops to the live route first): ${extra.join(', ')}.`);
+    const cov = covers(list);
+    if (cov.length === mainOptional.length) out.push('This variant goes to every on-request stop, like the live route. Remove the on-request stops it is for skipping.');
+    const same = variants.find((v) => v.id !== selfId && JSON.stringify(covers(v.stops).sort()) === JSON.stringify([...cov].sort()));
+    if (same) out.push(`The variant "${same.name}" already covers the same on-request stops.`);
+    return out;
+  };
+  const vProblems = openVariant ? variantProblems(finalRoute().stops, openVariant.id) : [];
+  // Main stops left out of the open variant (allowed, but passengers booked there are affected).
+  const leftOut = (list: RouteStop[]) =>
+    (savedRoute?.stops ?? []).filter((m) => !m.hidden && !m.optional && !list.some((s) => !s.hidden && s.name.trim().toLowerCase() === m.name.trim().toLowerCase())).map((m) => m.name);
+  const vLeftOut = openVariant ? leftOut(stops) : [];
+
   const save = async () => {
     setSaving(true);
-    const ok = await onSave(finalRoute());
+    const ok = openVariant && savedRoute
+      ? await onSave({ ...savedRoute, variants: variants.map((v) => (v.id === openVariant.id ? { ...v, stops: finalRoute().stops, edited: true, removed: leftOut(finalRoute().stops) } : v)) })
+      : await onSave(finalRoute());
     setSaving(false);
     if (ok) setDirty(false);
+  };
+  /** Back to the automatic version of an edited variant (rebuilt from the live route). */
+  const resetVariant = async () => {
+    if (!openVariant || !savedRoute || !window.confirm(`Reset "${openVariant.name}" to the automatic version? Your changes to it are lost.`)) return;
+    const next = syncVariants({ ...savedRoute, variants: variants.map((v) => (v.id === openVariant.id ? { ...v, edited: false } : v)) });
+    const ok = await onSave(next);
+    if (ok) {
+      const fresh = next.variants?.find((v) => v.id === openVariant.id);
+      if (fresh) setStops(structuredClone(fresh.stops));
+      setDirty(false);
+    }
   };
 
   // ---- drafts ----
@@ -588,14 +627,15 @@ function Editor({
   };
   const openDraft = (id: string) => {
     if (dirty && !window.confirm(tx('Open this version? Changes not saved here will be lost.'))) return;
+    // Variants: the up-to-date list (made automatically), not only what was last saved.
+    const src = id.startsWith('v:') ? variants.find((v) => v.id === id.slice(2))?.stops : id ? plans.find((p) => p.id === id)?.stops : savedRoute?.stops;
+    if (!src) return toast(tx('Could not open that version.'), 'error');
     setPlanId(id);
-    const src = id ? plans.find((p) => p.id === id)?.stops : savedRoute?.stops;
-    if (!src) return;
     record();
     setStops(structuredClone(src));
     setPrice(src[src.length - 1]?.fareFromStart ?? price);
     setSelected(null);
-    setDirty(!!id);
+    setDirty(!!id && !id.startsWith('v:'));
   };
   const removeDraft = async () => {
     const p = plans.find((x) => x.id === planId);
@@ -621,11 +661,11 @@ function Editor({
               <Button variant="secondary" onClick={() => setSharing(true)} title={tx('A private link to a read-only page with this route as it is now')}>
                 <Share2 className="w-4 h-4" />{' '}{tx('Share')}</Button>
             )}
-            {savedRoute && (
+            {savedRoute && !openVariant && (
               <Button variant="secondary" onClick={saveDraft}>{tx('Save as draft')}</Button>
             )}
-            <Button variant="gold" disabled={problems.length > 0 || saving} onClick={save}>
-              {saving ? tx('Saving…') : tx('Save route')}
+            <Button variant="gold" disabled={problems.length > 0 || vProblems.length > 0 || saving} onClick={save}>
+              {saving ? tx('Saving…') : openVariant ? 'Save variant' : tx('Save route')}
             </Button>
           </>
         }
@@ -651,20 +691,53 @@ function Editor({
                 <span className="text-[12px] font-bold text-[#46464f] px-1">{tx('Version')}</span>
                 <select className={`${inputClass} mt-1`} value={planId} onChange={(e) => openDraft(e.target.value)}>
                   <option value="">{tx('Live route')}{changedFromSaved && !planId ? tx(' (edited)') : ''}</option>
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id}>{tx('Draft: {name} ({length} stops)', { name: p.name, length: p.stops.length })}</option>
-                  ))}
+                  {variants.length > 0 && (
+                    <optgroup label="Variants (when on-request stops don't fill)">
+                      {variants.map((v) => {
+                        const cov = covers(v.stops);
+                        return <option key={v.id} value={`v:${v.id}`}>{`Variant: ${v.name} (${cov.length ? `goes to ${cov.join(', ')}` : 'no on-request stops'}) · ${v.edited ? (savedRoute && !variantComplete(savedRoute, v) ? 'edited, needs fixing' : 'edited') : 'automatic'}`}</option>;
+                      })}
+                    </optgroup>
+                  )}
+                  {plans.length > 0 && (
+                    <optgroup label="Drafts">
+                      {plans.map((p) => (
+                        <option key={p.id} value={p.id}>{tx('Draft: {name} ({length} stops)', { name: p.name, length: p.stops.length })}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </label>
-              {planId && (
+              {planId && !openVariant && (
                 <Button variant="danger" onClick={removeDraft}>
                   <Trash2 className="w-4 h-4" />{' '}{tx('Delete draft')}</Button>
               )}
+              {openVariant?.edited && (
+                <Button variant="secondary" onClick={resetVariant}>
+                  <RotateCcw className="w-4 h-4" /> Reset to automatic</Button>
+              )}
               <p className="w-full text-[12px] text-[#6b6d78]">{tx('Drafts keep ideas without changing the live route. Open one and press “Save route” to make it live.')}</p>
+              {mainOptional.length > 0 && (
+                <p className="w-full text-[12px] text-[#6b6d78]">
+                  Variants are made automatically: one for every mix of on-request stops ({variants.length} for {mainOptional.length} on-request {mainOptional.length === 1 ? 'stop' : 'stops'}), each the route without the stops it skips. Each trip uses the one matching the on-request stops that filled. Open one under Version to change its road, order or times; edited variants are kept when the route changes.
+                </p>
+              )}
+              {openVariant && (
+                <div className="w-full rounded-xl bg-[#f5f3ff] border border-[#ddd6fe] px-3 py-2.5 text-[12px] text-[#3b0764]">
+                  <p className="font-bold">Editing variant “{openVariant.name}” · {openVariant.edited ? 'edited' : 'automatic (saving here keeps your version)'}</p>
+                  <p>{covers(stops).length ? `Used when only ${covers(stops).join(', ')} ${covers(stops).length === 1 ? 'fills' : 'fill'}.` : 'Used when none of the on-request stops fill.'} The live route is not changed.</p>
+                  {vProblems.map((p) => <p key={p} className="font-semibold text-[#ba1a1a] mt-1">{p}</p>)}
+                  {vLeftOut.length > 0 && (
+                    <p className="font-semibold text-[#92400e] mt-1">
+                      Not in this variant: {vLeftOut.join(', ')}. On trips that use it, passengers booked to or from {vLeftOut.length === 1 ? 'it' : 'them'} are shown the nearest point on the way the bus goes instead. Tell them, or make sure nobody is booked there.
+                    </p>
+                  )}
+                </div>
+              )}
             </Card>
           )}
 
-          <Card className="p-4 space-y-2">
+          {!openVariant && <Card className="p-4 space-y-2">
             <label className="block">
               <span className="text-[13px] font-bold text-[#050a44]">{tx('Route name')}</span>
               <input
@@ -676,7 +749,7 @@ function Editor({
               />
             </label>
             <p className="text-[12px] text-[#6b6d78]">{tx('Shown to staff, conductors and passengers. Leave it empty to use the first and last stop.')}</p>
-          </Card>
+          </Card>}
 
           <Card className="p-4 space-y-3">
             <p className="text-[13px] font-bold text-[#050a44]">{tx('Ticket price')}</p>
@@ -917,7 +990,7 @@ function Editor({
                   title={tx('Back to the saved route (can be undone)')}
                   onClick={() => {
                     record();
-                    setStops(structuredClone(savedRoute.stops));
+                    setStops(structuredClone(openVariant?.stops ?? savedRoute.stops));
                     setFlat(savedRoute.flatFare !== false);
                     setName(savedRoute.name ?? '');
                     setBusFactor(savedRoute.busFactor ?? 1.1);

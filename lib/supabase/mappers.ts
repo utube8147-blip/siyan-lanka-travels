@@ -33,8 +33,8 @@ export const busToRow = (b: Bus) => ({
   photos: b.photos ?? [],
 });
 
-export const routeFromRow = (r: any): Route => ({ id: r.id, name: r.name || undefined, stops: r.stops, flatFare: r.flat_fare !== false, active: r.active, archived: !!r.archived, busFactor: r.bus_factor != null ? Number(r.bus_factor) : undefined, stopMin: r.stop_min ?? undefined });
-export const routeToRow = (r: Route) => ({ id: r.id, name: r.name?.trim() || null, stops: r.stops, flat_fare: r.flatFare !== false, active: r.active, bus_factor: r.busFactor ?? null, stop_min: r.stopMin ?? null });
+export const routeFromRow = (r: any): Route => ({ id: r.id, name: r.name || undefined, stops: r.stops, flatFare: r.flat_fare !== false, active: r.active, archived: !!r.archived, busFactor: r.bus_factor != null ? Number(r.bus_factor) : undefined, stopMin: r.stop_min ?? undefined, variants: Array.isArray(r.variants) ? r.variants : [] });
+export const routeToRow = (r: Route) => ({ id: r.id, name: r.name?.trim() || null, stops: r.stops, flat_fare: r.flatFare !== false, active: r.active, bus_factor: r.busFactor ?? null, stop_min: r.stopMin ?? null, variants: r.variants ?? [] });
 
 export const scheduleFromRow = (r: any): Schedule => ({
   id: r.id,
