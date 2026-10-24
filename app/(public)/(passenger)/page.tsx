@@ -108,7 +108,16 @@ export default function LandingPage() {
   }, [ready, data, shownRoute]);
   const optStatus = useOptionalStatus(shownRoute, nextTrip?.scheduleId, nextTrip?.date, data.bookings);
   const hasOptional = !!shownRoute?.stops.some((s) => s.optional && !s.hidden);
-  const mapStops = useMemo(() => (shownRoute ? tripWay(shownRoute, goesTo(optStatus)).stops : []), [shownRoute, optStatus]);
+  // On-request stops picked to preview: the map and the stop list show the route as if they filled.
+  const [preview, setPreview] = useState<string[]>([]);
+  useEffect(() => setPreview([]), [shownRoute?.id]);
+  const togglePreview = (stop: string) => setPreview((p) => (p.includes(stop) ? p.filter((x) => x !== stop) : [...p, stop]));
+  const mapStops = useMemo(() => {
+    if (!shownRoute) return [];
+    const runs = goesTo(optStatus);
+    return tripWay(shownRoute, (n) => runs(n) || preview.includes(n.trim().toLowerCase())).stops;
+  }, [shownRoute, optStatus, preview]);
+  const previewNames = shownRoute ? shownRoute.stops.filter((s) => preview.includes(s.name.trim().toLowerCase())).map((s) => s.name) : [];
   // Points that only shape the road aren't shown as stops (the map still follows them).
   // On-request stops that haven't filled on the next trip aren't listed either.
   const stopRoute = shownRoute ? { ...shownRoute, stops: mapStops.filter((s) => !s.hidden) } : shownRoute;
@@ -301,17 +310,38 @@ export default function LandingPage() {
                 )}
               </div>
 
-              {/* The route on a map, above the stops. */}
-              <StopsMap stops={mapStops} className={`h-[240px] md:h-[340px] ${hasOptional && nextTrip ? 'mb-4' : 'mb-6 md:mb-10'}`} />
-              {hasOptional && nextTrip && (
-                <div className="mb-6 md:mb-10">
-                  <p className="text-[13px] font-semibold text-[#46464f] mb-2">
-                    {t('On-request stops on the {date} trip. The map shows the road the bus takes; it changes as soon as a stop has enough seats.', { date: formatDateLabel(nextTrip.date) })}
-                  </p>
-                  <div className="max-w-xl">
-                    <OnRequestChip routeId={nextTrip.routeId} scheduleId={nextTrip.scheduleId} date={nextTrip.date} />
+              {/* The route on a map, above the stops. With on-request stops: a side panel
+                  (below on phones) to see how the route looks if they fill. */}
+              {hasOptional && nextTrip ? (
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-4 lg:gap-6 mb-6 md:mb-10 items-stretch">
+                  <div className="min-w-0 flex flex-col gap-2">
+                    {preview.length > 0 && (
+                      <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[#7c3aed] text-white text-[12px] md:text-[13px] font-bold px-3 py-2">
+                        <span>{t('Preview: the route if {stops} filled', { stops: previewNames.join(', ') })}</span>
+                        <button type="button" onClick={() => setPreview([])} className="rounded-lg bg-white/20 hover:bg-white/30 px-2 py-1">
+                          {t('Back to tonight’s route')}
+                        </button>
+                      </div>
+                    )}
+                    <StopsMap stops={mapStops} className="h-[260px] md:h-[380px] lg:flex-1 lg:min-h-[420px]" />
                   </div>
+                  <aside className="rounded-2xl bg-white border border-[#edeef0] shadow-sm p-4 flex flex-col gap-3">
+                    <div>
+                      <p className="text-[15px] font-bold text-[#050a44]">{t('On-request stops')}</p>
+                      <p className="text-[12px] text-[#46464f] mt-0.5">
+                        {t('On the {date} trip. The bus goes to one only when enough seats are booked; the map changes as soon as it does. Tap one to see the route if it fills.', { date: formatDateLabel(nextTrip.date) })}
+                      </p>
+                    </div>
+                    <OnRequestChip routeId={nextTrip.routeId} scheduleId={nextTrip.scheduleId} date={nextTrip.date} selected={preview} onToggle={togglePreview} />
+                    {preview.length > 0 && (
+                      <button type="button" onClick={() => setPreview([])} className="mt-auto h-10 rounded-xl border border-[#c7c5d1] text-[13px] font-bold text-[#050a44] hover:bg-[#f2f4f6]">
+                        {t('Back to tonight’s route')}
+                      </button>
+                    )}
+                  </aside>
                 </div>
+              ) : (
+                <StopsMap stops={mapStops} className="h-[240px] md:h-[340px] mb-6 md:mb-10" />
               )}
 
               {/* Phones: a vertical timeline. Each stop is a tap to book from the start to there. */}

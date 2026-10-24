@@ -103,4 +103,10 @@ export default {
   'Enough seats are booked, so the bus is going there. It is final at {cutoff}.': ['போதுமான இருக்கைகள் முன்பதிவாகியுள்ளன, எனவே பேருந்து அங்கு செல்கிறது. {cutoff} க்கு இது இறுதியாகும்.', 'ප්‍රමාණවත් ආසන වෙන් වී ඇති නිසා බසය එහි යනවා. {cutoff} ට මෙය අවසන් වේ.'],
   'The bus goes there only if {min} seats are booked to or from it by {cutoff}.': ['{cutoff} க்குள் அங்கிருந்து அல்லது அங்கு {min} இருக்கைகள் முன்பதிவானால் மட்டுமே பேருந்து அங்கு செல்லும்.', '{cutoff} වන විට එතැනට හෝ එතැනින් ආසන {min} ක් වෙන් වුවහොත් පමණක් බසය එහි යයි.'],
   '{stop} (on request)': ['{stop} (கோரிக்கைப்படி)', '{stop} (ඉල්ලීම මත)'],
+  // Home page: preview the route if on-request stops fill
+  'Preview: the route if {stops} filled': ['முன்னோட்டம்: {stops} நிரம்பினால் வழித்தடம்', 'පෙරදසුන: {stops} පිරුණොත් මාර්ගය'],
+  'Back to tonight’s route': ['இன்றிரவு வழித்தடத்துக்குத் திரும்பு', 'අද රාත්‍රියේ මාර්ගයට ආපසු'],
+  'On the {date} trip. The bus goes to one only when enough seats are booked; the map changes as soon as it does. Tap one to see the route if it fills.': ['{date} பயணத்தில். போதுமான இருக்கைகள் முன்பதிவானால் மட்டுமே பேருந்து அங்கு செல்லும்; அப்போதே வரைபடம் மாறும். அது நிரம்பினால் வழித்தடத்தைப் பார்க்க ஒன்றைத் தட்டுங்கள்.', '{date} ගමනේදී. ප්‍රමාණවත් ආසන වෙන් වුවහොත් පමණක් බසය එතැනට යයි; එසේ වූ වහාම සිතියම වෙනස් වේ. එය පිරුණොත් මාර්ගය බැලීමට එකක් තට්ටු කරන්න.'],
+  'Shown on the map as if it filled. Tap again to hide.': ['நிரம்பியதுபோல் வரைபடத்தில் காட்டப்படுகிறது. மறைக்க மீண்டும் தட்டுங்கள்.', 'පිරුණා සේ සිතියමේ පෙන්වයි. සැඟවීමට නැවත තට්ටු කරන්න.'],
+  'Tap to see the route if it fills.': ['நிரம்பினால் வழித்தடத்தைப் பார்க்கத் தட்டுங்கள்.', 'පිරුණොත් මාර්ගය බැලීමට තට්ටු කරන්න.'],
 };

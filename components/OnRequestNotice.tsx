@@ -105,17 +105,38 @@ export function OnRequestNotice({ routeId, scheduleId, date, from, to, className
 }
 
 /** One line per on-request stop the passenger uses (every one, without from/to), for search results and the home page. */
-export function OnRequestChip({ routeId, scheduleId, date, from = '', to = '' }: { routeId: string; scheduleId: string; date: string; from?: string; to?: string }) {
+export function OnRequestChip({
+  routeId,
+  scheduleId,
+  date,
+  from = '',
+  to = '',
+  selected,
+  onToggle,
+}: {
+  routeId: string;
+  scheduleId: string;
+  date: string;
+  from?: string;
+  to?: string;
+  /** Home page: stops picked to preview "if it fills" on the map (lower-case names). */
+  selected?: string[];
+  onToggle?: (stop: string) => void;
+}) {
   const { mine } = useTripOnRequest(routeId, scheduleId, date, [from, to]);
   if (mine.length === 0) return null;
   return (
-    <div className="space-y-2" title={tx('The bus goes to this stop only if enough seats are booked. Details on the next page.')}>
+    <div className="space-y-2" title={onToggle ? undefined : tx('The bus goes to this stop only if enough seats are booked. Details on the next page.')}>
       {mine.map((s) => {
         const l = look(s);
-        return (
-          <div key={s.stop} className="rounded-xl bg-[#f7f5ff] border border-[#e4ddfb] px-3 py-2">
+        const d = detourState(s);
+        const going = d === 'runs' || d === 'likely';
+        const pickable = !!onToggle && !going && d !== 'skipped';
+        const on = pickable && !!selected?.includes(s.stop.trim().toLowerCase());
+        const body = (
+          <>
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[12px]">
-              <span className="font-bold text-[#2e1065]">{tx('{stop} (on request)', { stop: s.stop })}</span>
+              <span className="font-bold text-[#2e1065] text-left">{tx('{stop} (on request)', { stop: s.stop })}</span>
               <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${l.pill}`}>
                 <l.Icon className="w-3 h-3" />
                 {l.label}
@@ -127,6 +148,21 @@ export function OnRequestChip({ routeId, scheduleId, date, from = '', to = '' }:
               </div>
               <span className="shrink-0 text-[11px] font-semibold text-[#5b4b8a] tabular-nums">{s.seats}/{s.minSeats}</span>
             </div>
+            {pickable && (
+              <p className={`mt-1.5 text-[11px] font-semibold text-left ${on ? 'text-[#6d28d9]' : 'text-[#5b4b8a]'}`}>
+                {on ? tx('Shown on the map as if it filled. Tap again to hide.') : tx('Tap to see the route if it fills.')}
+              </p>
+            )}
+          </>
+        );
+        const box = `block w-full rounded-xl border px-3 py-2 transition-colors ${on ? 'bg-[#ede9fe] border-[#7c3aed] ring-2 ring-[#7c3aed]/30' : 'bg-[#f7f5ff] border-[#e4ddfb]'}`;
+        return pickable ? (
+          <button key={s.stop} type="button" aria-pressed={on} onClick={() => onToggle!(s.stop.trim().toLowerCase())} className={`${box} hover:border-[#7c3aed] cursor-pointer`}>
+            {body}
+          </button>
+        ) : (
+          <div key={s.stop} className={box}>
+            {body}
           </div>
         );
       })}
