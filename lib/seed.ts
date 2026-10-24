@@ -25,6 +25,7 @@ export const SEED_BUSES: Bus[] = [
     amenities: ['Air conditioning', 'Reclining seats', 'USB charging', 'Reading lights'],
     status: 'active',
     bikeSpaces: 4,
+    photos: ['/buses/siyan-gold.jpg'],
   },
 ];
 

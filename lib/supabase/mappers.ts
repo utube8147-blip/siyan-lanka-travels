@@ -15,6 +15,7 @@ export const busFromRow = (r: any): Bus => ({
   amenities: r.amenities ?? [],
   status: r.status,
   bikeSpaces: r.bike_spaces ?? 0,
+  photos: r.photos ?? [],
 });
 export const busToRow = (b: Bus) => ({
   id: b.id,
@@ -29,6 +30,7 @@ export const busToRow = (b: Bus) => ({
   amenities: b.amenities,
   status: b.status,
   bike_spaces: b.bikeSpaces ?? 0,
+  photos: b.photos ?? [],
 });
 
 export const routeFromRow = (r: any): Route => ({ id: r.id, stops: r.stops, flatFare: r.flat_fare !== false, active: r.active });

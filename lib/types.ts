@@ -31,6 +31,8 @@ export interface Bus {
   status: BusStatus;
   /** Bike spaces in the luggage compartment (0 = no bikes on this bus). */
   bikeSpaces: number;
+  /** Photos of the bus (public URLs; data URLs in demo mode). The first is the cover. */
+  photos?: string[];
 }
 
 /** A bike category id from Staff area → Settings → Bikes (e.g. "scooter"). */
