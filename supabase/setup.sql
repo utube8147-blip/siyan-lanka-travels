@@ -55,6 +55,7 @@
 --  38. Bus photos (cover + gallery, public)
 --  39. Deleting a departure/route with old tickets archives it (hidden, closed)
 --  40. Route names chosen by staff
+--  41. Route timing settings (bus vs car time, stop time) kept with each route
 --
 -- This one file is everything: every migration in supabase/migrations/ plus
 -- the starting data. (Checked: a database built from this file has exactly the
@@ -5711,5 +5712,21 @@ notify pgrst, 'reload schema';
 -- =============================================================================
 
 alter table public.routes add column if not exists name text check (name is null or length(name) <= 60);
+
+notify pgrst, 'reload schema';
+
+
+-- =============================================================================
+-- ▼ 20261040000000_route_timing.sql
+-- =============================================================================
+-- =============================================================================
+-- 20261040000000_route_timing.sql
+-- The route editor's timing settings are kept with each route: bus time =
+-- car time × bus_factor, plus stop_min minutes at every stop (hidden shaping
+-- points add none). Empty = the editor's defaults (1.1 and 2 minutes).
+-- =============================================================================
+
+alter table public.routes add column if not exists bus_factor numeric(3,2) check (bus_factor is null or bus_factor between 0.5 and 3);
+alter table public.routes add column if not exists stop_min integer check (stop_min is null or stop_min between 0 and 30);
 
 notify pgrst, 'reload schema';

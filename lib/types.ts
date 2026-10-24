@@ -96,6 +96,9 @@ export interface Route {
   active: boolean;
   /** Deleted, but kept because old tickets point to it. Hidden everywhere. */
   archived?: boolean;
+  /** Route editor timing: bus time = car time × busFactor, plus stopMin at each stop. */
+  busFactor?: number;
+  stopMin?: number;
 }
 
 /** 0 = Sunday ... 6 = Saturday */

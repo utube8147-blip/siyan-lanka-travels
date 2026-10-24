@@ -9,7 +9,7 @@ import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
-import { addDays, allStopNames, nearbyOptions, roadStops, runningRoutes, type NearbyOption, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
+import { addDays, allStopNames, nearbyOptions, routeLabel, roadStops, runningRoutes, type NearbyOption, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
 import { useT, txn } from '@/lib/i18n';
 import {
@@ -277,24 +277,29 @@ function SearchPageInner() {
     // The passenger's own stops always stay on the map.
     const going = goesTo(optStatus);
     const all = route ? roadStops(route.stops, (n) => n === trip.from || n === trip.to || going(n)) : [];
-    const fi = all.findIndex((x) => x.name === trip.from);
-    const ti = all.findIndex((x) => x.name === trip.to);
+    // The whole route the bus drives (so a Katunayake → Akkaraipattu ticket
+    // still shows the bus starting in Colombo); the passenger's part is marked.
+    const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    const fi = all.findIndex((x) => same(x.name, trip.from));
+    const ti = all.findIndex((x) => same(x.name, trip.to));
     const segment = fi >= 0 && ti > fi ? all.slice(fi, ti + 1) : [];
-    const span = segment.length > 1 ? segment[segment.length - 1].offsetMin - segment[0].offsetMin : 1;
-    const depMin = parseInt(trip.departure.slice(0, 2), 10) * 60 + parseInt(trip.departure.slice(3), 10);
-    const stops: RouteStop[] = segment.map((x, i) => {
-      const mins = depMin + (x.offsetMin - segment[0].offsetMin);
-      const hhmm = `${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+    const span = all.length > 1 ? Math.max(1, all[all.length - 1].offsetMin - all[0].offsetMin) : 1;
+    const boardMin = parseInt(trip.departure.slice(0, 2), 10) * 60 + parseInt(trip.departure.slice(3), 10);
+    const boardOffset = fi >= 0 ? all[fi].offsetMin : 0;
+    const stops: RouteStop[] = all.map((x, i) => {
+      const mins = (((boardMin + (x.offsetMin - boardOffset)) % 1440) + 1440) % 1440;
+      const hhmm = `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
       return {
         id: `${i}-${x.name}`,
         name: x.name,
         time: formatTime12(hhmm),
-        progress: Math.round(((x.offsetMin - segment[0].offsetMin) / span) * 100),
+        progress: Math.round(((x.offsetMin - all[0].offsetMin) / span) * 100),
         lat: x.lat,
         lng: x.lng,
         hidden: x.hidden,
         status: 'upcoming',
         note: x.optional ? optNote(x.name) : undefined,
+        part: i === fi ? 'board' : i === ti ? 'alight' : i > fi && i < ti ? 'ride' : 'outside',
       };
     });
 
@@ -316,6 +321,7 @@ function SearchPageInner() {
 
     return {
       busNumber: trip.bus.regNo,
+      routeName: route ? routeLabel(route) : undefined,
       origin: trip.from,
       destination: trip.to,
       departureTime: s.departure,
@@ -622,6 +628,17 @@ function SearchPageInner() {
                       </span>
                     </div>
 
+                    {(() => {
+                      // Boarding part-way: say where the bus comes from and when it leaves there.
+                      const r = data.routes.find((x) => x.id === s.trip.routeId);
+                      const sch = data.schedules.find((x) => x.id === s.trip.scheduleId);
+                      if (!r || !sch || r.stops[0].name.trim().toLowerCase() === s.trip.from.trim().toLowerCase()) return null;
+                      return (
+                        <p className="-mt-2 mb-4 text-[13px] text-[#46464f]">
+                          {tx('{route} bus. Leaves {first} at {start}, reaches {from} at {time}.', { route: routeLabel(r), first: r.stops[0].name, start: formatTime12(sch.departure), from: s.trip.from, time: formatTime12(s.trip.departure) })}
+                        </p>
+                      );
+                    })()}
                     {data.routes.find((r) => r.id === s.trip.routeId)?.stops.some((x) => x.optional && (x.name === s.trip.from || x.name === s.trip.to)) && (
                       <div className="mb-4">
                         <OnRequestChip routeId={s.trip.routeId} scheduleId={s.trip.scheduleId} date={s.trip.date} from={s.trip.from} to={s.trip.to} />

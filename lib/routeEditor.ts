@@ -104,7 +104,7 @@ export function lineLengthKm(line: LatLng[]) {
 /**
  * Estimated minutes after departure for every stop, from the road legs between
  * the stops that have a map pin (car minutes × bus factor, plus the stop time
- * at every stop on the way). Stops without a pin are spread evenly between
+ * at every real stop on the way; hidden shaping points add none). Stops without a pin are spread evenly between
  * their pinned neighbours. Null when the first or last stop has no pin, or the
  * legs don't match the pinned stops.
  */
@@ -115,9 +115,13 @@ export function arrivalEstimates(stops: RouteStop[], legs: { km: number; min: nu
   for (let k = 1; k < pinned.length; k++) {
     const a = pinned[k - 1];
     const b = pinned[k];
-    const leave = out[a] + (a > 0 ? dwellMin : 0); // leaves stop a after its stop time (not at the start)
-    const between = b - a - 1; // stops without a pin in between: each adds its stop time
-    const arrive = leave + legs[k - 1].min * busFactor + between * dwellMin;
+    // Hidden points only shape the road: the bus doesn't stop there, so no stop time.
+    const stopsAt = (i: number) => !stops[i].hidden;
+    const leave = out[a] + (a > 0 && stopsAt(a) ? dwellMin : 0); // leaves stop a after its stop time (not at the start)
+    const between = b - a - 1; // stops without a pin in between: each real stop adds its stop time
+    let waits = 0;
+    for (let j = a + 1; j < b; j++) if (stopsAt(j)) waits++;
+    const arrive = leave + legs[k - 1].min * busFactor + waits * dwellMin;
     out[b] = arrive;
     for (let j = 1; j <= between; j++) out[a + j] = leave + ((arrive - leave) * j) / (between + 1);
   }

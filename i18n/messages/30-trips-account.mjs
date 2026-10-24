@@ -282,4 +282,11 @@ export default {
   'Get on at {stop}, about {km} km from {place}.': ['{place} இலிருந்து சுமார் {km} கி.மீ. தொலைவிலுள்ள {stop} இல் ஏறுங்கள்.', '{place} සිට කි.මී. {km} ක් පමණ දුරින් ඇති {stop} හිදී නගින්න.'],
   'Get off at {stop}, about {km} km from {place}.': ['{place} இலிருந்து சுமார் {km} கி.மீ. தொலைவிலுள்ள {stop} இல் இறங்குங்கள்.', '{place} සිට කි.මී. {km} ක් පමණ දුරින් ඇති {stop} හිදී බසින්න.'],
   'Show these buses': ['இந்தப் பேருந்துகளைக் காட்டு', 'මෙම බස් පෙන්වන්න'],
+  // Trip map: the whole route, with where the passenger gets on and off
+  '{route} bus. Leaves {first} at {start}, reaches {from} at {time}.': ['{route} பேருந்து. {start} க்கு {first} இலிருந்து புறப்பட்டு, {time} க்கு {from} ஐ அடையும்.', '{route} බසය. {start} ට {first} වලින් පිටත් වී, {time} ට {from} වෙත ළඟා වේ.'],
+  'Get on': ['ஏறுமிடம்', 'නගින තැන'],
+  'Get off': ['இறங்குமிடம்', 'බසින තැන'],
+  'On the {route} bus': ['{route} பேருந்தில்', '{route} බසයේ'],
+  'GET ON': ['ஏறுங்கள்', 'නගින්න'],
+  'GET OFF': ['இறங்குங்கள்', 'බසින්න'],
 };

@@ -195,8 +195,9 @@ function Editor({
   // What a click on the map does: add a stop (asks for a name), add a hidden shaping point (straight in), or nothing.
   const [clickMode, setClickMode] = useState<'stop' | 'point' | 'none'>('stop');
   const clickAdds = clickMode !== 'none';
-  const [busFactor, setBusFactor] = useState(1.1);
-  const [dwell, setDwell] = useState(2);
+  // Saved with the route, so its times and the road estimate stay in step.
+  const [busFactor, setBusFactor] = useState(route.busFactor ?? 1.1);
+  const [dwell, setDwell] = useState(route.stopMin ?? 2);
   const [gps, setGps] = useState<GpsFile | null>(null);
   const [gpsShown, setGpsShown] = useState(true);
   // Counts files loaded: the map frames a new file once, but doesn't jump when one is hidden or removed.
@@ -481,12 +482,23 @@ function Editor({
 
   // "Times follow the road": after you add, move, remove or reorder stops, every stop's time is set from the new estimate.
   const [autoTimes, setAutoTimes] = useState(true);
+  const settingRetime = useRef(false);
+  /** After "Bus vs car time" or "Stop time" changes: re-time the stops (or say how). */
+  const settingChanged = () => {
+    setDirty(true);
+    if (!autoTimes) return toast(tx('Times not changed: tick “Times follow the road” or press “Fill times from road”.'), 'ok');
+    if (!roadOffsets) return toast(tx('Times will update when the road estimate is ready (every stop needs a map pin).'), 'ok');
+    settingRetime.current = true;
+  };
   useEffect(() => {
     if (!autoTimes || !retime.current || !roadOffsets || roadOffsets.length !== stops.length) return;
     retime.current = false;
-    if (stops.every((s, i) => s.offsetMin === roadOffsets[i])) return;
+    const bySetting = settingRetime.current;
+    settingRetime.current = false;
+    if (stops.every((s, i) => s.offsetMin === roadOffsets[i])) return bySetting ? toast(tx('Stop times already match the new estimate'), 'ok') : undefined;
     setStops((p) => (p.length === roadOffsets.length ? p.map((s, i) => ({ ...s, offsetMin: roadOffsets[i] })) : p));
     setDirty(true);
+    if (bySetting) toast(tx('Stop times updated. Save the route to keep them.'), 'ok');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roadOffsets, autoTimes]);
 
@@ -554,7 +566,7 @@ function Editor({
   }
   const unpinned = stops.filter((s) => s.lat == null).length;
 
-  const finalRoute = (): Route => ({ ...route, name: name.trim() || undefined, active, flatFare: flat, stops: (flat ? flatStops(stops, price) : stops).map((s) => ({ ...s, name: s.name.trim() })) });
+  const finalRoute = (): Route => ({ ...route, name: name.trim() || undefined, busFactor, stopMin: dwell, active, flatFare: flat, stops: (flat ? flatStops(stops, price) : stops).map((s) => ({ ...s, name: s.name.trim() })) });
   const save = async () => {
     setSaving(true);
     const ok = await onSave(finalRoute());
@@ -908,6 +920,8 @@ function Editor({
                     setStops(structuredClone(savedRoute.stops));
                     setFlat(savedRoute.flatFare !== false);
                     setName(savedRoute.name ?? '');
+                    setBusFactor(savedRoute.busFactor ?? 1.1);
+                    setDwell(savedRoute.stopMin ?? 2);
                     setPrice(savedRoute.stops[savedRoute.stops.length - 1]?.fareFromStart ?? price);
                     setSelected(null);
                     setDirty(false);
@@ -1006,6 +1020,7 @@ function Editor({
                   record('setting:busFactor');
                   retime.current = true;
                   setBusFactor(v);
+                  settingChanged();
                 }}
               />
               <span className="block text-[11px] text-[#686873] mt-0.5">{tx('Road times are car times; a bus is slower. With “Times follow the road” on, changing this re-times the stops.')}</span>
@@ -1021,9 +1036,10 @@ function Editor({
                   record('setting:dwell');
                   retime.current = true;
                   setDwell(v);
+                  settingChanged();
                 }}
               />
-              <span className="block text-[11px] text-[#686873] mt-0.5">{tx('At each stop on the way. Also re-times the stops.')}</span>
+              <span className="block text-[11px] text-[#686873] mt-0.5">{tx('At each stop on the way (hidden points add none). Also re-times the stops.')}</span>
             </label>
           </Card>
         </div>
