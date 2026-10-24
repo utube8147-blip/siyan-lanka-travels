@@ -54,6 +54,7 @@
 --      departure, hidden points that only shape the road
 --  38. Bus photos (cover + gallery, public)
 --  39. Deleting a departure/route with old tickets archives it (hidden, closed)
+--  40. Route names chosen by staff
 --
 -- This one file is everything: every migration in supabase/migrations/ plus
 -- the starting data. (Checked: a database built from this file has exactly the
@@ -5696,5 +5697,19 @@ create trigger archived_stays_closed before insert or update on public.routes
 drop trigger if exists archived_stays_closed on public.schedules;
 create trigger archived_stays_closed before insert or update on public.schedules
   for each row execute function public.archived_stays_closed();
+
+notify pgrst, 'reload schema';
+
+
+-- =============================================================================
+-- ▼ 20261039000000_route_names.sql
+-- =============================================================================
+-- =============================================================================
+-- 20261039000000_route_names.sql
+-- Routes can have a name staff choose ("Akkaraipattu to Colombo"). Empty means
+-- the app shows "first stop → last stop", as before.
+-- =============================================================================
+
+alter table public.routes add column if not exists name text check (name is null or length(name) <= 60);
 
 notify pgrst, 'reload schema';

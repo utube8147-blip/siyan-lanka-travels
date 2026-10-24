@@ -9,7 +9,7 @@ import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
-import { addDays, allStopNames, roadStops, runningRoutes, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
+import { addDays, allStopNames, nearbyOptions, roadStops, runningRoutes, type NearbyOption, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
 import { useT, txn } from '@/lib/i18n';
 import {
@@ -151,6 +151,20 @@ function SearchPageInner() {
     }
     return null;
   }, [ready, data, query, date, schedules.length]);
+
+  // No bus between the stops as typed: the nearest stops on a bus that runs.
+  const nearby = useMemo(
+    () => (ready && query.from && query.to && schedules.length === 0 ? nearbyOptions(data, query.from, query.to, date) : []),
+    [ready, data, query, date, schedules.length],
+  );
+  const pickNearby = (o: NearbyOption) => {
+    setFrom(o.from);
+    setTo(o.to);
+    setDate(o.date);
+    setQuery({ from: o.from, to: o.to });
+    const qs = new URLSearchParams({ from: o.from, to: o.to, date: o.date });
+    window.history.replaceState(null, '', `/search?${qs.toString()}`);
+  };
 
   const resultsRef = useStaggerIn<HTMLDivElement>(ready && schedules.length > 0);
   const runSearch = (next = { from, to }) => {
@@ -552,7 +566,24 @@ function SearchPageInner() {
             ) : schedules.length === 0 ? (
               <div className="py-20 text-center max-w-md mx-auto">
                 <p className="text-[#050a44] text-lg font-bold">{tx('No departures from {from} to {to} on this date', { from: query.from, to: query.to })}</p>
-                {nextRunDate ? (
+                {!nextRunDate && nearby.length > 0 ? (
+                  <div className="mt-5 text-left space-y-3">
+                    <p className="text-[14px] text-[#46464f] text-center">{tx('Our bus doesn’t stop at both of these. These stops are close by:')}</p>
+                    {nearby.map((o) => (
+                      <div key={o.from + o.to} className="rounded-2xl bg-white border border-[#e1e2e4] p-4">
+                        <p className="text-[16px] font-bold text-[#050a44]">{o.from} → {o.to}</p>
+                        <ul className="mt-1.5 space-y-1 text-[13px] text-[#46464f]">
+                          {o.fromKm > 0 && <li>{tx('Get on at {stop}, about {km} km from {place}.', { stop: o.from, km: o.fromKm, place: query.from })}</li>}
+                          {o.toKm > 0 && <li>{tx('Get off at {stop}, about {km} km from {place}.', { stop: o.to, km: o.toKm, place: query.to })}</li>}
+                          <li>{tx('Next bus: {date}', { date: formatDateLabel(o.date, false) })}</li>
+                        </ul>
+                        <button onClick={() => pickNearby(o)} className="mt-3 w-full h-11 rounded-xl bg-[#050a44] text-white text-[14px] font-bold hover:opacity-90">
+                          {tx('Show these buses')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : nextRunDate ? (
                   <button
                     onClick={() => setDate(nextRunDate)}
                     className="mt-5 px-6 py-3 bg-[#050a44] text-white rounded-xl text-sm font-bold hover:opacity-90"

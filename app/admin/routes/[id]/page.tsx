@@ -188,6 +188,7 @@ function Editor({
   const [stops, setStops] = useState<RouteStop[]>(route.stops);
   const [active, setActive] = useState(route.active);
   const [flat, setFlat] = useState(route.flatFare !== false);
+  const [name, setName] = useState(route.name ?? '');
   const [price, setPrice] = useState(route.stops[route.stops.length - 1]?.fareFromStart ?? 0);
   const [selected, setSelected] = useState<number | null>(null);
   const [pickFor, setPickFor] = useState<number | null>(null); // stop waiting for a map click
@@ -553,7 +554,7 @@ function Editor({
   }
   const unpinned = stops.filter((s) => s.lat == null).length;
 
-  const finalRoute = (): Route => ({ ...route, active, flatFare: flat, stops: (flat ? flatStops(stops, price) : stops).map((s) => ({ ...s, name: s.name.trim() })) });
+  const finalRoute = (): Route => ({ ...route, name: name.trim() || undefined, active, flatFare: flat, stops: (flat ? flatStops(stops, price) : stops).map((s) => ({ ...s, name: s.name.trim() })) });
   const save = async () => {
     setSaving(true);
     const ok = await onSave(finalRoute());
@@ -650,6 +651,20 @@ function Editor({
               <p className="w-full text-[12px] text-[#6b6d78]">{tx('Drafts keep ideas without changing the live route. Open one and press “Save route” to make it live.')}</p>
             </Card>
           )}
+
+          <Card className="p-4 space-y-2">
+            <label className="block">
+              <span className="text-[13px] font-bold text-[#050a44]">{tx('Route name')}</span>
+              <input
+                className={`${inputClass} mt-1.5`}
+                value={name}
+                maxLength={60}
+                onChange={(e) => { setName(e.target.value); setDirty(true); }}
+                placeholder={stops.length >= 2 && stops[0].name && stops[stops.length - 1].name ? `${stops[0].name.trim()} → ${stops[stops.length - 1].name.trim()}` : tx('e.g. Akkaraipattu to Colombo')}
+              />
+            </label>
+            <p className="text-[12px] text-[#6b6d78]">{tx('Shown to staff, conductors and passengers. Leave it empty to use the first and last stop.')}</p>
+          </Card>
 
           <Card className="p-4 space-y-3">
             <p className="text-[13px] font-bold text-[#050a44]">{tx('Ticket price')}</p>
@@ -892,6 +907,7 @@ function Editor({
                     record();
                     setStops(structuredClone(savedRoute.stops));
                     setFlat(savedRoute.flatFare !== false);
+                    setName(savedRoute.name ?? '');
                     setPrice(savedRoute.stops[savedRoute.stops.length - 1]?.fareFromStart ?? price);
                     setSelected(null);
                     setDirty(false);

@@ -82,6 +82,8 @@ export interface RouteStop {
 
 export interface Route {
   id: string;
+  /** Name staff gave it, e.g. "Akkaraipattu to Colombo". Empty = "first stop → last stop". */
+  name?: string;
   /** Stops in travel order. First = origin, last = final destination. */
   stops: RouteStop[];
   /**

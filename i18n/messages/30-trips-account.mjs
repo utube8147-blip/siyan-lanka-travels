@@ -277,4 +277,9 @@ export default {
   'One moment…': ['ஒரு கணம்…', 'මොහොතක්…'],
   'Reminders on': ['நினைவூட்டல்கள் இயக்கத்தில்', 'සිහිකැඳවීම් සක්‍රියයි'],
   'Remind me': ['எனக்கு நினைவூட்டு', 'මට මතක් කරන්න'],
+  // Search: no bus between the stops as typed → nearby stops
+  'Our bus doesn’t stop at both of these. These stops are close by:': ['எங்கள் பேருந்து இவை இரண்டிலும் நிற்பதில்லை. அருகிலுள்ள நிறுத்தங்கள் இவை:', 'අපේ බසය මේ දෙකේම නවතින්නේ නැත. ළඟින් ඇති නැවතුම් මේවා:'],
+  'Get on at {stop}, about {km} km from {place}.': ['{place} இலிருந்து சுமார் {km} கி.மீ. தொலைவிலுள்ள {stop} இல் ஏறுங்கள்.', '{place} සිට කි.මී. {km} ක් පමණ දුරින් ඇති {stop} හිදී නගින්න.'],
+  'Get off at {stop}, about {km} km from {place}.': ['{place} இலிருந்து சுமார் {km} கி.மீ. தொலைவிலுள்ள {stop} இல் இறங்குங்கள்.', '{place} සිට කි.මී. {km} ක් පමණ දුරින් ඇති {stop} හිදී බසින්න.'],
+  'Show these buses': ['இந்தப் பேருந்துகளைக் காட்டு', 'මෙම බස් පෙන්වන්න'],
 };

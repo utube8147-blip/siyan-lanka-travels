@@ -146,6 +146,7 @@ export function genId(prefix: string) {
 
 export function routeLabel(route: Route | undefined) {
   if (!route || route.stops.length === 0) return tx('Unnamed route');
+  if (route.name?.trim()) return route.name.trim();
   return `${route.stops[0].name} → ${route.stops[route.stops.length - 1].name}`;
 }
 
@@ -246,7 +247,15 @@ export function roadStops<T extends Pick<RouteStop, 'name' | 'optional' | 'hidde
 
 export function allStopNames(data: Pick<StoreData, 'routes' | 'schedules' | 'buses'>) {
   const names = new Set<string>();
-  runningRoutes(data).forEach((r) => r.stops.forEach((s) => !s.hidden && names.add(s.name)));
+  const seen = new Set<string>();
+  runningRoutes(data).forEach((r) =>
+    r.stops.forEach((s) => {
+      // "Kalmunai" and "kalmunai" are one stop.
+      if (s.hidden || seen.has(s.name.trim().toLowerCase())) return;
+      seen.add(s.name.trim().toLowerCase());
+      names.add(s.name);
+    }),
+  );
   return Array.from(names);
 }
 
@@ -529,4 +538,67 @@ export function compressPhoto(file: File, maxSide = 720): Promise<string> {
     };
     img.src = url;
   });
+}
+
+// ----------------------------------------------------- nearby stop advice ---
+export interface NearbyOption {
+  from: string;
+  to: string;
+  /** How far the suggested stops are from the ones asked for (0 = same stop). */
+  fromKm: number;
+  toKm: number;
+  /** The first date with a bus, from the searched date on. */
+  date: string;
+}
+
+const distKm = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+  const r = Math.PI / 180;
+  const x = Math.sin(((b.lat - a.lat) * r) / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lng - a.lng) * r) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(x));
+};
+
+/**
+ * When no bus serves the two stops as typed (e.g. Katunayake → Akkaraipattu),
+ * the stops nearest to them on a bus that does run: "board at Kadawatha,
+ * 12 km from Katunayake". Places are found on the map from any route's pins.
+ */
+export function nearbyOptions(data: StoreData, from: string, to: string, date: string, maxKm = 40): NearbyOption[] {
+  const key = (n: string) => n.trim().toLowerCase();
+  const where = new Map<string, { lat: number; lng: number }>();
+  for (const r of data.routes) for (const s of r.stops) if (s.lat != null && s.lng != null && !where.has(key(s.name))) where.set(key(s.name), { lat: s.lat, lng: s.lng });
+  const fromAt = where.get(key(from));
+  const toAt = where.get(key(to));
+  const out = new Map<string, NearbyOption>();
+  for (const route of runningRoutes(data)) {
+    const stops = route.stops.filter((s) => !s.hidden && !s.optional);
+    const pick = (name: string, at: { lat: number; lng: number } | undefined, lo: number, hi: number) => {
+      const exact = stops.findIndex((s, i) => i >= lo && i <= hi && key(s.name) === key(name));
+      if (exact >= 0) return { i: exact, km: 0 };
+      if (!at) return null;
+      let best: { i: number; km: number } | null = null;
+      stops.forEach((s, i) => {
+        if (i < lo || i > hi || s.lat == null || s.lng == null) return;
+        const d = distKm(at, { lat: s.lat, lng: s.lng });
+        if (d <= maxKm && (!best || d < best.km)) best = { i, km: d };
+      });
+      return best;
+    };
+    const t = pick(to, toAt, 1, stops.length - 1);
+    if (!t) continue;
+    const f = pick(from, fromAt, 0, t.i - 1);
+    if (!f || (f.km === 0 && t.km === 0)) continue;
+    const a = stops[f.i].name;
+    const b = stops[t.i].name;
+    let when: string | null = null;
+    for (let i = 0; i <= 14 && !when; i++) {
+      const d = addDays(date, i);
+      if (findTrips(data, a, b, d).some((x) => !x.closed)) when = d;
+    }
+    if (!when) continue;
+    const k = `${key(a)}|${key(b)}`;
+    const opt = { from: a, to: b, fromKm: Math.round(f.km), toKm: Math.round(t.km), date: when };
+    const old = out.get(k);
+    if (!old || opt.date < old.date) out.set(k, opt);
+  }
+  return [...out.values()].sort((x, y) => x.date.localeCompare(y.date) || x.fromKm + x.toKm - (y.fromKm + y.toKm)).slice(0, 3);
 }
