@@ -79,7 +79,7 @@ export default function AdminOverview() {
     { label: tx('Revenue this month'), value: formatLKR(monthRevenue), note: txn(monthBookings.filter((b) => b.status !== 'cancelled').length, '{n} booking travelling this month', '{n} bookings travelling this month') },
     { label: tx('Booked today'), value: String(bookedToday.reduce((n, b) => n + b.seats.length, 0)), note: txn(bookedToday.length, 'seats across {n} booking', 'seats across {n} bookings') },
     { label: tx('Seat occupancy'), value: `${occupancy}%`, note: `last 30 days, ${past30.length} departures` },
-    { label: tx('Active buses'), value: String(data.buses.filter((b) => b.status === 'active').length), note: txn(data.schedules.filter((s) => s.active).length, '{n} departure in the timetable', '{n} departures in the timetable') },
+    { label: tx('Active buses'), value: String(data.buses.filter((b) => b.status === 'active').length), note: txn(data.schedules.filter((s) => s.active && !s.archived).length, '{n} departure in the timetable', '{n} departures in the timetable') },
   ];
 
   return (

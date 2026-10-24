@@ -31,7 +31,7 @@ export default function RoutesPage() {
 
   const newSchedule = (): Schedule => ({
     id: genId('sch'),
-    routeId: data.routes[0]?.id ?? '',
+    routeId: data.routes.find((r) => !r.archived)?.id ?? '',
     busId: data.buses.find((b) => b.status === 'active')?.id ?? data.buses[0]?.id ?? '',
     departure: '21:00',
     days: [1, 2, 3, 4, 5, 6, 0],
@@ -47,7 +47,7 @@ export default function RoutesPage() {
           <>
             <Link href="/admin/routes/new" className="inline-flex items-center justify-center gap-1.5 rounded-xl font-bold h-10 px-4 text-[13px] bg-white border border-[#c7c5d1] text-[#050a44] hover:bg-[#f2f4f6]">
               <Plus className="w-4 h-4" />{' '}{tx('New route')}</Link>
-            <Button variant="gold" disabled={!data.routes.length || !data.buses.length} onClick={() => setEditingSchedule(newSchedule())}>
+            <Button variant="gold" disabled={!data.routes.some((r) => !r.archived) || !data.buses.length} onClick={() => setEditingSchedule(newSchedule())}>
               <Plus className="w-4 h-4" />{' '}{tx('Add departure')}</Button>
           </>
         }
@@ -58,7 +58,7 @@ export default function RoutesPage() {
           <h2 className="text-[16px] font-bold text-[#050a44]">{tx('Timetable')}</h2>
           <p className="text-[12px] text-[#46464f]">{tx('Times are when the bus leaves the first stop of its route.')}</p>
         </div>
-        {data.schedules.length === 0 ? (
+        {!data.schedules.some((s) => !s.archived) ? (
           <p className="p-5 text-[14px] text-[#46464f]">{tx('No departures yet. Add one so passengers can book.')}</p>
         ) : (
           <div className="overflow-x-auto">
@@ -76,7 +76,7 @@ export default function RoutesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#edeef0]">
-                {[...data.schedules]
+                {data.schedules.filter((s) => !s.archived)
                   .sort((a, b) => a.departure.localeCompare(b.departure))
                   .map((s) => {
                     const route = data.routes.find((r) => r.id === s.routeId);
@@ -126,7 +126,7 @@ export default function RoutesPage() {
       </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {data.routes.map((r) => (
+        {data.routes.filter((r) => !r.archived).map((r) => (
           <Card key={r.id} className="overflow-hidden">
             <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-[#edeef0]">
               <div>
@@ -228,7 +228,7 @@ function ScheduleForm({ schedule, onClose, onSave }: { schedule: Schedule; onClo
     >
       <Field label={tx('Route')}>
         <select className={inputClass} value={s.routeId} onChange={(e) => setS({ ...s, routeId: e.target.value })}>
-          {data.routes.map((r) => (
+          {data.routes.filter((r) => !r.archived).map((r) => (
             <option key={r.id} value={r.id}>
               {routeLabel(r)}
             </option>

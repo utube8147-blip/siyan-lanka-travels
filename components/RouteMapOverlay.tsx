@@ -21,6 +21,8 @@ export interface RouteStop {
   status?: 'passed' | 'current' | 'upcoming';
   /** Only shapes the road: no pin, not in the list. */
   hidden?: boolean;
+  /** Small line under the name, e.g. on-request progress. */
+  note?: string;
 }
 
 export interface RouteData {
@@ -436,6 +438,7 @@ export function RouteMapOverlay({ isOpen, onClose, route }: RouteMapOverlayProps
                         {stop.status === 'current' && (
                           <span className="ml-2 text-[9px] md:text-[10px] font-bold text-[#feb700] bg-[#050a44] px-2 py-0.5 rounded-full align-middle">{tx('BUS HERE')}</span>
                         )}
+                        {stop.note && <span className="block text-[11px] font-semibold text-[#6d28d9]">{stop.note}</span>}
                       </p>
                       <p className="text-[12px] md:text-[13px] font-semibold text-[#46464f]">{stop.time}</p>
                     </div>

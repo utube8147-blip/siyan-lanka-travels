@@ -53,6 +53,7 @@
 --      route drafts readable by conductors, on-request stops settled before
 --      departure, hidden points that only shape the road
 --  38. Bus photos (cover + gallery, public)
+--  39. Deleting a departure/route with old tickets archives it (hidden, closed)
 --
 -- This one file is everything: every migration in supabase/migrations/ plus
 -- the starting data. (Checked: a database built from this file has exactly the
@@ -5663,5 +5664,37 @@ create policy "read bus photos" on storage.objects for select using (bucket_id =
 -- an empty gallery, so photos added in the staff area are never replaced.
 update public.buses set photos = array['/buses/siyan-gold.jpg']
  where photos = '{}' and regexp_replace(reg_no, '[^0-9]', '', 'g') = '2323';
+
+notify pgrst, 'reload schema';
+
+
+-- =============================================================================
+-- ▼ 20261038000000_archive_routes.sql
+-- =============================================================================
+-- =============================================================================
+-- 20261038000000_archive_routes.sql
+-- Deleting a departure or route that old tickets point to.
+-- Tickets must keep their departure (for history, reports and refunds), so
+-- such a departure can't really be deleted. "Delete" now archives it instead:
+-- it's closed for booking and hidden from every list, and the old tickets
+-- still work. A route whose departures are all archived is archived the same way.
+-- =============================================================================
+
+alter table public.routes add column if not exists archived boolean not null default false;
+alter table public.schedules add column if not exists archived boolean not null default false;
+
+-- An archived departure or route never takes bookings again.
+create or replace function public.archived_stays_closed() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if new.archived then new.active := false; end if;
+  return new;
+end $$;
+drop trigger if exists archived_stays_closed on public.routes;
+create trigger archived_stays_closed before insert or update on public.routes
+  for each row execute function public.archived_stays_closed();
+drop trigger if exists archived_stays_closed on public.schedules;
+create trigger archived_stays_closed before insert or update on public.schedules
+  for each row execute function public.archived_stays_closed();
 
 notify pgrst, 'reload schema';

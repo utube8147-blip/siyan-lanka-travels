@@ -7,7 +7,7 @@ import { OPERATOR } from '@/config/operator';
 import { busSeatMap, seatIdsOf } from './seatLayout';
 import { fmtDate } from './dates';
 import { bikeKind, getBikeConfig } from './bikeConfig';
-import type { BikeKind, Booking, Bus, Gender, Route, Schedule, StoreData, Trip } from './types';
+import type { BikeKind, Booking, Bus, Gender, Route, RouteStop, Schedule, StoreData, Trip } from './types';
 import { tx } from '@/lib/i18n-core';
 
 // ---------------------------------------------------------------- money ----
@@ -210,9 +210,43 @@ export const BESIDE_WOMAN_MESSAGE = (seat: string) => tx('Seat {seat} is beside 
 /** Stops passengers see: everything except the points that only shape the road. */
 export const passengerStops = (route: Pick<Route, 'stops'>) => route.stops.filter((s) => !s.hidden);
 
-export function allStopNames(data: Pick<StoreData, 'routes'>) {
+/**
+ * Routes passengers can actually travel: open, not deleted, with at least one
+ * departure that isn't paused, on a bus that's in service.
+ */
+export function runningRoutes(data: Pick<StoreData, 'routes' | 'schedules' | 'buses'>) {
+  return data.routes.filter(
+    (r) =>
+      r.active &&
+      !r.archived &&
+      data.schedules.some((s) => s.routeId === r.id && s.active && !s.archived && data.buses.find((b) => b.id === s.busId)?.status === 'active'),
+  );
+}
+
+/**
+ * The points the road goes through on one trip. An on-request stop that isn't
+ * running is dropped, together with the hidden points that shape its detour
+ * (those between the stops either side of it that are running), so the road
+ * goes straight along the usual way.
+ */
+export function roadStops<T extends Pick<RouteStop, 'name' | 'optional' | 'hidden'>>(stops: T[], runs: (name: string) => boolean): T[] {
+  const skipped = (s: T) => !!s.optional && !s.hidden && !runs(s.name);
+  const keep = stops.map(() => true);
+  stops.forEach((s, k) => {
+    if (!skipped(s)) return;
+    keep[k] = false;
+    let p = k - 1;
+    while (p >= 0 && (stops[p].hidden || skipped(stops[p]))) p--;
+    let n = k + 1;
+    while (n < stops.length && (stops[n].hidden || skipped(stops[n]))) n++;
+    for (let i = p + 1; i < n; i++) if (stops[i].hidden) keep[i] = false;
+  });
+  return stops.filter((_, i) => keep[i]);
+}
+
+export function allStopNames(data: Pick<StoreData, 'routes' | 'schedules' | 'buses'>) {
   const names = new Set<string>();
-  data.routes.filter((r) => r.active).forEach((r) => r.stops.forEach((s) => !s.hidden && names.add(s.name)));
+  runningRoutes(data).forEach((r) => r.stops.forEach((s) => !s.hidden && names.add(s.name)));
   return Array.from(names);
 }
 

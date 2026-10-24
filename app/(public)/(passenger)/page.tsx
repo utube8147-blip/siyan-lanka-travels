@@ -11,9 +11,11 @@ import { OPERATOR } from '@/config/operator';
 import BlurText from '@/components/motion/BlurText';
 import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
+import { goesTo, useOptionalStatus } from '@/lib/conductor';
+import { OnRequestChip } from '@/components/OnRequestNotice';
 import { useStore } from '@/lib/store';
 import { StopsMap } from '@/components/StopsMap';
-import { addDays, allStopNames, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
+import { addDays, allStopNames, roadStops, runningRoutes, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route, Trip } from '@/lib/types';
 import { useT, N_ } from '@/lib/i18n';
 import { tx } from '@/lib/i18n';
@@ -41,7 +43,8 @@ export default function LandingPage() {
   const router = useRouter();
   const { data, ready } = useStore();
   const stops = useMemo(() => allStopNames(data), [data]);
-  const activeRoutes = data.routes.filter((r) => r.active);
+  // Only routes that are running: a paused or deleted one isn't shown.
+  const activeRoutes = useMemo(() => runningRoutes(data), [data]);
   const firstRoute = activeRoutes[0];
 
   const [from, setFrom] = useState('');
@@ -86,14 +89,26 @@ export default function LandingPage() {
     if (!ready) return null;
     for (let i = 0; i < NIGHTS_AHEAD; i++) {
       const d = addDays(todayISO(), i);
-      for (const r of data.routes) {
-        if (!r.active) continue;
+      for (const r of activeRoutes) {
         if (findTrips(data, r.stops[0].name, r.stops[r.stops.length - 1].name, d).some((x) => x.routeId === r.id && x.date === d && !x.closed)) return r.id;
       }
     }
     return null;
-  }, [ready, data]);
+  }, [ready, data, activeRoutes]);
   const shownRoute = activeRoutes.find((r) => r.id === (stopDir ?? nextRouteId)) ?? firstRoute;
+  // The next trip in the shown direction: its on-request stops decide the road on the map.
+  const nextTrip = useMemo(() => {
+    if (!ready || !shownRoute) return null;
+    for (let i = 0; i < NIGHTS_AHEAD; i++) {
+      const d = addDays(todayISO(), i);
+      const t = findTrips(data, shownRoute.stops[0].name, shownRoute.stops[shownRoute.stops.length - 1].name, d).find((x) => x.routeId === shownRoute.id && x.date === d && !x.closed);
+      if (t) return t;
+    }
+    return null;
+  }, [ready, data, shownRoute]);
+  const optStatus = useOptionalStatus(shownRoute, nextTrip?.scheduleId, nextTrip?.date, data.bookings);
+  const hasOptional = !!shownRoute?.stops.some((s) => s.optional && !s.hidden);
+  const mapStops = useMemo(() => (shownRoute ? roadStops(shownRoute.stops, goesTo(optStatus)) : []), [shownRoute, optStatus]);
   // Points that only shape the road aren't shown as stops (the map still follows them).
   const stopRoute = shownRoute ? { ...shownRoute, stops: shownRoute.stops.filter((s) => !s.hidden) } : shownRoute;
   // Clock time at each stop, when this direction always leaves at the same time.
@@ -286,7 +301,17 @@ export default function LandingPage() {
               </div>
 
               {/* The route on a map, above the stops. */}
-              <StopsMap stops={shownRoute!.stops} className="h-[240px] md:h-[340px] mb-6 md:mb-10" />
+              <StopsMap stops={mapStops} className={`h-[240px] md:h-[340px] ${hasOptional && nextTrip ? 'mb-4' : 'mb-6 md:mb-10'}`} />
+              {hasOptional && nextTrip && (
+                <div className="mb-6 md:mb-10">
+                  <p className="text-[13px] font-semibold text-[#46464f] mb-2">
+                    {t('On-request stops on the {date} trip. The map shows the road the bus takes; it changes as soon as a stop has enough seats.', { date: formatDateLabel(nextTrip.date) })}
+                  </p>
+                  <div className="max-w-xl">
+                    <OnRequestChip routeId={nextTrip.routeId} scheduleId={nextTrip.scheduleId} date={nextTrip.date} />
+                  </div>
+                </div>
+              )}
 
               {/* Phones: a vertical timeline. Each stop is a tap to book from the start to there. */}
               <ol className="md:hidden rounded-2xl bg-white border border-[#edeef0] shadow-sm overflow-hidden">

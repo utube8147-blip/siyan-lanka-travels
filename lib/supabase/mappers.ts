@@ -33,7 +33,7 @@ export const busToRow = (b: Bus) => ({
   photos: b.photos ?? [],
 });
 
-export const routeFromRow = (r: any): Route => ({ id: r.id, stops: r.stops, flatFare: r.flat_fare !== false, active: r.active });
+export const routeFromRow = (r: any): Route => ({ id: r.id, stops: r.stops, flatFare: r.flat_fare !== false, active: r.active, archived: !!r.archived });
 export const routeToRow = (r: Route) => ({ id: r.id, stops: r.stops, flat_fare: r.flatFare !== false, active: r.active });
 
 export const scheduleFromRow = (r: any): Schedule => ({
@@ -45,6 +45,7 @@ export const scheduleFromRow = (r: any): Schedule => ({
   everyDays: r.repeat_every ?? null,
   startDate: r.repeat_from ?? null,
   active: r.active,
+  archived: !!r.archived,
 });
 export const scheduleToRow = (s: Schedule) => ({
   id: s.id,

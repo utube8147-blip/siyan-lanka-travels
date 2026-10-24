@@ -145,7 +145,7 @@ export default function RouteEditorPage() {
       key={base.id}
       route={base}
       savedRoute={isNew ? null : saved ?? null}
-      departures={data.schedules.filter((sc) => sc.routeId === base.id).sort((a, b) => Number(b.active) - Number(a.active) || a.departure.localeCompare(b.departure)).map((sc) => sc.departure)}
+      departures={data.schedules.filter((sc) => sc.routeId === base.id && !sc.archived).sort((a, b) => Number(b.active) - Number(a.active) || a.departure.localeCompare(b.departure)).map((sc) => sc.departure)}
       onSave={async (r) => {
         const res = await saveRoute(r);
         if (!res.ok) {

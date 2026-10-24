@@ -91,4 +91,16 @@ export default {
   '{a} is not a stop on this route. Choose another stop.': ['{a} இந்த வழித்தடத்தில் நிறுத்தம் அல்ல. வேறு நிறுத்தத்தைத் தேர்ந்தெடுங்கள்.', '{a} මෙම මාර්ගයේ නැවතුමක් නොවේ. වෙනත් නැවතුමක් තෝරන්න.'],
   'The bus is not going to {a} on this trip (not enough passengers booked it). Choose another stop.': ['இந்தப் பயணத்தில் பேருந்து {a} க்குச் செல்லாது (போதுமான பயணிகள் முன்பதிவு செய்யவில்லை). வேறு நிறுத்தத்தைத் தேர்ந்தெடுங்கள்.', 'මෙම ගමනේදී බසය {a} වෙත නොයයි (ප්‍රමාණවත් මගීන් වෙන් කළේ නැත). වෙනත් නැවතුමක් තෝරන්න.'],
   'You have sent a lot of reports in the last hour. Try again later.': ['கடந்த ஒரு மணிநேரத்தில் நீங்கள் நிறைய அறிக்கைகளை அனுப்பியுள்ளீர்கள். பின்னர் முயலுங்கள்.', 'ඔබ පසුගිය පැය තුළ වාර්තා බොහොමයක් යවා ඇත. පසුව නැවත උත්සාහ කරන්න.'],
+  // Passengers: how full an on-request stop is
+  'On-request stops on the {date} trip. The map shows the road the bus takes; it changes as soon as a stop has enough seats.': ['{date} பயணத்தின் கோரிக்கை நிறுத்தங்கள். பேருந்து செல்லும் சாலையை வரைபடம் காட்டுகிறது; ஒரு நிறுத்தத்துக்குப் போதுமான இருக்கைகள் முன்பதிவானவுடன் அது மாறும்.', '{date} ගමනේ ඉල්ලීම මත නැවතුම්. බසය යන මාර්ගය සිතියමේ පෙන්වයි; නැවතුමකට ප්‍රමාණවත් ආසන වෙන් වූ වහාම එය වෙනස් වේ.'],
+  'On request': ['கோரிக்கைப்படி', 'ඉල්ලීම මත'],
+  'On request · going ({seats}/{min} seats)': ['கோரிக்கைப்படி · செல்கிறது ({seats}/{min} இருக்கைகள்)', 'ඉල්ලීම මත · යනවා (ආසන {seats}/{min})'],
+  'On request · {seats}/{min} seats': ['கோரிக்கைப்படி · {seats}/{min} இருக்கைகள்', 'ඉල්ලීම මත · ආසන {seats}/{min}'],
+  '1 more seat needed': ['இன்னும் 1 இருக்கை தேவை', 'තව ආසන 1 ක් අවශ්‍යයි'],
+  '{n} more seats needed': ['இன்னும் {n} இருக்கைகள் தேவை', 'තව ආසන {n} ක් අවශ්‍යයි'],
+  '{seats} of {min} seats booked': ['{min} இல் {seats} இருக்கைகள் முன்பதிவு', 'ආසන {min} න් {seats} ක් වෙන් කර ඇත'],
+  'The bus goes to {stop} on this trip.': ['இந்தப் பயணத்தில் பேருந்து {stop} க்குச் செல்லும்.', 'මෙම ගමනේදී බසය {stop} වෙත යයි.'],
+  'Enough seats are booked, so the bus is going there. It is final at {cutoff}.': ['போதுமான இருக்கைகள் முன்பதிவாகியுள்ளன, எனவே பேருந்து அங்கு செல்கிறது. {cutoff} க்கு இது இறுதியாகும்.', 'ප්‍රමාණවත් ආසන වෙන් වී ඇති නිසා බසය එහි යනවා. {cutoff} ට මෙය අවසන් වේ.'],
+  'The bus goes there only if {min} seats are booked to or from it by {cutoff}.': ['{cutoff} க்குள் அங்கிருந்து அல்லது அங்கு {min} இருக்கைகள் முன்பதிவானால் மட்டுமே பேருந்து அங்கு செல்லும்.', '{cutoff} වන විට එතැනට හෝ එතැනින් ආසන {min} ක් වෙන් වුවහොත් පමණක් බසය එහි යයි.'],
+  '{stop} (on request)': ['{stop} (கோரிக்கைப்படி)', '{stop} (ඉල්ලීම මත)'],
 };

@@ -72,7 +72,7 @@ export default function FleetPage() {
           <BusCard
             key={bus.id}
             bus={bus}
-            runs={data.schedules.filter((s) => s.busId === bus.id)}
+            runs={data.schedules.filter((s) => s.busId === bus.id && !s.archived)}
             routes={data.routes}
             onEdit={() => {
               setEditing(structuredClone(bus));

@@ -344,27 +344,51 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
     [mode, remoteWrite],
   );
+  // Old tickets must keep their departure, so a departure (or route) they point
+  // to is archived instead of deleted: closed, hidden everywhere, history intact.
   const deleteRoute = useCallback<StoreContextValue['deleteRoute']>(
     async (id) => {
-      const used = dataRef.current.schedules.filter((s) => s.routeId === id);
+      const used = dataRef.current.schedules.filter((s) => s.routeId === id && !s.archived);
       if (used.length) return { ok: false, reason: txn(used.length, 'This route has {n} departure. Delete it first.', 'This route has {n} departures. Delete those first.') };
-      if (mode === 'supabase') return remoteWrite(() => supabase().from('routes').delete().eq('id', id));
-      setData((prev) => ({ ...prev, routes: prev.routes.filter((r) => r.id !== id) }));
+      if (mode === 'supabase') {
+        const sb = supabase();
+        const { error: err } = await sb.from('routes').delete().eq('id', id);
+        if (err && /foreign key/i.test(err.message ?? '')) return remoteWrite(() => sb.from('routes').update({ archived: true, active: false }).eq('id', id));
+        if (err) return { ok: false, reason: friendlyError(err) };
+        await refresh();
+        return { ok: true };
+      }
+      setData((prev) =>
+        prev.schedules.some((s) => s.routeId === id)
+          ? { ...prev, routes: prev.routes.map((r) => (r.id === id ? { ...r, archived: true, active: false } : r)) }
+          : { ...prev, routes: prev.routes.filter((r) => r.id !== id) },
+      );
       return { ok: true };
     },
-    [mode, remoteWrite],
+    [mode, remoteWrite, refresh],
   );
   const deleteSchedule = useCallback<StoreContextValue['deleteSchedule']>(
     async (id) => {
       const today = todayISO();
-      const upcoming = dataRef.current.bookings.filter((b) => b.scheduleId === id && b.status === 'confirmed' && b.date >= today && !b.id.startsWith('avail-'));
+      const upcoming = dataRef.current.bookings.filter((b) => b.scheduleId === id && (b.status === 'confirmed' || b.status === 'held') && b.date >= today && !b.id.startsWith('avail-'));
       if (upcoming.length)
         return { ok: false, reason: txn(upcoming.length, '{n} upcoming booking is on this departure. Pause it instead, or cancel that booking first.', '{n} upcoming bookings are on this departure. Pause it instead, or cancel those bookings first.') };
-      if (mode === 'supabase') return remoteWrite(() => supabase().from('schedules').delete().eq('id', id));
-      setData((prev) => ({ ...prev, schedules: prev.schedules.filter((s) => s.id !== id) }));
+      if (mode === 'supabase') {
+        const sb = supabase();
+        const { error: err } = await sb.from('schedules').delete().eq('id', id);
+        if (err && /foreign key/i.test(err.message ?? '')) return remoteWrite(() => sb.from('schedules').update({ archived: true, active: false }).eq('id', id));
+        if (err) return { ok: false, reason: friendlyError(err) };
+        await refresh();
+        return { ok: true };
+      }
+      setData((prev) =>
+        prev.bookings.some((b) => b.scheduleId === id)
+          ? { ...prev, schedules: prev.schedules.map((s) => (s.id === id ? { ...s, archived: true, active: false } : s)) }
+          : { ...prev, schedules: prev.schedules.filter((s) => s.id !== id) },
+      );
       return { ok: true };
     },
-    [mode, remoteWrite],
+    [mode, remoteWrite, refresh],
   );
 
   // ---- bookings -------------------------------------------------------------

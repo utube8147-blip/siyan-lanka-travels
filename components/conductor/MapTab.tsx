@@ -19,7 +19,7 @@ import {
 import { fetchRoadRoute } from '@/lib/routing';
 import { googleMapsParts } from '@/lib/routeShare';
 import { loadPlans, type RoutePlan } from '@/lib/routeEditor';
-import { formatDuration, formatTime12, routeLabel } from '@/lib/trips';
+import { formatDuration, formatTime12, roadStops, routeLabel } from '@/lib/trips';
 import { tx, txn } from '@/lib/i18n';
 import type { Booking, Route, Schedule, StoreData } from '@/lib/types';
 
@@ -78,7 +78,8 @@ export function MapTab({
   // In route order the road also goes through the office's shaping points (hidden stops),
   // so it follows the exact way the route was drawn.
   const tonight = new Set(stops.map((s) => s.name.toLowerCase()));
-  const pins = (inRouteOrder ? route.stops.filter((s) => s.hidden || tonight.has(s.name.toLowerCase())) : stops)
+  // A detour that isn't running loses its shaping points too (roadStops).
+  const pins = (inRouteOrder ? roadStops(route.stops, (n) => tonight.has(n.toLowerCase())).filter((s) => s.hidden || tonight.has(s.name.toLowerCase())) : stops)
     .filter((s) => s.lat != null && s.lng != null)
     .map((s) => [s.lat!, s.lng!] as [number, number]);
   const pinKey = pins.map((p) => p.join(',')).join(';') + (fromBus && here ? `|${here.lat.toFixed(3)},${here.lng.toFixed(3)}` : '');
@@ -365,7 +366,7 @@ export function MapTab({
       {picker && (
         <Sheet title={tx('Office routes')} onClose={() => setPicker(false)}>
           <RoutePicker
-            routes={data.routes}
+            routes={data.routes.filter((r) => !r.archived)}
             current={route.id}
             onPick={(label, s) => {
               setCompare({ label, stops: s });

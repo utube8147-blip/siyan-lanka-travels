@@ -92,6 +92,8 @@ export interface Route {
    */
   flatFare?: boolean;
   active: boolean;
+  /** Deleted, but kept because old tickets point to it. Hidden everywhere. */
+  archived?: boolean;
 }
 
 /** 0 = Sunday ... 6 = Saturday */
@@ -114,6 +116,8 @@ export interface Schedule {
   /** "YYYY-MM-DD": the first date of the alternate-day pattern. */
   startDate?: string | null;
   active: boolean;
+  /** Deleted, but kept because old tickets point to it. Hidden everywhere. */
+  archived?: boolean;
 }
 
 export type BookingStatus = 'confirmed' | 'held' | 'boarded' | 'cancelled' | 'no-show';

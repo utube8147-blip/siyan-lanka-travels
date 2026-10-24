@@ -10,7 +10,8 @@ import { Navigation, Phone, RefreshCw, Share2 } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
 import { useAuth } from '@/contexts/AuthContext';
 import { PageSkeleton, useStore } from '@/lib/store';
-import { departureDate, formatDateLabel, formatTime12, getTrip } from '@/lib/trips';
+import { departureDate, formatDateLabel, formatTime12, getTrip, roadStops } from '@/lib/trips';
+import { goesTo, useOptionalStatus } from '@/lib/conductor';
 import { useTripContact, whatsappShareUrl } from '@/lib/extras';
 import { estimateArrival, TRAIL_SIZE, useBusTrail } from '@/lib/tracking';
 import { useT, txn } from '@/lib/i18n';
@@ -39,6 +40,8 @@ function Track() {
   const trip = booking ? getTrip(data, booking.scheduleId, booking.date, booking.from, booking.to) : null;
   const { latest, trail, events } = useBusTrail(booking?.scheduleId, booking?.date);
   const contact = useTripContact(booking);
+  // On-request stops with too few seats aren't on tonight's road.
+  const optStatus = useOptionalStatus(trip ? data.routes.find((r) => r.id === trip.routeId) : undefined, booking?.scheduleId, booking?.date, data.bookings);
 
   if (!ready) return <PageSkeleton />;
   if (!booking || !trip) {
@@ -52,7 +55,8 @@ function Track() {
   }
 
   const route = data.routes.find((r) => r.id === trip.routeId);
-  const stops = route?.stops ?? [];
+  const going = goesTo(optStatus);
+  const stops = route ? roadStops(route.stops, (n) => n === booking.from || n === booking.to || going(n)) : [];
   const bi = stops.findIndex((s) => s.name === booking.from);
   const stop = stops[bi];
   const leaves = departureDate(trip.boardingDate, trip.departure);

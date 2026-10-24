@@ -19,6 +19,7 @@ import { PaymentReturnNotice } from '@/components/trip/PaymentReturnNotice';
 import { REWARDS_ENABLED } from '@/lib/features';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
+import { OnRequestNotice } from '@/components/OnRequestNotice';
 import { toBookingView, type BookingView, type ViewStatus } from '@/lib/bookingView';
 import { addDays, cityCode, formatDateLabel, formatLKR, formatTime12, getTrip, refundQuote, runsOn, takenSeats, seatsBesideLoneWoman, BESIDE_WOMAN_MESSAGE } from '@/lib/trips';
 import { useT, txn, txr, N_ } from '@/lib/i18n';
@@ -628,6 +629,11 @@ export default function MyBookingsPage() {
                           )}
                           </div>
                         </div>
+                        {(() => {
+                          const raw = rawOf(booking.id);
+                          const routeId = raw && data.schedules.find((x) => x.id === raw.scheduleId)?.routeId;
+                          return raw && routeId ? <OnRequestNotice routeId={routeId} scheduleId={raw.scheduleId} date={raw.date} from={raw.from} to={raw.to} className="mt-4" /> : null;
+                        })()}
                       </div>
 
                       {booking.status === 'confirmed' && (

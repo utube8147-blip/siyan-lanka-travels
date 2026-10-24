@@ -230,19 +230,40 @@ export async function loadOptionalStatus(route: Route, scheduleId: string, date:
   });
 }
 
-/** Optional-stop status for one departure, as a hook. */
+/**
+ * Optional-stop status for one departure, as a hook. Re-checked every minute
+ * (other passengers' bookings aren't on this phone), and at once when this
+ * phone's own bookings change.
+ */
 export function useOptionalStatus(route: Route | undefined, scheduleId: string | undefined, date: string | undefined, bookings: Booking[]) {
   const [list, setList] = useState<OptionalStopStatus[]>([]);
+  const [tick, setTick] = useState(0);
   const key = bookings.filter((b) => b.scheduleId === scheduleId && b.date === date).map((b) => `${b.id}${b.status}${b.from}${b.to}`).join();
+  const hasOptional = !!route?.stops.some(isOptionalStop);
+  useEffect(() => {
+    if (!hasOptional) return;
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [hasOptional]);
   useEffect(() => {
     if (!route || !scheduleId || !date) return setList([]);
     let gone = false;
-    loadOptionalStatus(route, scheduleId, date, bookings).then((l) => !gone && setList(l));
+    loadOptionalStatus(route, scheduleId, date, bookings).then((l) => !gone && setList((prev) => (JSON.stringify(prev) === JSON.stringify(l) ? prev : l)));
     return () => {
       gone = true;
     };
-  }, [route, scheduleId, date, key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [route, scheduleId, date, key, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   return list;
+}
+
+/** Whether the road goes to this stop on this trip (main stops always; on-request ones once enough seats are booked). */
+export function goesTo(status: OptionalStopStatus[]) {
+  return (name: string) => {
+    const s = status.find((o) => o.stop.toLowerCase() === name.toLowerCase());
+    if (!s) return false;
+    const d = detourState(s);
+    return d === 'runs' || d === 'likely';
+  };
 }
 
 /** Whether the bus goes to an optional stop: decided, or (before the cut-off) enough seats so far. */

@@ -9,7 +9,7 @@ import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
-import { addDays, allStopNames, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
+import { addDays, allStopNames, roadStops, runningRoutes, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
 import { useT, txn } from '@/lib/i18n';
 import {
@@ -24,6 +24,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { RouteMapOverlay, type RouteData, type RouteStop } from '@/components/RouteMapOverlay';
+import { OnRequestChip } from '@/components/OnRequestNotice';
+import { detourState, goesTo, useOptionalStatus } from '@/lib/conductor';
 import { km, useLiveTrip } from '@/lib/extras';
 import { tx } from '@/lib/i18n';
 
@@ -125,14 +127,14 @@ function SearchPageInner() {
   // First visit with no query: default to the operator's main route.
   useEffect(() => {
     if (!ready || query.from || query.to) return;
-    const r = data.routes.find((x) => x.active);
+    const r = runningRoutes(data)[0];
     if (!r) return;
     const f = r.stops[0].name;
     const toName = r.stops[r.stops.length - 1].name;
     setFrom(f);
     setTo(toName);
     setQuery({ from: f, to: toName });
-  }, [ready, data.routes, query.from, query.to]);
+  }, [ready, data, query.from, query.to]);
 
   const loading = !ready;
   const schedules = useMemo<Schedule[]>(
@@ -236,14 +238,31 @@ function SearchPageInner() {
   const closeRoute = useCallback(() => setRouteSchedule(null), []);
   // The bus's position, when the conductor is sharing it for this departure.
   const live = useLiveTrip(routeSchedule?.trip.scheduleId, routeSchedule?.trip.date);
+  // On-request stops of the trip on the map: the road only goes to the ones
+  // with enough seats booked, and switches over as soon as that happens.
+  const optStatus = useOptionalStatus(
+    routeSchedule ? data.routes.find((r) => r.id === routeSchedule.trip.routeId) : undefined,
+    routeSchedule?.trip.scheduleId,
+    routeSchedule?.trip.date,
+    data.bookings,
+  );
 
   // RouteMapOverlay data for a departure: the passenger's part of the route
   // with each stop's map pin and timetable time, the road distance, and the
   // live bus position when there is a fresh one.
+  const optNote = (name: string) => {
+    const st = optStatus.find((o) => o.stop.toLowerCase() === name.toLowerCase());
+    if (!st) return tx('On request');
+    const d = detourState(st);
+    if (d === 'runs' || d === 'likely') return tx('On request · going ({seats}/{min} seats)', { seats: st.seats, min: st.minSeats });
+    return tx('On request · {seats}/{min} seats', { seats: st.seats, min: st.minSeats });
+  };
   const buildRouteData = (s: Schedule): RouteData => {
     const trip = s.trip;
     const route = data.routes.find((r) => r.id === trip.routeId);
-    const all = route ? route.stops : [];
+    // The passenger's own stops always stay on the map.
+    const going = goesTo(optStatus);
+    const all = route ? roadStops(route.stops, (n) => n === trip.from || n === trip.to || going(n)) : [];
     const fi = all.findIndex((x) => x.name === trip.from);
     const ti = all.findIndex((x) => x.name === trip.to);
     const segment = fi >= 0 && ti > fi ? all.slice(fi, ti + 1) : [];
@@ -261,6 +280,7 @@ function SearchPageInner() {
         lng: x.lng,
         hidden: x.hidden,
         status: 'upcoming',
+        note: x.optional ? optNote(x.name) : undefined,
       };
     });
 
@@ -300,7 +320,7 @@ function SearchPageInner() {
   const routeData = useMemo(
     () => (routeSchedule ? buildRouteData(routeSchedule) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routeSchedule, live.location, data.routes],
+    [routeSchedule, live.location, data.routes, optStatus],
   );
 
   const inputClass = 'w-full bg-white border-none rounded-xl font-medium outline-none focus:ring-1 focus:ring-[#050a44]';
@@ -568,13 +588,14 @@ function SearchPageInner() {
                         <span className="inline-block bg-[#feb700]/15 text-[#7c5800] text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide">
                           {s.busType === 'AC' ? tx('AC Bus') : tx('Non-AC Bus')}
                         </span>
-                        {data.routes.find((r) => r.id === s.trip.routeId)?.stops.some((x) => x.optional && (x.name === s.trip.from || x.name === s.trip.to)) && (
-                          <span className="inline-block bg-[#ede9fe] text-[#4c1d95] text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide" title={tx('The bus goes to this stop only if enough seats are booked. Details on the next page.')}>
-                            {tx('On-request stop')}
-                          </span>
-                        )}
                       </span>
                     </div>
+
+                    {data.routes.find((r) => r.id === s.trip.routeId)?.stops.some((x) => x.optional && (x.name === s.trip.from || x.name === s.trip.to)) && (
+                      <div className="mb-4">
+                        <OnRequestChip routeId={s.trip.routeId} scheduleId={s.trip.scheduleId} date={s.trip.date} from={s.trip.from} to={s.trip.to} />
+                      </div>
+                    )}
 
                     {/* Route visualization — click to open the route map overlay */}
                     <button

@@ -58,11 +58,18 @@ export function ConductorMap({
       if (cancelled || !el.current || map.current) return;
       const m = L.map(el.current, { zoomControl: false, attributionControl: true, zoomSnap: 0.5 }).setView([7.6, 80.9], 8);
       L.control.zoom({ position: 'bottomleft' }).addTo(m);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      // Esri's dark grey map needs no key (CARTO's dark tiles now ask for one).
+      const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
+      L.tileLayer(`${esri}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {
+        maxNativeZoom: 16,
         maxZoom: 19,
-        subdomains: 'abcd',
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        attribution: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(m);
+      // Place names above the road line, but never in the way of taps.
+      const labels = m.createPane('labels');
+      labels.style.zIndex = '450';
+      labels.style.pointerEvents = 'none';
+      L.tileLayer(`${esri}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { maxNativeZoom: 16, maxZoom: 19, pane: 'labels' }).addTo(m);
       layers.current = { compare: L.layerGroup().addTo(m), route: L.layerGroup().addTo(m), reports: L.layerGroup().addTo(m), bus: L.layerGroup().addTo(m) };
       m.on('click', (e) => cbs.current.placing && cbs.current.onPlace({ lat: e.latlng.lat, lng: e.latlng.lng }));
       m.on('dragstart', () => cbs.current.onUserMove());
