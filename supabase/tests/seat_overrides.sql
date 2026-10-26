@@ -2,6 +2,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+\ir _autopay.inc
 update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 create or replace function pg_temp.as_user(u text) returns void language sql as $$ select set_config('request.jwt.claim.sub', coalesce(u,''), false) $$;
 create or replace function pg_temp.try(label text, q text) returns text language plpgsql as $$

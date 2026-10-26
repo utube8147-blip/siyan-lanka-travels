@@ -23,4 +23,9 @@ describe('tonightsStops', () => {
     const m = plan.find((p) => p.name === 'Maradana')!;
     expect(m.via).toEqual([{ stop: 'TJ', onRequest: false, on: 0, off: 2 }]);
   });
+  it('a stop the conductor changed (to one the bus goes to) is not a "via" note', () => {
+    const p2 = tonightsStops(route, [b('A', 'K', 1, { bookedTo: 'Maradana' })], notFilled);
+    expect(p2.find((p) => p.name === 'K')!.via).toBeUndefined();
+    expect(p2.find((p) => p.name === 'K')!.off).toBe(1);
+  });
 });

@@ -1,3 +1,4 @@
+\ir _autopay.inc
 -- Booking window: passengers up to 7 days ahead, staff any date, 0 = no limit.
 -- Run after local_supabase_stub.sql and setup.sql. The two "refused" inserts are meant to fail.
 \set ON_ERROR_STOP 0

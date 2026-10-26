@@ -323,6 +323,8 @@ export function tonightsStops(route: Route, bookings: Booking[], optional: Optio
       // Who is here for a stop the bus doesn't go to (booked there, or moved here at the cut-off).
       const via = new Map<string, { stop: string; onRequest: boolean; on: number; off: number }>();
       const add = (booked: string, part: 'on' | 'off', seats: number) => {
+        // Booked a stop the bus does go to (the conductor changed it with them): not a "via" case.
+        if (onWay.includes(low(booked))) return;
         const e = via.get(low(booked)) ?? { stop: booked, onRequest: !!route.stops.find((x) => low(x.name) === low(booked))?.optional, on: 0, off: 0 };
         e[part] += seats;
         via.set(low(booked), e);

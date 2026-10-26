@@ -2,6 +2,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+\ir _autopay.inc
 update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
 update app_settings set ladies_adjacent = false; -- the seat-beside-a-woman rule is tested in seat_overrides.sql

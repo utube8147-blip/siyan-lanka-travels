@@ -178,6 +178,8 @@ export interface Booking {
   /** Sum of bike fees (included in total). */
   bikeFee?: number;
   fee: number;
+  /** Card / wallet: the payment gateway's cut, included in total. */
+  gatewayFee?: number;
   discount: number;
   total: number;
   status: BookingStatus;
@@ -240,7 +242,9 @@ export interface Trip {
  *  with Supabase the server recalculates everything. */
 export type NewBooking = Omit<Booking, 'id' | 'ref' | 'createdAt' | 'status'> & Partial<Pick<Booking, 'status'>> & {
   promo?: string;
-  /** 'card' | 'wallet' (online), 'bank' / 'counter' (seat held until paid). */
+  /** Booked from the installed app (for the app-only promo). */
+  inApp?: boolean;
+  /** 'card' | 'wallet' (online, through the gateway), 'bank' (seat held until the slip is checked); staff: 'cash' / 'counter'. */
   payment?: PaymentMethod;
   useReward?: boolean;
   /** Office staff only: sell a ladies-only seat to a male passenger for this one sale. */

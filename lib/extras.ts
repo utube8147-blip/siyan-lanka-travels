@@ -59,6 +59,9 @@ export interface PublicSettings {
   cardPayments: boolean;
   /** "Pay on the bus" (cash to the conductor) can be chosen at checkout. */
   payOnBus: boolean;
+  gatewayFeePercent: number;
+  promoFirstOrder: boolean;
+  promoAppOnly: boolean;
   paymentsMode: 'demo' | 'payhere';
   bankDetails: string;
   holdMinutesCounter: number;
@@ -74,7 +77,10 @@ const DEFAULT_PUBLIC: PublicSettings = {
   bookingOtp: false,
   ladiesAdjacent: true,
   cardPayments: false,
-  payOnBus: true,
+  payOnBus: false,
+  gatewayFeePercent: OPERATOR.gatewayFeePercent,
+  promoFirstOrder: true,
+  promoAppOnly: true,
   paymentsMode: 'demo',
   bankDetails: 'Bank of Ceylon, Pettah branch · A/C 0077411020 · Siyan Lanka Travels',
   holdMinutesCounter: 120,
@@ -101,7 +107,10 @@ export function usePublicSettings() {
             bookingOtp: data.booking_otp !== false,
             ladiesAdjacent: data.ladies_adjacent !== false,
             cardPayments: data.card_payments === true,
-            payOnBus: data.pay_on_bus !== false,
+            payOnBus: data.pay_on_bus === true,
+            gatewayFeePercent: Number(data.gateway_fee_percent ?? OPERATOR.gatewayFeePercent),
+            promoFirstOrder: data.promo_first_order !== false,
+            promoAppOnly: data.promo_app_only !== false,
             paymentsMode: data.payments_mode,
             bankDetails: data.bank_details || DEFAULT_PUBLIC.bankDetails,
             holdMinutesCounter: data.hold_minutes_counter,

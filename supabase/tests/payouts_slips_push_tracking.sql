@@ -2,6 +2,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+\ir _autopay.inc
 update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
 update app_settings set ladies_adjacent = false; -- the seat-beside-a-woman rule is tested in seat_overrides.sql
@@ -117,8 +118,8 @@ set role authenticated; select pg_temp.as_user('ffffffff-0000-0000-0000-00000000
 select pg_temp.try('F reserves the same ticket meanwhile', $q$select reserve_resale((select v::uuid from ids where k = 'l1'), '{"name":"Late F","gender":"Male"}', '{}')$q$);
 reset role;
 select pg_temp.try('gateway reports the wrong amount', $q$select complete_resale((select v from ids where k = 'o1'), 100, 'PH-1', 'card')$q$);
-select 'gateway confirms → order ' || status from complete_resale((select v from ids where k = 'o1'), 2050, 'PH-1', 'card');
-select 'gateway confirms again (idempotent) → order ' || status from complete_resale((select v from ids where k = 'o1'), 2050, 'PH-1', 'card');
+select 'gateway confirms → order ' || status from complete_resale((select v from ids where k = 'o1'), (select amount from resale_orders where order_ref = (select v from ids where k = 'o1')), 'PH-1', 'card');
+select 'gateway confirms again (idempotent) → order ' || status from complete_resale((select v from ids where k = 'o1'), (select amount from resale_orders where order_ref = (select v from ids where k = 'o1')), 'PH-1', 'card');
 select 'seller booking: ' || status || '; buyer booking: ' || (select status || ' / ' || payment_status || ' / ref ' || payment_ref || ' / total ' || total from bookings where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and payment_ref = 'PH-1') from bookings where id = (select v::uuid from ids where k = 'a2');
 select 'buyer bookings created: ' || count(*) from bookings where payment_ref = 'PH-1';
 select 'seller payout: ' || kind || ' LKR ' || amount || ' ' || status || ', account prefilled: ' || (payee ->> 'account_no') from payouts where booking_id = (select v::uuid from ids where k = 'a2');
@@ -137,7 +138,7 @@ reset role;
 set role authenticated; select pg_temp.as_user('aaaaaaaa-0000-0000-0000-000000000001');
 select pg_temp.try('A withdraws the listing while F is paying', $q$select withdraw_listing((select v::uuid from ids where k = 'l2'))$q$);
 reset role;
-select 'F''s payment arrives → order ' || status from complete_resale((select v from ids where k = 'o2'), 1550, 'PH-2', 'card');
+select 'F''s payment arrives → order ' || status from complete_resale((select v from ids where k = 'o2'), (select amount from resale_orders where order_ref = (select v from ids where k = 'o2')), 'PH-2', 'card');
 select 'F is owed: ' || kind || ' LKR ' || amount || ' ' || status from payouts where user_id = 'ffffffff-0000-0000-0000-000000000006';
 select 'A keeps the seat: ' || status from bookings where id = (select v::uuid from ids where k = 'a3');
 update app_settings set payments_mode = 'demo', resale_enabled = false;

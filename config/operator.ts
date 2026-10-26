@@ -65,7 +65,10 @@ export const OPERATOR = {
 
   currency: 'LKR',
   /** Flat convenience fee added once per booking (LKR). */
-  bookingFee: 50,
+  /** Platform fee per online booking (LKR); the live value is in Staff area → Settings. */
+  bookingFee: 120,
+  /** Card / wallet: the payment gateway's cut (percent), added to what goes through it. */
+  gatewayFeePercent: 3,
   /** Demo promo code; percent off the fare (not the fee). */
   promo: { code: 'SIYAN10', percentOff: 10 },
 

@@ -12,6 +12,7 @@ import { useStore } from '@/lib/store';
 import { departureDate, formatDateLabel, formatLKR, formatTime12, getTrip, toMinutes, dateLocale } from '@/lib/trips';
 import { km, useLiveTrip, usePublicSettings, useTripContact, whatsappShareUrl } from '@/lib/extras';
 import { startPayhere } from '@/lib/payhere-client';
+import { mockPaymentsOn } from '@/lib/mockVerification';
 import type { Booking } from '@/lib/types';
 import { useT, txr } from '@/lib/i18n';
 import { counterPlaces, useBranches } from '@/lib/branches';
@@ -128,11 +129,20 @@ export function NextTripPanel() {
               if (booking.paymentMethod === 'bank') return txr('Pay <b>{amount}</b> by <b2>{until}</b2> by bank transfer to {bankDetails} (reference {ref}).', { amount, until, bankDetails: pub.bankDetails, ref: booking.ref, b, b2: b });
               if (booking.paymentMethod === 'counter')
                 return txr('Pay <b>{amount}</b> by <b2>{until}</b2> at {where}.', { amount, until, where: counters.list.length ? `${counters.text} (${counters.list.map((x) => x.address || x.name).join('; ')})` : tx('our counter, {address}', { address: OPERATOR.contact.address }), b, b2: b });
-              return txr('Pay <b>{amount}</b> by <b2>{until}</b2> or the seat is released.', { amount, until, b, b2: b });
+              return txr('Payment not finished. Pay <b>{amount}</b> by <b2>{until}</b2> or the seat is released.', { amount, until, b, b2: b });
             })()}
           </span>
-          {pub.paymentsMode === 'payhere' && pub.cardPayments && (
-            <button onClick={async () => setPayErr(await startPayhere(booking.id))} className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#feb700] text-[#14120a] font-bold">
+          {/* Card / wallet bookings finish through the gateway (its fee is in the total, so a bank-transfer hold stays on bank transfer). */}
+          {(booking.paymentMethod === 'card' || booking.paymentMethod === 'wallet') && ((pub.paymentsMode === 'payhere' && pub.cardPayments) || mockPaymentsOn()) && (
+            <button
+              onClick={async () => {
+                if (pub.paymentsMode !== 'payhere' && mockPaymentsOn()) {
+                  window.location.href = `/mock-gateway?${new URLSearchParams({ ref: booking.ref, amount: String(booking.total) })}`;
+                  return;
+                }
+                setPayErr(await startPayhere(booking.id));
+              }}
+              className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#feb700] text-[#14120a] font-bold">
               <CreditCard className="w-4 h-4" />{' '}{tx('Pay online now')}</button>
           )}
           {payErr && <span className="w-full text-[#ba1a1a] font-semibold">{payErr}</span>}

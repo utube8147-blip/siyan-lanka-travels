@@ -15,6 +15,7 @@ import { goesTo, useOptionalStatus } from '@/lib/conductor';
 import { OnRequestChip } from '@/components/OnRequestNotice';
 import { useStore } from '@/lib/store';
 import { StopsMap } from '@/components/StopsMap';
+import { StopPicker } from '@/components/StopPicker';
 import { addDays, allStopNames, tripWay, runningRoutes, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route, Trip } from '@/lib/types';
 import { useT, N_ } from '@/lib/i18n';
@@ -194,21 +195,14 @@ export default function LandingPage() {
 
             <div className="relative w-full px-4 md:px-12 lg:px-0 pt-6 pb-2 lg:py-0">
               <div className="hero-glass-widget p-[16px] md:p-[28px] rounded-[2rem] relative">
-                <datalist id="stop-names">
-                  {stops.map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
                 {/* Boarding + swap + drop-off: side by side at every width, like laptop */}
                 <div className="grid grid-cols-[1fr_auto_1fr] gap-[6px] md:gap-[14px] mb-[10px] md:mb-[14px] items-end">
                   <div className="space-y-[6px] min-w-0">
                     <label htmlFor="hero-from" className="text-[11px] md:text-[12px] font-semibold text-white/80 ml-1">
                       {t('Boarding point')}
                     </label>
-                    <div className="relative">
-                      <MapPin className="w-4 h-4 md:w-5 md:h-5 absolute left-3 md:left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
-                      <input id="hero-from" list="stop-names" value={from} onChange={(e) => setFrom(e.target.value)} className={inputClass} placeholder={t('Where from?')} />
-                    </div>
+                    <StopPicker id="hero-from" value={from} onChange={setFrom} options={stops} onEnter={search} placeholder={t('Where from?')} className={inputClass}
+                      icon={<MapPin className="w-4 h-4 md:w-5 md:h-5 absolute left-3 md:left-[16px] top-1/2 -translate-y-1/2 text-white/60 pointer-events-none z-[1]" />} />
                   </div>
 
                   <button
@@ -224,10 +218,8 @@ export default function LandingPage() {
                     <label htmlFor="hero-to" className="text-[11px] md:text-[12px] font-semibold text-white/80 ml-1">
                       {t('Drop-off point')}
                     </label>
-                    <div className="relative">
-                      <Navigation className="w-4 h-4 md:w-5 md:h-5 absolute left-3 md:left-[16px] top-1/2 -translate-y-1/2 text-white/60" />
-                      <input id="hero-to" list="stop-names" value={to} onChange={(e) => setTo(e.target.value)} className={inputClass} placeholder={t('Where to?')} />
-                    </div>
+                    <StopPicker id="hero-to" value={to} onChange={setTo} options={stops} onEnter={search} align="right" placeholder={t('Where to?')} className={inputClass}
+                      icon={<Navigation className="w-4 h-4 md:w-5 md:h-5 absolute left-3 md:left-[16px] top-1/2 -translate-y-1/2 text-white/60 pointer-events-none z-[1]" />} />
                   </div>
                 </div>
                 <div className="space-y-[6px] mb-[14px] md:mb-[20px]">

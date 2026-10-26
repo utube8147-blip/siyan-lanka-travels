@@ -3,6 +3,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+\ir _autopay.inc
 update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)
 update app_settings set booking_otp = false, card_payments = true; -- booking codes and the card lock have their own tests
 update app_settings set ladies_adjacent = false; -- the seat-beside-a-woman rule is tested in seat_overrides.sql
@@ -43,7 +44,7 @@ reset role;
 select '--- passenger B';
 set role authenticated; select pg_temp.as_user('bbbbbbbb-0000-0000-0000-000000000002');
 select pg_temp.try('B grabs seat 3B (A has it)', format($q$select create_booking('{"schedule_id":"sch-cmb-2100","date":"%s","from":"Colombo","to":"Batticaloa","seats":["3B"],"passenger":{"name":"B","gender":"Female"}}')$q$, (select mon from t)));
-select 'B Kurunegala→Kalmunai with promo: total LKR ' || total || ' (fare ' || fare || ', discount ' || discount || ')' from create_booking(format($q${"schedule_id":"sch-cmb-2100","date":"%s","from":"Kurunegala","to":"Kalmunai","seats":["1A"],"promo":"siyan10","passenger":{"name":"Fathima B","gender":"Female"}}$q$, (select mon from t))::jsonb);
+select 'B Kurunegala→Kalmunai with promo: total LKR ' || total || ' (fare ' || fare || ', discount ' || discount || ')' from create_booking(format($q${"schedule_id":"sch-cmb-2100","date":"%s","from":"Kurunegala","to":"Kalmunai","seats":["1A"],"promo":"siyan10","in_app":true,"passenger":{"name":"Fathima B","gender":"Female"}}$q$, (select mon from t))::jsonb);
 select 'B + 2 motorbikes: bike fee LKR ' || bike_fee || ', total ' || total from create_booking(format($q${"schedule_id":"sch-cmb-2100","date":"%s","from":"Kurunegala","to":"Kalmunai","seats":["6A"],"passenger":{"name":"Fathima B","gender":"Female"},"bikes":[{"kind":"motorbike","description":"Honda Dio red","reg_no":"EP BHC-1","photo_path":"bbbbbbbb-0000-0000-0000-000000000002/1.jpg"},{"kind":"motorbike","description":"Pulsar black","reg_no":"EP BHC-2","photo_path":"bbbbbbbb-0000-0000-0000-000000000002/2.jpg"}]}$q$, (select mon from t))::jsonb);
 select pg_temp.try('B adds a bicycle (compartment full)', format($q$select create_booking('{"schedule_id":"sch-cmb-2100","date":"%s","from":"Colombo","to":"Batticaloa","seats":["7A"],"passenger":{"name":"B","gender":"Female"},"bikes":[{"kind":"bicycle","description":"green MTB","photo_path":"x/1.jpg"}]}')$q$, (select mon from t)));
 reset role; create temp table a_id as select id from bookings where passenger_name='Alex A'; grant select on a_id to authenticated;

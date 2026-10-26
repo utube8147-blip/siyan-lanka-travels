@@ -8,10 +8,12 @@ import { OPERATOR } from '@/config/operator';
 import { useQrDataUrl } from '@/lib/qr';
 import { NotificationOptIn } from '@/components/NotificationOptIn';
 import { SuccessCheck } from '@/components/motion/SuccessCheck';
-import { counterPlaces, useBranches } from '@/lib/branches';
 import { useLoyalty, usePublicSettings, useSavedPassengers, whatsappShareUrl } from '@/lib/extras';
-import { addDays as addDaysIso, dateLocale } from '@/lib/trips';
-import { notify } from '@/lib/pwa';
+import { addDays as addDaysIso } from '@/lib/trips';
+import { isStandalone, notify } from '@/lib/pwa';
+import { mockPaymentsOn } from '@/lib/mockVerification';
+import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { InstallAppButton } from '@/components/InstallAppButton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStore, StoreLoading } from '@/lib/store';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, todayISO } from '@/lib/trips';
@@ -23,24 +25,13 @@ import { SLIP_ACCEPT, submitSlip } from '@/lib/money';
 import { tx } from '@/lib/i18n';
 
 import { fmtDate } from '@/lib/dates';
-type PaymentMethod = 'card' | 'wallet' | 'bank' | 'counter' | 'bus';
+type PaymentMethod = 'card' | 'bank';
 type PayState = 'idle' | 'processing' | 'success';
 
 interface Passenger {
   name: string;
   gender: string;
   phone: string;
-}
-
-function formatCardNumber(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 16);
-  return digits.replace(/(.{4})/g, '$1 ').trim();
-}
-
-function formatExpiry(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 4);
-  if (digits.length <= 2) return digits;
-  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
 }
 
 export default function PaymentPage() {
@@ -92,16 +83,21 @@ function PaymentPageInner() {
   const trip = paidTrip ?? liveTrip;
 
   const pub = usePublicSettings();
-  // The counters that take payments (Staff area → Branches). Before any are set up: the main address.
-  const counters = counterPlaces(useBranches().branches);
-  const counterWhere = counters.list.length ? counters.list.map((b) => (b.address ? `${b.name} (${b.address})` : b.name)).join(', or ') : OPERATOR.contact.address;
   useBikeConfig(); // bike fees follow Settings → Bikes
   const seatPrice = trip ? trip.fare : 0;
-  const platformFee = OPERATOR.bookingFee;
+  const platformFee = pub.bookingFee;
   const basePrice = seats.length * seatPrice;
-  // Shown for information; the database works out the real discount from the same setting.
-  const promoOk = !!promo && !!pub.promoCode && promo.toUpperCase() === pub.promoCode.toUpperCase();
-  const discount = promoOk ? Math.round((basePrice * pub.promoPercent) / 100) : 0;
+  // The promo: shown and applied by itself when it applies (Settings: code, percent, first trip only,
+  // installed app only). The database checks the same rules, so nobody gets it by typing it in.
+  const [inApp, setInApp] = useState(false);
+  useEffect(() => setInApp(isStandalone()), []);
+  const earlierTrips = user ? data.bookings.filter((b) => b.userId === user.id && b.status !== 'cancelled').length : 0;
+  const promoRulesOk = !!pub.promoCode && pub.promoPercent > 0 && (!pub.promoFirstOrder || earlierTrips === 0);
+  const promoEligible = promoRulesOk && (!pub.promoAppOnly || inApp);
+  const promoNeedsApp = promoRulesOk && pub.promoAppOnly && !inApp;
+  const [promoOn, setPromoOn] = useState(true);
+  const promoApplied = promoEligible && promoOn && (!promo || promo.toUpperCase() === pub.promoCode?.toUpperCase());
+  const discount = promoApplied ? Math.round((basePrice * pub.promoPercent) / 100) : 0;
   // Bikes chosen on the seat page (photos travel via sessionStorage).
   const [bikes, setBikes] = useState<BikeItem[]>([]);
   useEffect(() => {
@@ -113,36 +109,32 @@ function PaymentPageInner() {
     }
   }, [scheduleId, date]);
   const bikeTotal = bikes.reduce((n, b) => n + b.fee, 0);
-  const totalPrice = basePrice - discount + bikeTotal + platformFee;
-
-  // Card / wallet stay locked until Settings → "Card & wallet payments" is on, so start on bank transfer.
+  // Online, a seat is sold only when it's paid: through the payment gateway (card or mobile wallet),
+  // or by bank transfer with the slip. The gateway is PayHere when it's live; on your own computer
+  // with NEXT_PUBLIC_MOCK_PAYMENTS=true it's a test page; in demo mode (no database) it's simulated.
+  const payhereLive = pub.paymentsMode === 'payhere';
+  const mockGateway = mockPaymentsOn();
+  const cardOpen = payhereLive ? pub.cardPayments : mockGateway || !isSupabaseConfigured;
   const [method, setMethod] = useState<PaymentMethod>('bank');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [expiry, setExpiry] = useState('');
-  const [cvv, setCvv] = useState('');
-  const [wallet, setWallet] = useState<'ezcash' | 'mcash' | 'frimi' | ''>('');
+  const [picked, setPicked] = useState(false);
+  useEffect(() => {
+    if (!picked && cardOpen) setMethod('card');
+    if (!cardOpen && method === 'card') setMethod('bank');
+  }, [cardOpen, picked, method]);
+  const loyalty = useLoyalty(user?.id);
+  const [useReward, setUseReward] = useState(false);
+  const rewardOff = useReward && (loyalty?.available ?? 0) > 0 ? Math.min(seatPrice, basePrice - discount) : 0;
+  // What goes through the gateway also pays its cut (Settings → card fee); none for bank transfer.
+  const subtotal = basePrice - discount - rewardOff + bikeTotal + platformFee;
+  const gatewayFee = method === 'card' && subtotal > 0 ? Math.ceil((subtotal * pub.gatewayFeePercent) / 100) : 0;
+  const totalPrice = subtotal + gatewayFee;
 
   const [payState, setPayState] = useState<PayState>('idle');
   const [bookingRef, setBookingRef] = useState('');
   const [error, setError] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
 
-  const cardValid =
-    cardNumber.replace(/\s/g, '').length === 16 &&
-    cardName.trim().length > 1 &&
-    /^\d{2}\/\d{2}$/.test(expiry) &&
-    cvv.length === 3;
-  const walletValid = wallet !== '';
-  const payhereLive = pub.paymentsMode === 'payhere';
-  const holdMethod = method === 'bank' || method === 'counter' || method === 'bus';
-  const cardOpen = pub.cardPayments;
-  // If the chosen way to pay gets switched off (settings load a moment after the page), fall back to bank transfer.
-  useEffect(() => {
-    if ((!cardOpen && (method === 'card' || method === 'wallet')) || (!pub.payOnBus && method === 'bus')) setMethod('bank');
-  }, [cardOpen, pub.payOnBus, method]);
-  const loyalty = useLoyalty(user?.id);
-  const [useReward, setUseReward] = useState(false);
+  const holdMethod = method === 'bank';
   const saved = useSavedPassengers(user?.id);
   const [heldUntil, setHeldUntil] = useState<string | null>(null);
   // Bank transfer: a slip chosen here is uploaded as soon as the seat is held.
@@ -150,22 +142,13 @@ function PaymentPageInner() {
   const [slipFile, setSlipFile] = useState<File | null>(null);
   const [slipRef, setSlipRef] = useState('');
   const [slipNote, setSlipNote] = useState('');
-  const canPay = trip && seats.length > 0 && (holdMethod || payhereLive || (method === 'card' ? cardValid : walletValid));
+  const canPay = !!trip && seats.length > 0 && (method === 'bank' || cardOpen);
 
   const handlePay = () => {
     setError('');
-    if (!canPay) {
-      setError(
-        method === 'card'
-          ? tx('Fill in all card details correctly.')
-          : tx('Select a wallet provider to continue.')
-      );
-      return;
-    }
+    if (!canPay) return;
     setPayState('processing');
-    // Mock payment gateway: wait, then save the booking. Swap for a real
-    // gateway (e.g. PayHere) and create the booking from its server callback.
-    setTimeout(async () => {
+    void (async () => {
       if (!trip) return;
       const lead = passengers[0];
       // Asks for the one-time code first when the database requires it.
@@ -185,11 +168,13 @@ function PaymentPageInner() {
         channel: 'online',
         fare: seatPrice,
         fee: platformFee,
+        gatewayFee,
         bikes: bikes.length ? bikes : undefined,
         bikeFee: bikeTotal || undefined,
         discount,
         total: totalPrice,
-        promo: promo || undefined,
+        promo: promoApplied ? pub.promoCode ?? undefined : undefined,
+        inApp,
         payment: method,
         useReward: useReward && (loyalty?.available ?? 0) > 0,
       }), contactPhone);
@@ -208,6 +193,11 @@ function PaymentPageInner() {
       }
       setPaidTrip(trip);
       saved.remember({ name: lead?.name || '', gender: (lead?.gender as Gender) || '', phone: lead?.phone || contactPhone });
+      // Test gateway on your own computer: choose there whether the payment goes through.
+      if (result.booking.status === 'held' && method === 'card' && !payhereLive && mockGateway) {
+        router.push(`/mock-gateway?${new URLSearchParams({ ref: result.booking.ref, amount: String(result.booking.total) })}`);
+        return;
+      }
       // PayHere live: the booking is held; send the passenger to PayHere to pay.
       if (result.booking.status === 'held' && !holdMethod) {
         const res = await fetch('/api/payhere/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookingId: result.booking.id }) });
@@ -244,7 +234,7 @@ function PaymentPageInner() {
       }
       setBookingRef(result.booking.ref);
       setPayState('success');
-    }, 1800);
+    })();
   };
 
   const qrPayload = useMemo(() => {
@@ -304,15 +294,11 @@ function PaymentPageInner() {
             <div className="mb-[14px]">
                 <SuccessCheck size={68} />
             </div>
-            <h1 className="text-[24px] font-bold mb-[4px]">{heldUntil ? (method === 'bus' ? tx('Seat reserved') : t('Seat held')) : t('Booking Confirmed!')}</h1>
+            <h1 className="text-[24px] font-bold mb-[4px]">{heldUntil ? t('Seat held') : t('Booking Confirmed!')}</h1>
             <p className="text-[14px] text-[#46464f] max-w-xl">
-                {heldUntil && method === 'bus' ? (
-                  <>{txr("Your seat is reserved. Pay <b>{amount}</b> in cash to the conductor when you board, and show the QR code below. We've texted you the details.", { amount: formatLKR(totalPrice), b: (c) => <span className="font-bold">{c}</span> })}</>
-                ) : heldUntil ? (
+                {heldUntil ? (
                   <>
-                    {method === 'bank'
-                      ? txr("Pay <b>{amount}</b> by <b2>{until}</b2> to {bankDetails}, reference {bookingRef}. We've texted you the details.", { amount: formatLKR(totalPrice), until: fmtDate(new Date(heldUntil), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), bankDetails: pub.bankDetails, bookingRef, b: (c) => <span className="font-bold">{c}</span>, b2: (c) => <span className="font-bold">{c}</span> })
-                      : txr("Pay <b>{amount}</b> by <b2>{until}</b2> at {where}. We've texted you the details.", { amount: formatLKR(totalPrice), until: fmtDate(new Date(heldUntil), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), where: counters.list.length ? `${counters.text}: ${counterWhere}` : tx('our counter ({where})', { where: counterWhere }), b: (c) => <span className="font-bold">{c}</span>, b2: (c) => <span className="font-bold">{c}</span> })}
+                    {txr("Pay <b>{amount}</b> by <b2>{until}</b2> to {bankDetails}, reference {bookingRef}. We've texted you the details.", { amount: formatLKR(totalPrice), until: fmtDate(new Date(heldUntil), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }), bankDetails: pub.bankDetails, bookingRef, b: (c) => <span className="font-bold">{c}</span>, b2: (c) => <span className="font-bold">{c}</span> })}
                   </>
                 ) : (
                   <>{tx('Your ticket is in My trips and we\'ve texted you the details. Show the QR code when you board.')}</>
@@ -529,41 +515,46 @@ function PaymentPageInner() {
           <div className="bg-white rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
             <h2 className="text-[16px] font-semibold mb-[16px]">{t('Payment Method')}</h2>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1 p-1 bg-[#f2f4f6] rounded-xl mb-[20px] border border-[#e1e2e4]/60">
-              <button
-                onClick={() => setMethod('bank')}
-                className={`py-2 text-sm font-bold rounded-lg transition-all ${method === 'bank' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'}`}
-              >
-                {t('Bank transfer')}
-              </button>
-              <button
-                onClick={() => setMethod('counter')}
-                className={`py-2 text-sm font-bold rounded-lg transition-all ${method === 'counter' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'}`}
-              >
-                {t('Pay at counter')}
-              </button>
-              {pub.payOnBus && (
-                <button
-                  onClick={() => setMethod('bus')}
-                  className={`py-2 text-sm font-bold rounded-lg transition-all ${method === 'bus' ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'}`}
-                >{tx('Pay on the bus')}</button>
-              )}
-              {(['card', 'wallet'] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => cardOpen && setMethod(m)}
-                  disabled={!cardOpen}
-                  aria-disabled={!cardOpen}
-                  title={cardOpen ? undefined : tx('Not available yet')}
-                  className={`py-2 text-sm font-bold rounded-lg transition-all ${
-                    !cardOpen ? 'text-[#9a9ba5] cursor-not-allowed' : method === m ? 'bg-white shadow-sm text-[#050a44] border border-[#e1e2e4]' : 'text-[#46464f]'
-                  }`}
-                >
-                  {!cardOpen && <span className="material-symbols-outlined text-[14px] align-[-2px] mr-1">lock</span>}
-                  {m === 'card' ? t('Card') : t('Mobile Wallet')}
-                  {!cardOpen && <span className="block text-[10px] font-semibold">{tx('Not available yet')}</span>}
-                </button>
-              ))}
+            {(promoEligible || promoNeedsApp) && (
+              <div className={`rounded-xl px-4 py-3 mb-[16px] flex items-center gap-3 border ${promoApplied ? 'border-[#16a34a]/40 bg-[#16a34a]/10' : 'border-[#feb700]/50 bg-[#feb700]/10'}`}>
+                <span className="material-symbols-outlined text-[22px] text-[#7c5800]">sell</span>
+                <span className="flex-1 min-w-0 text-[14px]">
+                  {promoEligible ? (
+                    <>
+                      <span className="font-bold text-[#050a44]">{promoApplied ? tx('{code} applied: {p}% off your first trip', { code: pub.promoCode, p: pub.promoPercent }) : tx('{code}: {p}% off your first trip', { code: pub.promoCode, p: pub.promoPercent })}</span>
+                      <span className="block text-[12px] text-[#46464f]">{tx('Thanks for booking in the app.')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-bold text-[#050a44]">{tx('{p}% off your first trip in the app', { p: pub.promoPercent })}</span>
+                      <span className="block text-[12px] text-[#46464f]">{tx('Install the Siyan Lanka app and book from it: code {code} is applied for you.', { code: pub.promoCode })}</span>
+                    </>
+                  )}
+                </span>
+                {promoEligible ? (
+                  <button type="button" onClick={() => setPromoOn((v) => !v)} className="shrink-0 text-[13px] font-bold text-[#050a44] underline">{promoApplied ? tx('Remove') : tx('Apply')}</button>
+                ) : (
+                  <InstallAppButton variant="icon" className="shrink-0" />
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 mb-[20px]">
+              {([
+                { id: 'card' as const, icon: 'credit_card', label: tx('Card or mobile wallet'), sub: cardOpen ? tx('Pay now · {p}% card fee', { p: pub.gatewayFeePercent }) : tx('Not available yet') },
+                { id: 'bank' as const, icon: 'account_balance', label: tx('Bank transfer'), sub: tx('Upload your slip · no card fee') },
+              ]).map((m) => {
+                const off = m.id === 'card' && !cardOpen;
+                const on = method === m.id;
+                return (
+                  <button key={m.id} type="button" disabled={off} aria-pressed={on} onClick={() => { setPicked(true); setMethod(m.id); }}
+                    className={`text-left rounded-xl border p-3 transition-all ${off ? 'border-[#e1e2e4] text-[#9a9ba5] cursor-not-allowed' : on ? 'border-[#050a44] bg-[#050a44]/5 ring-1 ring-[#050a44]' : 'border-[#e1e2e4] hover:border-[#050a44]/50'}`}>
+                    <span className={`material-symbols-outlined text-[22px] ${off ? '' : 'text-[#050a44]'}`}>{off ? 'lock' : m.icon}</span>
+                    <span className={`block text-[14px] font-bold mt-1 ${off ? '' : 'text-[#050a44]'}`}>{m.label}</span>
+                    <span className="block text-[12px] text-[#46464f]">{m.sub}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {(loyalty?.available ?? 0) > 0 && (
@@ -578,14 +569,9 @@ function PaymentPageInner() {
 
             {holdMethod ? (
               <div className="rounded-xl bg-[#f8f9fb] border border-[#e1e2e4] p-4 space-y-2 text-[14px] text-[#46464f]">
-                <p className="font-bold text-[#050a44]">
-                  {method === 'bank' ? tx('We hold your seat while you transfer') : method === 'bus' ? tx('Reserve now, pay the conductor on the bus') : tx('We hold your seat, you pay at our counter')}
-                </p>
-                {method === 'bus' ? (
-                  <p>{txr('Your seat is reserved for this trip. Pay <b>{amount}</b> in cash to the conductor when you board; please bring the exact amount. Show the QR code in My trips. If your plans change, cancel in My trips so someone else can have the seat.', { amount: formatLKR(totalPrice), b: (c) => <b className="text-[#050a44]">{c}</b> })}</p>
-                ) : (
+                <p className="font-bold text-[#050a44]">{tx('We hold your seat while you transfer')}</p>
                 <>
-                <p>{txn(Math.round((method === 'bank' ? pub.holdMinutesBank : pub.holdMinutesCounter) / 60), "Your seat is held for {n} hour (or until online booking closes, if sooner). If it isn't paid by then, it's released for others.", "Your seat is held for {n} hours (or until online booking closes, if sooner). If it isn't paid by then, it's released for others.")}</p>
+                <p>{txn(Math.round(pub.holdMinutesBank / 60), "Your seat is held for {n} hour (or until online booking closes, if sooner). If it isn't paid by then, it's released for others.", "Your seat is held for {n} hours (or until online booking closes, if sooner). If it isn't paid by then, it's released for others.")}</p>
                 {method === 'bank' ? (
                   <>
                   <p className="rounded-lg bg-white border border-[#e1e2e4] px-3 py-2 font-semibold text-[#050a44]">
@@ -619,91 +605,20 @@ function PaymentPageInner() {
                     <input ref={slipInput} type="file" accept={SLIP_ACCEPT} className="hidden" onChange={(e) => { setSlipFile(e.target.files?.[0] ?? null); e.target.value = ''; }} />
                   </div>
                   </>
-                ) : (
-                  <p>{tx('Pay in cash at {counterWhere}. Show your booking reference.', { counterWhere })}</p>
-                )}
+                ) : null}
                 </>
-                )}
-              </div>
-            ) : payhereLive ? (
-              <div className="rounded-xl bg-[#f8f9fb] border border-[#e1e2e4] p-4 text-[14px] text-[#46464f]">
-                <p className="font-bold text-[#050a44]">{tx('You\'ll pay securely on PayHere')}</p>
-                <p className="mt-1">{tx('Visa, Mastercard, Amex, eZ Cash, mCash and Genie. Your seat is held for 20 minutes while you pay.')}</p>
-              </div>
-            ) : method === 'card' ? (
-              <div className="space-y-[12px]">
-                <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Card number')}</label>
-                  <input
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                    placeholder="1234 5678 9012 3456"
-                    inputMode="numeric"
-                    className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Name on card')}</label>
-                  <input
-                    value={cardName}
-                    onChange={(e) => setCardName(e.target.value)}
-                    placeholder={tx('As printed on card')}
-                    className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-[12px]">
-                  <div>
-                    <label className="text-[11px] font-bold text-[#46464f] px-1">{tx('Expiry')}</label>
-                    <input
-                      value={expiry}
-                      onChange={(e) => setExpiry(formatExpiry(e.target.value))}
-                      placeholder={tx('MM/YY')}
-                      inputMode="numeric"
-                      className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-[#46464f] px-1">CVV</label>
-                    <input
-                      value={cvv}
-                      onChange={(e) => setCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                      placeholder="123"
-                      inputMode="numeric"
-                      type="password"
-                      className="w-full mt-1 px-3 py-2.5 bg-[#f2f4f6] border-none rounded-lg text-sm font-medium outline-none focus:ring-1 focus:ring-[#050a44] placeholder:text-[#9a9ba5] placeholder:font-normal"
-                    />
-                  </div>
-                </div>
               </div>
             ) : (
-              <div className="space-y-[8px]">
-                {(
-                  [
-                    { id: 'ezcash', label: tx('eZ Cash') },
-                    { id: 'mcash', label: 'mCash' },
-                    { id: 'frimi', label: tx('FriMi') },
-                  ] as const
-                ).map((w) => (
-                  <button
-                    key={w.id}
-                    onClick={() => setWallet(w.id)}
-                    className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border text-left transition-colors ${
-                      wallet === w.id
-                        ? 'border-[#050a44] bg-[#050a44]/5'
-                        : 'border-[#e1e2e4] hover:bg-[#f2f4f6]'
-                    }`}
-                  >
-                    <span className="text-sm font-bold">{w.label}</span>
-                    <span
-                      className={`w-4 h-4 rounded-full border-2 ${
-                        wallet === w.id ? 'border-[#050a44] bg-[#050a44]' : 'border-[#c7c5d1]'
-                      }`}
-                    />
-                  </button>
-                ))}
-                {wallet && (
-                  <p className="text-[11px] text-[#6b6d78] mt-[8px] px-1">{tx("You'll receive a payment prompt on {phone} to confirm.", { phone: contactPhone || tx('your registered number') })}</p>
-                )}
+              <div className="rounded-xl bg-[#f8f9fb] border border-[#e1e2e4] p-4 text-[14px] text-[#46464f]">
+                <p className="font-bold text-[#050a44]">{payhereLive ? tx('You\'ll pay securely on PayHere') : mockGateway ? tx('Test payment gateway') : tx('Demo payment')}</p>
+                <p className="mt-1">
+                  {payhereLive
+                    ? tx('Visa, Mastercard, Amex, eZ Cash, mCash and Genie. Your seat is held for 20 minutes while you pay.')
+                    : mockGateway
+                      ? tx('Test mode on this computer: the next page lets you choose whether the payment goes through. No money moves.')
+                      : tx('Demo mode: the payment is simulated and confirmed straight away.')}
+                </p>
+                <p className="mt-2 text-[12px]">{tx('The payment company charges {p}% to process a card or wallet payment; it is added to your total. Bank transfer has no such fee.', { p: pub.gatewayFeePercent })}</p>
               </div>
             )}
           </div>
@@ -772,10 +687,22 @@ function PaymentPageInner() {
                   <span className="font-bold">{formatLKR(b.fee)}</span>
                 </div>
               ))}
+              {rewardOff > 0 && (
+                <div className="flex justify-between text-[#006e1c]">
+                  <span className="font-medium">{tx('Free trip')}</span>
+                  <span className="font-bold">-{formatLKR(rewardOff)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-[#46464f]">{tx('Booking fee')}</span>
+                <span className="text-[#46464f]">{tx('Platform fee')}</span>
                 <span className="font-bold">{formatLKR(platformFee)}</span>
               </div>
+              {gatewayFee > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[#46464f]">{tx('Card payment fee ({p}%)', { p: pub.gatewayFeePercent })}</span>
+                  <span className="font-bold">{formatLKR(gatewayFee)}</span>
+                </div>
+              )}
             </div>
 
             <div className="bg-[#f2f4f6] rounded-xl p-[20px] mb-[20px]">
@@ -800,12 +727,12 @@ function PaymentPageInner() {
                 <>
                   <span className="material-symbols-outlined animate-spin text-[18px]">progress_activity</span>{tx('Processing…')}</>
               ) : (
-                <>{method === 'bus' ? tx('Reserve my seat · pay {amount} on the bus', { amount: formatLKR(totalPrice) }) : method === 'bank' && slipFile ? tx('Hold my seat · send my slip') : holdMethod ? tx('Hold my seat · pay {amount} later', { amount: formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0)) }) : tx('Pay {amount}', { amount: formatLKR(totalPrice - (useReward && (loyalty?.available ?? 0) > 0 ? seatPrice : 0)) })}</>
+                <>{method === 'bank' && slipFile ? tx('Hold my seat · send my slip') : holdMethod ? tx('Hold my seat · pay {amount} by transfer', { amount: formatLKR(totalPrice) }) : tx('Pay {amount}', { amount: formatLKR(totalPrice) })}</>
               )}
             </button>
 
             {!holdMethod && !payhereLive && (
-            <p className="text-center text-[12px] font-semibold text-[#7c5800] bg-[#feb700]/10 rounded-lg px-3 py-2 mt-[16px]">{tx('Demo checkout: no card is charged. Any 16-digit number works.')}</p>
+            <p className="text-center text-[12px] font-semibold text-[#7c5800] bg-[#feb700]/10 rounded-lg px-3 py-2 mt-[16px]">{mockGateway ? tx('Test mode: no money moves.') : tx('Demo checkout: no card is charged.')}</p>
             )}
             <p className="text-center text-[11px] font-medium text-[#46464f] mt-[12px]">{txr('Payments are securely processed. By paying you agree to our <a>Terms of Service</a>.', { a: (c) => <a className="text-[#000000] underline" href="/legal#terms" target="_blank" rel="noopener">{c}</a> })}
             </p>

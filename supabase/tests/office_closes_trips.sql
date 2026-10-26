@@ -1,3 +1,4 @@
+\ir _autopay.inc
 -- The booking centre closes a trip for the conductor; a conductor sees only their own cash.
 -- Run after local_supabase_stub.sql and setup.sql. One select is meant to fail.
 \set ON_ERROR_STOP 1

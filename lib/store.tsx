@@ -39,6 +39,8 @@ interface StoreContextValue {
   deleteSchedule: (id: string) => Promise<ActionResult>;
   /** Test passengers (Staff area → Test passengers): demo mode, or test mode on your computer. */
   addTestBookings: (list: Booking[]) => Promise<ActionResult>;
+  /** Conductor/office: where a passenger gets on and off (after asking them). */
+  changeStops: (id: string, from: string, to: string, note?: string) => Promise<ActionResult & { fareDiff?: number; moneyChanged?: boolean }>;
   deleteTestBookings: (ids: string[]) => Promise<ActionResult>;
   createBooking: (b: NewBooking) => Promise<BookingResult>;
   updateBooking: (id: string, patch: Partial<Booking>) => Promise<ActionResult>;
@@ -423,6 +425,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               passenger: input.passenger,
               contact: input.contact,
               promo: input.promo ?? '',
+              in_app: input.inApp ?? false,
               channel: input.channel,
               payment: input.payment,
               use_reward: input.useReward ?? false,
@@ -451,8 +454,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const left = (bus?.bikeSpaces ?? 0) - bikeSpacesUsed(d.bookings, input.scheduleId, input.date);
         if (need > left) return { ok: false, reason: tx('The luggage compartment just filled up for this departure.') };
       }
-      const { promo: _promo, payment, useReward: _reward, ...rest } = input;
+      const { promo: _promo, inApp: _inApp, payment, useReward: _reward, ...rest } = input;
       void _promo;
+      void _inApp;
       void _reward;
       const held = input.channel === 'online' && (payment === 'bank' || payment === 'counter' || payment === 'bus');
       const booking: Booking = {
@@ -541,6 +545,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
     [refresh],
   );
+  const changeStops = useCallback<StoreContextValue['changeStops']>(
+    async (id, from, to, note) => {
+      if (mode === 'supabase') {
+        const { data: r, error: err } = await supabase().rpc('change_booking_stops', { p_id: id, p_from: from, p_to: to, p_note: note ?? null });
+        if (err) return { ok: false, reason: friendlyError(err) };
+        await refresh();
+        const res = (r ?? {}) as { fare_diff?: number; money_changed?: boolean };
+        return { ok: true, fareDiff: res.fare_diff ?? 0, moneyChanged: !!res.money_changed };
+      }
+      const d = dataRef.current;
+      const b = d.bookings.find((x) => x.id === id);
+      if (!b) return { ok: false, reason: tx('Booking not found.') };
+      const sch = d.schedules.find((x) => x.id === b.scheduleId);
+      const route = d.routes.find((x) => x.id === sch?.routeId);
+      const names = (route?.stops ?? []).filter((x) => !x.hidden).map((x) => x.name.toLowerCase());
+      const fi = names.indexOf(from.toLowerCase());
+      const ti = names.indexOf(to.toLowerCase());
+      if (fi < 0 || ti < 0) return { ok: false, reason: tx('That stop is not on this route.') };
+      if (fi >= ti) return { ok: false, reason: tx('The stop where they get on has to come before the one where they get off.') };
+      if (b.status === 'boarded' && from.toLowerCase() !== b.from.toLowerCase()) return { ok: false, reason: tx('They are already on the bus; only the stop where they get off can change.') };
+      const clear = (booked: string | undefined, now: string) => (booked && booked.toLowerCase() !== now.toLowerCase() ? booked : undefined);
+      const merged = { ...b, from, to, bookedFrom: clear(b.bookedFrom, from), bookedTo: clear(b.bookedTo, to) };
+      const next = { ...d, bookings: d.bookings.map((x) => (x.id === id ? merged : x)) };
+      dataRef.current = next;
+      setData(next);
+      return { ok: true, fareDiff: 0, moneyChanged: false };
+    },
+    [mode, refresh],
+  );
+
   const addTestBookings = useCallback<StoreContextValue['addTestBookings']>(
     async (list) => {
       const marked = list.map((b) => ({ ...b, isTest: true }));
@@ -567,8 +601,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   const value = useMemo(
-    () => ({ data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, addTestBookings, deleteTestBookings, createBooking, updateBooking, confirmPayment, resetDemo, reload }),
-    [data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, addTestBookings, deleteTestBookings, createBooking, updateBooking, confirmPayment, resetDemo, reload],
+    () => ({ data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, addTestBookings, deleteTestBookings, changeStops, createBooking, updateBooking, confirmPayment, resetDemo, reload }),
+    [data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, addTestBookings, deleteTestBookings, changeStops, createBooking, updateBooking, confirmPayment, resetDemo, reload],
   );
 
   return (

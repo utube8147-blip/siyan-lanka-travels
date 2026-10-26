@@ -1,3 +1,4 @@
+\ir _autopay.inc
 -- Branches: two counters and an online booking; prints who sold and who was paid, and the report.
 -- Run after local_supabase_stub.sql and setup.sql. Rolled back at the end.
 \set ON_ERROR_STOP 1

@@ -11,12 +11,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, Crosshair, ExternalLink, Layers, Navigation, Plus, RotateCcw, Shuffle, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, Crosshair, ExternalLink, Layers, Navigation, Plus, RotateCcw, Shuffle, X } from 'lucide-react';
 import {
   REPORT_KINDS, applyOrder, goesTo, isLive, kindOf, kmBetween, minutesToStop, nearestFirst, reportRoad, saveOrder, savedOrder, tonightsStops, useMyPosition, useNearbyAlerts, useOptionalStatus, useRoadReports, voteReport,
   type ReportKind, type RoadReport,
 } from '@/lib/conductor';
 import type { PlanStop } from '@/lib/conductor';
+import { ChangeStopSheet, PeopleAtStop } from '@/components/conductor/ChangeStops';
 import { fetchRoadRoute } from '@/lib/routing';
 import { googleMapsParts } from '@/lib/routeShare';
 import { loadPlans, type RoutePlan } from '@/lib/routeEditor';
@@ -105,6 +106,8 @@ export function MapTab({
 
   // ---- the stop the bus comes to next (first one not yet passed by the clock)
   const [ordering, setOrdering] = useState(false);
+  const [atStop, setAtStop] = useState<string | null>(null);
+  const [changing, setChanging] = useState<Booking | null>(null);
   const next = useMemo(() => {
     const k = stops.findIndex((s) => minutesToStop(date, schedule.departure, s.offsetMin) > -5);
     const s = stops[k < 0 ? stops.length - 1 : k];
@@ -174,7 +177,7 @@ export function MapTab({
             setReporting({ at: p });
           }}
           onReport={setOpenReport}
-          onStop={() => {}}
+          onStop={(i) => stops[i] && setAtStop(stops[i].name)}
           onUserMove={() => setFollow(false)}
         />
         {placing && (
@@ -266,7 +269,7 @@ export function MapTab({
                     {i < stops.length - 1 && <span className="absolute top-3 -bottom-2.5 w-[2px] bg-white/15" />}
                     <span className={`relative mt-1 rounded-full ${end ? 'w-3.5 h-3.5 bg-white' : s.optional ? 'w-3 h-3 bg-[#a78bfa]' : 'w-3 h-3 bg-[#feb700]'} ${isNext ? 'ring-4 ring-[#feb700]/30' : ''}`} />
                   </span>
-                  <span className="flex-1 min-w-0">
+                  <button type="button" onClick={() => setAtStop(s.name)} aria-label={tx('Who gets on and off at {stop}', { stop: s.name })} className="flex-1 min-w-0 text-left">
                     <span className="flex items-center gap-2">
                       <span className="text-[15px] font-semibold truncate">{s.name}</span>
                       {isNext && <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#14120a] bg-[#feb700] rounded-full px-1.5 py-0.5">{tx('Next')}</span>}
@@ -283,7 +286,8 @@ export function MapTab({
                         {v.onRequest ? tx('booked {stop}: at the turn-off for it', { stop: v.stop }) : tx('booked {stop} (not on tonight’s way)', { stop: v.stop })}
                       </span>
                     ))}
-                  </span>
+                  </button>
+                  {!ordering && <ChevronRight className="w-4 h-4 text-white/30 shrink-0 self-center" aria-hidden />}
                   {ordering && (
                     <span className="shrink-0 flex gap-1 self-center">
                       <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={tx('Move {name} up', { name: s.name })} className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center disabled:opacity-25"><ArrowUp className="w-4 h-4" /></button>
@@ -375,6 +379,21 @@ export function MapTab({
       </section>
 
       {/* Report sheet */}
+      {atStop && (() => {
+        const st = stops.find((x) => x.name === atStop);
+        return (
+          <PeopleAtStop
+            stop={atStop}
+            time={st ? formatTime12(addMinutes(schedule.departure, st.offsetMin)) : undefined}
+            also={st?.via?.map((v) => v.stop) ?? []}
+            bookings={bookings}
+            onChange={(b) => { setAtStop(null); setChanging(b); }}
+            onClose={() => setAtStop(null)}
+          />
+        );
+      })()}
+      {changing && <ChangeStopSheet booking={changing} route={route} departure={schedule.departure} onClose={() => setChanging(null)} toast={toast} />}
+
       {reporting && (
         <Sheet title={tx('What did you see?')} onClose={() => setReporting(null)}>
           <ReportForm

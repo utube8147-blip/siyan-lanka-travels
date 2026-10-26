@@ -1,3 +1,4 @@
+\ir _autopay.inc
 -- Deleting a departure with old tickets archives it; the route then archives too.
 \set ON_ERROR_STOP 0
 insert into routes (id, stops) values ('route-t', '[{"name":"A","offsetMin":0,"fareFromStart":0},{"name":"B","offsetMin":60,"fareFromStart":500}]');

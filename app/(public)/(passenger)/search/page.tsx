@@ -11,6 +11,7 @@ import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
 import { addDays, allStopNames, nearbyOptions, routeLabel, roadStops, tripWay, runningRoutes, type NearbyOption, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
+import { StopPicker } from '@/components/StopPicker';
 import { useT, txn } from '@/lib/i18n';
 import {
   MapPin,
@@ -418,11 +419,6 @@ function SearchPageInner() {
         <div>
           {/* Search Bar */}
           <section className="p-4 sm:p-6 md:p-8">
-            <datalist id="search-stop-names">
-              {stopNames.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
             <div className="flex flex-col md:grid md:grid-cols-[1fr_auto_1fr_1fr_auto] gap-3 sm:gap-4 md:items-end">
               {/* Boarding + swap + drop-off — always one compact row on mobile.
                   md:contents makes this wrapper "disappear" at the md breakpoint so
@@ -430,18 +426,15 @@ function SearchPageInner() {
               <div className="grid grid-cols-[1fr_auto_1fr] gap-1.5 items-end md:contents">
                 <div className="space-y-1 sm:space-y-2 min-w-0">
                   <label className="text-[10px] sm:text-[12px] font-bold text-[#46464f] px-1">{tx('Boarding point')}</label>
-                  <div className="relative">
-                    <MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 text-[#c7c5d1]" />
-                    <input
-                      value={from}
-                      list="search-stop-names"
-                      aria-label={tx('Boarding point')}
-                      onChange={(e) => setFrom(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                      className={`${inputClass} pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 text-xs sm:text-sm`}
-                      type="text"
-                    />
-                  </div>
+                  <StopPicker
+                    value={from}
+                    onChange={setFrom}
+                    options={stopNames}
+                    ariaLabel={tx('Boarding point')}
+                    onEnter={runSearch}
+                    icon={<MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 text-[#c7c5d1] pointer-events-none z-[1]" />}
+                    className={`${inputClass} pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 text-xs sm:text-sm`}
+                  />
                 </div>
 
                 <div className="flex md:block justify-center pb-1">
@@ -456,18 +449,16 @@ function SearchPageInner() {
 
                 <div className="space-y-1 sm:space-y-2 min-w-0">
                   <label className="text-[10px] sm:text-[12px] font-bold text-[#46464f] px-1">{tx('Drop-off point')}</label>
-                  <div className="relative">
-                    <MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 text-[#c7c5d1]" />
-                    <input
-                      value={to}
-                      list="search-stop-names"
-                      aria-label={tx('Drop-off point')}
-                      onChange={(e) => setTo(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-                      className={`${inputClass} pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 text-xs sm:text-sm`}
-                      type="text"
-                    />
-                  </div>
+                  <StopPicker
+                    value={to}
+                    onChange={setTo}
+                    options={stopNames}
+                    ariaLabel={tx('Drop-off point')}
+                    onEnter={runSearch}
+                    align="right"
+                    icon={<MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 text-[#c7c5d1] pointer-events-none z-[1]" />}
+                    className={`${inputClass} pl-7 sm:pl-12 pr-2 sm:pr-4 py-2 sm:py-3.5 text-xs sm:text-sm`}
+                  />
                 </div>
               </div>
 

@@ -351,6 +351,38 @@ It turns itself off on Vercel and on any address that isn't localhost or your
 local network, so it can't open the live site even if the flag is left on.
 Set it back to `false` (or remove it) to test real texts.
 
+### Local testing of card payments (mock gateway)
+Put `NEXT_PUBLIC_MOCK_PAYMENTS=true` in `.env.local` and restart. Choosing
+**Card or mobile wallet** at checkout then holds the seat and opens a test page
+(`/mock-gateway`) with **Payment succeeds** / **Payment fails**. Succeeds marks
+the booking paid through the same database function as PayHere's callback
+(same amount check); fails leaves the seat held, and **Pay online now** in My
+trips opens the test page again. Needs `SUPABASE_SECRET_KEY`. Off on Vercel and
+on any public address, so production always uses PayHere (or, while Settings →
+Payments is on Demo, offers bank transfer only).
+
+## What a passenger pays
+- **Ticket fare** (from the route), less any promo.
+- **Card payment fee**: Settings → Payments → *Card payment fee (%)* (default
+  3%), only when paying by card or mobile wallet; none for bank transfer.
+- **Platform fee** per booking: Settings → Booking → *Platform fee* (default
+  LKR 120).
+All of it is collected from the passenger. Online bookings are paid ones only:
+through the gateway, or by bank transfer with the slip (paying on the bus or
+at the counter isn't offered online; staff sales are unchanged). Refunds are a
+share of the ticket; the platform fee and the card fee aren't refunded.
+Reports → **Where the money goes** splits each month into tickets, card fees
+and platform fees: the platform fees are the month's payout to the platform.
+
+### The first-trip promo
+Settings → Booking: the code (e.g. `SIYAN10`), the percent, and two switches,
+*only on a passenger's first trip* and *only when booked in the installed app*
+(both on by default). When they apply, the code is shown and applied by itself
+at checkout; on the website, a first-time passenger sees "install the app for
+10% off". The database checks the same rules. "In the app" is what the app
+reports (a browser can't prove it's installed), so the first-trip rule is the
+real limit.
+
 ## Finance and Analytics (super admin)
 Both pages share one filter bar: a period (last 7 days, this month, last
 month, last 90 days, or custom dates), a bus and a route. Headline numbers

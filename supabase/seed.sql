@@ -2,7 +2,7 @@
 -- Same as lib/seed.ts (minus the sample bookings). Safe to re-run.
 
 insert into public.app_settings (id, booking_fee, promo_code, promo_percent, max_seats_per_booking, booking_cutoff_minutes)
-values (true, 50, 'SIYAN10', 10, 6, 30)
+values (true, 120, 'SIYAN10', 10, 6, 30)
 on conflict (id) do nothing;
 
 insert into public.buses (id, name, reg_no, type, rows, back_row_seats, ladies_seats, amenities, status, bike_spaces)

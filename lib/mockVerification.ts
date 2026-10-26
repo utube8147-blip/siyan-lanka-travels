@@ -51,3 +51,22 @@ export function mockSend(channel: MockMessage['channel'], to: string, body: stri
 }
 
 export const mockOutbox = () => g.__mockOutbox ?? [];
+
+// ---- Mock payment gateway (NEXT_PUBLIC_MOCK_PAYMENTS=true in .env.local) ----
+// Card / wallet payments go to a test page (/mock-gateway) where you choose
+// "Payment succeeds" or "Payment fails", instead of PayHere. Same safety rule:
+// only on your own computer, never on Vercel, never on a public address.
+const paymentsFlag = () => process.env.NEXT_PUBLIC_MOCK_PAYMENTS === 'true';
+
+export function mockPaymentsOn(): boolean {
+  if (!paymentsFlag()) return false;
+  if (typeof window === 'undefined') return serverMockPaymentsOn();
+  return localHost(window.location.hostname);
+}
+
+export function serverMockPaymentsOn(host?: string | null): boolean {
+  if (!paymentsFlag()) return false;
+  if (process.env.VERCEL === '1' || process.env.VERCEL_ENV) return false;
+  if (host) return localHost(host.split(':')[0].replace(/^\[|\]$/g, ''));
+  return true;
+}

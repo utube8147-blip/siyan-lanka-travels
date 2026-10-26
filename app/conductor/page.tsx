@@ -15,7 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
-import { Banknote, Check, ChevronDown, FileDown, LogOut, MapPin, Megaphone, MessageCircle, Phone, Radio, ScanLine, Search, UserX, Undo2, Wallet } from 'lucide-react';
+import { ArrowRightLeft, Banknote, Check, ChevronDown, FileDown, LogOut, MapPin, Megaphone, MessageCircle, Phone, Radio, ScanLine, Search, UserX, Undo2, Wallet } from 'lucide-react';
 import { isStaffRole, useAuth } from '@/contexts/AuthContext';
 import { PageSkeleton, useStore } from '@/lib/store';
 import { addDays, formatDateLabel, formatLKR, formatTime12, listRuns, routeLabel, todayISO, departureDate } from '@/lib/trips';
@@ -32,6 +32,7 @@ import { OPERATOR } from '@/config/operator';
 import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { LanguageSwitcher, tx, txMessage, txn } from '@/lib/i18n';
 import { MapTab } from '@/components/conductor/MapTab';
+import { ChangeStopSheet } from '@/components/conductor/ChangeStops';
 import { BottomNav, type ConductorTab } from '@/components/conductor/BottomNav';
 import { PAY_LABEL } from '@/lib/analytics';
 
@@ -42,6 +43,7 @@ export default function ConductorPage() {
   const { toast, Toast } = useToast();
   const [runKey, setRunKey] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [changing, setChanging] = useState<Booking | null>(null);
   const [posting, setPosting] = useState<TripEvent['kind'] | null>(null);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<string | null>(null);
@@ -344,6 +346,9 @@ export default function ConductorPage() {
                                         {canBoard && (
                                           <button onClick={() => doAction(b, 'noshow')} className="h-12 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-2"><UserX className="w-4 h-4" />{' '}{tx('No-show')}</button>
                                         )}
+                                        {b.status !== 'no-show' && run && (
+                                          <button onClick={() => setChanging(b)} className="h-12 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-2"><ArrowRightLeft className="w-4 h-4" />{' '}{tx('Change stop')}</button>
+                                        )}
                                         {(b.passenger.phone || b.contact.phone) && (
                                           <a href={`tel:${(b.passenger.phone || b.contact.phone).replace(/\s/g, '')}`} className="h-12 rounded-xl bg-white/10 font-semibold flex items-center justify-center gap-2"><Phone className="w-4 h-4" />{' '}{tx('Call')}</a>
                                         )}
@@ -472,6 +477,8 @@ export default function ConductorPage() {
           </>
         )}
       </main>
+
+      {changing && run && <ChangeStopSheet booking={changing} route={run.route} departure={run.schedule.departure} onClose={() => setChanging(null)} toast={toast} />}
 
       {scanning && run && (
         <QrScanner

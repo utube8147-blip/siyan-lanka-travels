@@ -1,3 +1,4 @@
+\ir _autopay.inc
 \set ON_ERROR_STOP 1
 \pset pager off
 update app_settings set booking_window_days = 0; -- tests book weeks ahead; the 7-day window has its own test (booking_window.sql)

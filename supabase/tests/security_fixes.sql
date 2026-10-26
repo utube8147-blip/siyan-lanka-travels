@@ -3,6 +3,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+\ir _autopay.inc
 update app_settings set booking_otp = false, card_payments = true, payments_mode = 'payhere', booking_window_days = 0;
 insert into auth.users (id, email, phone, raw_user_meta_data) values
  ('aaaaaaaa-0000-0000-0000-000000000001', null, '94771111111', '{"full_name":"Alex A","email":"Alex@Example.lk"}'),

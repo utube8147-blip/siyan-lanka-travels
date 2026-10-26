@@ -1,3 +1,4 @@
+\ir _autopay.inc
 -- Booking message once + ticket email + reminders (1 day / 3 hours / 1 hour / start).
 -- Run on a database set up with local_supabase_stub.sql then setup.sql. Prints
 -- what was queued; everything is rolled back at the end.

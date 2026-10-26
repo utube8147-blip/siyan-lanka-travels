@@ -1,3 +1,4 @@
+\ir _autopay.inc
 -- Trip sheet: costs paid from the trip cash come off the cash to hand in; closed trips are locked;
 -- conductors still cannot log office costs. Run after local_supabase_stub.sql and setup.sql. The last three inserts are meant to fail.
 \set ON_ERROR_STOP 1

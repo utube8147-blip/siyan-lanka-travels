@@ -52,7 +52,7 @@ function SettingsForm() {
         <Card className="p-5 space-y-4">
           <h2 className="text-[16px] font-semibold text-[#050a44]">{tx('Booking')}</h2>
           <div className="grid grid-cols-2 gap-3">
-            <Field label={tx('Online booking fee (LKR)')}><input type="number" className={inputClass} value={s.bookingFee} onChange={(e) => setS({ ...s, bookingFee: n(e.target.value) })} /></Field>
+            <Field label={tx('Platform fee per booking (LKR)')} hint={tx('Added to every online booking. Paid out to the platform each month (Reports → Money).')}><input type="number" className={inputClass} value={s.bookingFee} onChange={(e) => setS({ ...s, bookingFee: n(e.target.value) })} /></Field>
             <Field label={tx('Max seats per booking')}><input type="number" className={inputClass} value={s.maxSeats} onChange={(e) => setS({ ...s, maxSeats: Math.max(1, n(e.target.value)) })} /></Field>
           </div>
           <Field label={tx('Online booking closes (minutes before departure)')}><input type="number" className={inputClass} value={s.cutoffMinutes} onChange={(e) => setS({ ...s, cutoffMinutes: n(e.target.value) })} /></Field>
@@ -62,11 +62,26 @@ function SettingsForm() {
             <Field label={tx('Promo code')} hint={tx('Leave empty for none')}><input className={inputClass} value={s.promoCode} onChange={(e) => setS({ ...s, promoCode: e.target.value.toUpperCase().replace(/\s/g, '') })} /></Field>
             <Field label={tx('Promo discount (%)')}><input type="number" className={inputClass} value={s.promoPercent} onChange={(e) => setS({ ...s, promoPercent: Math.min(100, n(e.target.value)) })} /></Field>
           </div>
+          {([
+            { k: 'promoFirstOrder' as const, on: tx('Only on a passenger\'s first trip'), off: tx('On every trip'), hint: tx('First trip: the passenger has no earlier booking (cancelled ones don\'t count).') },
+            { k: 'promoAppOnly' as const, on: tx('Only when booked in the installed app'), off: tx('In the app and on the website'), hint: tx('Shown and applied by itself in the app; on the website passengers see “install the app for {p}% off”.', { p: s.promoPercent }) },
+          ]).map((r) => (
+            <label key={r.k} className="flex items-center justify-between gap-4 rounded-xl bg-[#f2f4f6] p-3">
+              <span>
+                <span className="block text-[14px] font-semibold text-[#050a44]">{s[r.k] ? r.on : r.off}</span>
+                <span className="block text-[12px] text-[#6b6d78]">{r.hint}</span>
+              </span>
+              <button type="button" role="switch" aria-checked={s[r.k]} onClick={() => setS({ ...s, [r.k]: !s[r.k] })}
+                className={`relative w-12 h-7 rounded-full shrink-0 transition-colors ${s[r.k] ? 'bg-[#006e1c]' : 'bg-[#c7c5d1]'}`}>
+                <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${s[r.k] ? 'left-6' : 'left-1'}`} />
+              </button>
+            </label>
+          ))}
         </Card>
 
         <Card className="p-5 space-y-4">
           <h2 className="text-[16px] font-semibold text-[#050a44]">{tx('Cancellation refunds')}</h2>
-          <p className="text-[13px] text-[#46464f]">{tx('Passengers get back this share of the fare (the booking fee is never refunded).')}</p>
+          <p className="text-[13px] text-[#46464f]">{tx('Passengers get back this share of the ticket (the platform fee and card fee are never refunded).')}</p>
           {s.refundPolicy.map((t, i) => (
             <div key={i} className="grid grid-cols-2 gap-3">
               <Field label={i === s.refundPolicy.length - 1 ? tx('Less than that') : tx('At least (hours before)')}>
@@ -134,7 +149,10 @@ function SettingsForm() {
               <option value="payhere">{tx('PayHere: cards, eZ Cash, mCash, Genie')}</option>
             </select>
           </Field>
-          {s.paymentsMode === 'demo' && <p className="text-[12px] font-semibold text-[#ba1a1a]">{tx('While on demo, online bookings are confirmed without payment. Don\'t go live like this.')}</p>}
+          {s.paymentsMode === 'demo' && <p className="text-[12px] font-semibold text-[#ba1a1a]">{tx('While on demo, card and wallet aren\'t offered (only bank transfer). To try card payments on your own computer, set NEXT_PUBLIC_MOCK_PAYMENTS=true.')}</p>}
+          <Field label={tx('Card payment fee (%)')} hint={tx('The gateway\'s cut, added to card and wallet payments (bank transfer has none). Check your PayHere rate.')}>
+            <input type="number" step="0.1" min={0} max={20} className={inputClass} value={s.gatewayFeePercent} onChange={(e) => setS({ ...s, gatewayFeePercent: Math.min(20, Math.max(0, Number(e.target.value) || 0)) })} />
+          </Field>
           <Field label={tx('Bank details shown for bank transfers')}><input className={inputClass} value={s.bankDetails} onChange={(e) => setS({ ...s, bankDetails: e.target.value })} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label={tx('Hold for counter payment (minutes)')}><input type="number" className={inputClass} value={s.holdMinutesCounter} onChange={(e) => setS({ ...s, holdMinutesCounter: Math.max(15, n(e.target.value)) })} /></Field>
@@ -175,21 +193,11 @@ function SettingsForm() {
 
         <Card className="p-5 space-y-4">
           <h2 className="text-[16px] font-semibold text-[#050a44]">{tx('Ways to pay online')}</h2>
-          <p className="text-[13px] text-[#46464f]">{tx('Bank transfer and pay at the counter are always offered. Passengers are told when their payment is recorded.')}</p>
-          <label className="flex items-center justify-between gap-4 rounded-xl bg-[#f2f4f6] p-4">
-            <span>
-              <span className="block text-[15px] font-semibold text-[#050a44]">{s.payOnBus ? tx('Pay on the bus: on') : tx('Pay on the bus: off')}</span>
-              <span className="block text-[12px] text-[#6b6d78]">{tx('The seat is reserved without payment; the conductor collects cash on the bus. Turn off if too many reserved seats go unused.')}</span>
-            </span>
-            <button type="button" role="switch" aria-checked={s.payOnBus} aria-label={tx('Pay on the bus')} onClick={() => setS({ ...s, payOnBus: !s.payOnBus })}
-              className={`relative w-12 h-7 rounded-full shrink-0 transition-colors ${s.payOnBus ? 'bg-[#006e1c]' : 'bg-[#c7c5d1]'}`}>
-              <span className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all ${s.payOnBus ? 'left-6' : 'left-1'}`} />
-            </button>
-          </label>
+          <p className="text-[13px] text-[#46464f]">{tx('Online, a seat is only sold when it\'s paid: by card or mobile wallet through the gateway, or by bank transfer with the slip. Paying on the bus or at the counter isn\'t offered online.')}</p>
           <label className="flex items-center justify-between gap-4 rounded-xl bg-[#f2f4f6] p-4">
             <span>
               <span className="block text-[15px] font-semibold text-[#050a44]">{s.cardPayments ? tx('Card & wallet: open') : tx('Card & wallet: locked (shown as not available yet)')}</span>
-              <span className="block text-[12px] text-[#6b6d78]">{tx('Leave locked until the payment gateway is set up. Unlocked with Payments on Demo, card bookings are confirmed without any money.')}</span>
+              <span className="block text-[12px] text-[#6b6d78]">{tx('Leave locked until PayHere is set up (Payments above). Card bookings wait for the gateway to confirm the money.')}</span>
             </span>
             <button type="button" role="switch" aria-checked={s.cardPayments} aria-label={tx('Card and wallet payments')} onClick={() => setS({ ...s, cardPayments: !s.cardPayments })}
               className={`relative w-12 h-7 rounded-full shrink-0 transition-colors ${s.cardPayments ? 'bg-[#006e1c]' : 'bg-[#c7c5d1]'}`}>

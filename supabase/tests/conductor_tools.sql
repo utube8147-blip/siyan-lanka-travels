@@ -3,6 +3,7 @@
 \set QUIET on
 \pset tuples_only on
 \pset format unaligned
+\ir _autopay.inc
 update app_settings set booking_otp = false, card_payments = true, payments_mode = 'payhere', booking_window_days = 0, optional_stop_cutoff_hours = 0,
   messaging = coalesce(messaging, '{}'::jsonb) || '{"sms": true}'::jsonb;
 insert into auth.users (id, email, phone, raw_user_meta_data) values
