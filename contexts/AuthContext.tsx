@@ -14,6 +14,7 @@ import type { Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase, friendlyError } from '@/lib/supabase/client';
 import { toE164LK } from '@/lib/phone';
 import { tx } from '@/lib/i18n';
+import { MOCK_CODE, mockVerificationOn } from '@/lib/mockVerification';
 
 /**
  * 'operator' = staff (operations: departures, bookings, fleet, timetable).
@@ -193,6 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const e164 = toE164LK(phone);
     if (!e164) return { ok: false, reason: tx('Enter a Sri Lankan mobile number, like 077 123 4567.') };
     if (mode === 'demo') return { ok: true };
+    if (mockVerificationOn()) return { ok: true }; // local testing: no text; the test code signs in
     const { error } = await supabase().auth.signInWithOtp({
       phone: e164,
       options: { shouldCreateUser: opts.createUser ?? false, channel: 'sms', data: opts.fullName ? { full_name: opts.fullName, phone: e164, ...(opts.email ? { email: opts.email.trim().toLowerCase() } : {}) } : undefined },
@@ -218,8 +220,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login({ phone: e164, identifier: e164, fullName: opts.fullName, email: opts.email });
       return { ok: true };
     }
-    const { data, error } = await supabase().auth.verifyOtp({ phone: e164, token, type: 'sms' });
-    if (error) return { ok: false, reason: /expired|invalid/i.test(error.message) ? tx('That code is wrong or has expired. Ask for a new one.') : friendlyError(error) };
+    let data: { user: { id: string } | null; session: Session | null };
+    if (mockVerificationOn()) {
+      // Local testing: the server signs this number in without a text.
+      const res = await fetch('/api/dev/mock-sign-in', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: e164, code: token, fullName: opts.fullName, signUp: !!opts.fullName }) }).catch(() => null);
+      const j = res ? await res.json().catch(() => ({})) : {};
+      if (!res?.ok) return { ok: false, reason: j.error ?? tx('Wrong code. (Test mode: the code is {code}.)', { code: MOCK_CODE }) };
+      const set = await supabase().auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
+      if (set.error) return { ok: false, reason: friendlyError(set.error) };
+      data = { user: set.data.user, session: set.data.session };
+    } else {
+      const v = await supabase().auth.verifyOtp({ phone: e164, token, type: 'sms' });
+      if (v.error) return { ok: false, reason: /expired|invalid/i.test(v.error.message) ? tx('That code is wrong or has expired. Ask for a new one.') : friendlyError(v.error) };
+      data = v.data;
+    }
     // Keep the profile in step (name from sign-up, number from the verified
     // phone, and the optional e-ticket email — kept on the profile, so it
     // never becomes a second way to sign in).

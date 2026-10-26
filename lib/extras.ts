@@ -64,6 +64,8 @@ export interface PublicSettings {
   holdMinutesCounter: number;
   holdMinutesBank: number;
   rewardEvery: number;
+  /** Cancellation refunds (Staff area → Settings): hours before departure → % of the fare. */
+  refundPolicy: readonly { hoursBefore: number; percent: number }[];
 }
 const DEFAULT_PUBLIC: PublicSettings = {
   bookingFee: OPERATOR.bookingFee,
@@ -78,6 +80,7 @@ const DEFAULT_PUBLIC: PublicSettings = {
   holdMinutesCounter: 120,
   holdMinutesBank: 1440,
   rewardEvery: 10,
+  refundPolicy: OPERATOR.refundPolicy.map((t) => ({ ...t })),
 };
 export function usePublicSettings() {
   const [s, setS] = useState<PublicSettings>(DEFAULT_PUBLIC);
@@ -104,6 +107,7 @@ export function usePublicSettings() {
             holdMinutesCounter: data.hold_minutes_counter,
             holdMinutesBank: data.hold_minutes_bank,
             rewardEvery: data.reward_every,
+            refundPolicy: Array.isArray(data.refund_policy) && data.refund_policy.length ? data.refund_policy : DEFAULT_PUBLIC.refundPolicy,
           });
       });
   }, []);

@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { OPERATOR } from '@/config/operator';
 import { dateLocale } from '@/lib/trips';
 import { N_, tx, txr } from '@/lib/i18n';
+import { usePublicSettings } from '@/lib/extras';
 
 import { fmtDate } from '@/lib/dates';
 // When these terms last changed (shown in the reader's language).
-const UPDATED_ON = new Date(2026, 9, 3);
+const UPDATED_ON = new Date(2026, 9, 26);
 
 function Section({
   id,
@@ -43,8 +44,56 @@ function Part({ id, title, children }: { id?: string; title: string; children: R
 }
 const List = ({ children }: { children: React.ReactNode }) => <ul className="list-disc pl-5 space-y-1.5">{children}</ul>;
 
+/** The refund rules, from Staff area → Settings (the live ones once loaded). */
+function RefundTable() {
+  const tiers = [...usePublicSettings().refundPolicy].sort((a, b) => b.hoursBefore - a.hoursBefore);
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#edeef0]">
+      <table className="w-full text-[14px]">
+        <thead>
+          <tr className="bg-[#f8f9fb] text-left text-[#050a44]">
+            <th className="px-4 py-2.5 font-semibold">{tx('When you cancel')}</th>
+            <th className="px-4 py-2.5 font-semibold">{tx('Refund')}</th>
+            <th className="px-4 py-2.5 font-semibold">{tx('What is kept')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[#edeef0]">
+          {tiers.map((t, i) => {
+            const when =
+              t.hoursBefore > 0
+                ? i > 0
+                  ? tx('{h}+ hours before (less than {prev})', { h: t.hoursBefore, prev: tiers[i - 1].hoursBefore })
+                  : tx('{h} hours or more before departure', { h: t.hoursBefore })
+                : tx('Less than {h} hours before departure, or not turning up', { h: tiers[i - 1]?.hoursBefore ?? 0 });
+            return (
+              <tr key={t.hoursBefore} className="align-top">
+                <td className="px-4 py-3">{when}</td>
+                <td className="px-4 py-3 font-semibold text-[#050a44]">{t.percent > 0 ? tx('{p}% of the ticket fare', { p: t.percent }) : tx('No refund')}</td>
+                <td className="px-4 py-3">
+                  {t.percent >= 100 ? (
+                    '—'
+                  ) : t.percent > 0 ? (
+                    <>
+                      <b className="text-[#050a44]">{tx('{p}% service charge', { p: 100 - t.percent })}</b>
+                      <span className="block text-[12px] text-[#6b6d78]">{tx('For administration and payment processing.')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <b className="text-[#050a44]">{tx('Booking forfeited')}</b>
+                      <span className="block text-[12px] text-[#6b6d78]">{tx('The seat counts as taken (a no-show); the fare can’t be recovered.')}</span>
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function LegalContent() {
-  const tiers = OPERATOR.refundPolicy;
   const contact = OPERATOR.contact;
   return (
     <main className="max-w-[760px] lg:max-w-[1440px] mx-auto px-4 lg:px-8 py-6 md:py-10 space-y-5">
@@ -150,35 +199,12 @@ export function LegalContent() {
       {/* Refunds and Privacy side by side on laptops */}
       <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
         <Section id="refunds" title={tx('Cancellations & refunds')}>
-          <p>{tx('Cancel from My trips. The refund depends on how long before your departure you cancel:')}</p>
-          <div className="overflow-hidden rounded-xl border border-[#edeef0]">
-            <table className="w-full text-[14px]">
-              <thead>
-                <tr className="bg-[#f8f9fb] text-left text-[#050a44]">
-                  <th className="px-4 py-2.5 font-semibold">{tx('When you cancel')}</th>
-                  <th className="px-4 py-2.5 font-semibold">{tx('Refund of the fare')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#edeef0]">
-                {tiers.map((t, i) => (
-                  <tr key={t.hoursBefore}>
-                    <td className="px-4 py-2.5">
-                      {t.hoursBefore > 0
-                        ? i > 0
-                          ? tx('{h}+ hours before (less than {prev})', { h: t.hoursBefore, prev: tiers[i - 1].hoursBefore })
-                          : tx('{h}+ hours before', { h: t.hoursBefore })
-                        : tx('Less than {h} hours before', { h: tiers[i - 1]?.hoursBefore ?? 0 })}
-                    </td>
-                    <td className="px-4 py-2.5 font-semibold text-[#050a44]">{t.percent}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <p>{tx('Cancel from My trips. The refund depends on how long before the bus leaves your stop you cancel:')}</p>
+          <RefundTable />
           <List>
             <li>{tx('The exact amount you will get back is shown in My trips before you confirm the cancellation.')}</li>
             <li>{tx('The online booking fee is not refunded. A booking that was never paid has nothing to refund; cancelling it simply frees the seat.')}</li>
-            <li>{tx('If you don\'t travel and haven\'t cancelled (a no-show), no refund is due.')}</li>
+            <li>{tx('If you don\'t travel and haven\'t cancelled (a no-show), no refund is due: the seat counts as taken.')}</li>
             <li>{tx('Refunds are paid to the bank account you give us in My trips, or in cash at our counter. We aim to pay within 7 working days of the cancellation; you are told when it has been paid.')}</li>
             <li>{tx('To travel with fewer seats, cancel the booking and book again; the refund follows the table above. Our office can also change the number of seats at the counter.')}</li>
             <li>{tx('If we cancel a departure, you get a full refund including the booking fee.')}</li>

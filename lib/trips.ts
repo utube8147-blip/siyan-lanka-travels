@@ -262,7 +262,7 @@ export function tripWay(route: Route, runs: (name: string) => boolean): { stops:
   const running = new Set(opt.filter((s) => runs(s.name)).map((s) => s.name.trim().toLowerCase()));
   if (running.size === opt.length) return { stops: route.stops, variant: null };
   // Up to date even for a route last saved before its on-request stops changed.
-  for (const v of syncVariants(route).variants ?? []) {
+  for (const v of variantsOf(route)) {
     if (!variantComplete(route, v)) continue; // missing a main stop (route changed since it was edited): not used
     const cov = onRequestCovered(route, v.stops);
     if (cov.length === running.size && cov.every((n) => running.has(n))) return { stops: v.stops, variant: v };
@@ -280,6 +280,14 @@ export function variantComplete(route: Route, v: RouteVariant) {
   const has = new Set(v.stops.filter((s) => !s.hidden).map((s) => low(s.name)));
   const out = new Set((v.removed ?? []).map(low));
   return route.stops.every((s) => s.hidden || s.optional || has.has(low(s.name)) || out.has(low(s.name)));
+}
+
+// Variants worked out once per route object (maps and lists ask many times a render).
+const variantCache = new WeakMap<Route, RouteVariant[]>();
+function variantsOf(route: Route): RouteVariant[] {
+  let v = variantCache.get(route);
+  if (!v) variantCache.set(route, (v = syncVariants(route).variants ?? []));
+  return v;
 }
 
 /** More on-request stops than this on one route: variants aren't made automatically (2^n of them). */
@@ -455,11 +463,16 @@ export function getTrip(
 }
 
 /** Refund due if the passenger cancels now, per OPERATOR.refundPolicy. */
-export function refundQuote(booking: Booking, trip: Pick<Trip, 'boardingDate' | 'departure'> | null, now = new Date()) {
+export function refundQuote(
+  booking: Booking,
+  trip: Pick<Trip, 'boardingDate' | 'departure'> | null,
+  now = new Date(),
+  policy: readonly { hoursBefore: number; percent: number }[] = OPERATOR.refundPolicy,
+) {
   if (!trip) return { percent: 0, amount: 0 };
   const leaves = departureDate(trip.boardingDate, trip.departure);
   const hoursBefore = (leaves.getTime() - now.getTime()) / 3_600_000;
-  const tier = OPERATOR.refundPolicy.find((t) => hoursBefore >= t.hoursBefore);
+  const tier = [...policy].sort((a, b) => b.hoursBefore - a.hoursBefore).find((t) => hoursBefore >= t.hoursBefore);
   const percent = tier ? tier.percent : 0;
   // The booking fee is not refundable.
   const refundable = booking.total - booking.fee;

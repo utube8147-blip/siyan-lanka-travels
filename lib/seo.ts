@@ -57,21 +57,27 @@ export interface RoutePage {
   amenities: string[];
 }
 
-/** Every Colombo ⇄ stop pair, plus the big-town pairs people search for. */
+/**
+ * A page for every trip people can take on a route that is running (open, not
+ * deleted, a departure that isn't paused on a bus in service): from the
+ * route's first stop to every stop, and from every stop to its last stop.
+ * On-request stops and hidden shaping points don't get pages.
+ */
 export function allRoutePages(tt: Timetable = SEED_TIMETABLE): RoutePage[] {
   const pages = new Map<string, RoutePage>();
-  for (const route of tt.routes.filter((r) => r.active)) {
-    const stops = route.stops.filter((s) => !s.hidden);
+  const running = tt.routes.filter(
+    (r) => r.active && !r.archived && tt.schedules.some((s) => s.routeId === r.id && s.active && !s.archived && tt.buses.find((b) => b.id === s.busId)?.status === 'active'),
+  );
+  for (const route of running) {
+    const stops = route.stops.filter((s) => !s.hidden && !s.optional);
     for (let i = 0; i < stops.length; i++) {
       for (let j = i + 1; j < stops.length; j++) {
         const from = stops[i];
         const to = stops[j];
-        const endsAtColombo = from.name === 'Colombo' || to.name === 'Colombo';
-        const bigTowns = ['Kurunegala', 'Dambulla', 'Polonnaruwa', 'Batticaloa', 'Kalmunai', 'Akkaraipattu'];
-        if (!endsAtColombo && !(bigTowns.includes(from.name) && bigTowns.includes(to.name))) continue;
+        if (i !== 0 && j !== stops.length - 1) continue; // from the start, or to the end
         const slug = `${slugify(from.name)}-to-${slugify(to.name)}`;
         if (pages.has(slug)) continue;
-        const schedules = tt.schedules.filter((s) => s.routeId === route.id && s.active);
+        const schedules = tt.schedules.filter((s) => s.routeId === route.id && s.active && !s.archived);
         if (!schedules.length) continue;
         const bus = tt.buses.find((b) => b.id === schedules[0].busId);
         pages.set(slug, {

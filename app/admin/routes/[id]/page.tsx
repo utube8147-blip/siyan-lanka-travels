@@ -726,6 +726,7 @@ function Editor({
                 <div className="w-full rounded-xl bg-[#f5f3ff] border border-[#ddd6fe] px-3 py-2.5 text-[12px] text-[#3b0764]">
                   <p className="font-bold">Editing variant “{openVariant.name}” · {openVariant.edited ? 'edited' : 'automatic (saving here keeps your version)'}</p>
                   <p>{covers(stops).length ? `Used when only ${covers(stops).join(', ')} ${covers(stops).length === 1 ? 'fills' : 'fill'}.` : 'Used when none of the on-request stops fill.'} The live route is not changed.</p>
+                  {!openVariant.edited && <p className="mt-1">Times are the live route&apos;s, so nobody waiting at a later stop is left behind (the bus waits instead of leaving early). To use road times for this variant, press “Fill times from road” below and then “Save variant”.</p>}
                   {vProblems.map((p) => <p key={p} className="font-semibold text-[#ba1a1a] mt-1">{p}</p>)}
                   {vLeftOut.length > 0 && (
                     <p className="font-semibold text-[#92400e] mt-1">

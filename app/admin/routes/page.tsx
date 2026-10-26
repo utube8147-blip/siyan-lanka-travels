@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { Map as MapIcon, Plus, Trash2 } from 'lucide-react';
 import { useStore } from '@/lib/store';
 import type { Route, Schedule, Weekday } from '@/lib/types';
-import { addDays, describeRuns, formatDuration, formatLKR, formatTime12, fromMinutes, genId, isAlternating, routeLabel, scheduleConflicts, todayISO, toMinutes, dateLocale } from '@/lib/trips';
+import { addDays, describeRuns, formatDuration, formatLKR, formatTime12, fromMinutes, genId, isAlternating, routeLabel, scheduleConflicts, syncVariants, todayISO, toMinutes, variantComplete, dateLocale } from '@/lib/trips';
 import { Badge, Button, Card, Field, Modal, PageHeader, WEEKDAYS, formatDays, inputClass, useToast, stackTable } from '@/components/admin/ui';
 import { uuid } from '@/lib/uuid';
 import { tx } from '@/lib/i18n';
@@ -136,11 +136,33 @@ export default function RoutesPage() {
               </div>
               {!r.active && <Badge value="paused" />}
             </div>
+            {(() => {
+              // Variants: one per mix of on-request stops; edited ones the route has outgrown need a look.
+              const vs = syncVariants(r).variants ?? [];
+              if (!vs.length) return null;
+              const broken = vs.filter((v) => v.edited && !variantComplete(r, v));
+              const edited = vs.filter((v) => v.edited).length;
+              return (
+                <div className={`flex flex-wrap items-center gap-2 px-5 py-2 text-[12px] border-b border-[#edeef0] ${broken.length ? 'bg-[#fee2e2] text-[#991b1b]' : 'bg-[#f5f3ff] text-[#3b0764]'}`}>
+                  <span className="font-bold">{vs.length} {vs.length === 1 ? 'variant' : 'variants'}</span>
+                  <span>for {r.stops.filter((x) => x.optional && !x.hidden).length} on-request stops{edited ? ` · ${edited} edited` : ''}</span>
+                  {broken.length > 0 && (
+                    <Link href={`/admin/routes/${r.id}`} className="font-bold underline">
+                      {broken.length === 1 ? `"${broken[0].name}" needs fixing` : `${broken.length} need fixing`} (not used until then)
+                    </Link>
+                  )}
+                </div>
+              );
+            })()}
             <ol className="px-5 py-3 text-[13px]">
               {r.stops.map((s, i) => (
                 <li key={`${s.name}-${i}`} className="grid grid-cols-[18px_1fr_auto_auto] gap-3 items-center py-1.5">
                   <span className={`w-2.5 h-2.5 rounded-full ${i === 0 || i === r.stops.length - 1 ? 'bg-[#050a44]' : 'bg-[#feb700]'}`} aria-hidden />
-                  <span className="font-semibold text-[#050a44]">{s.name}</span>
+                  <span className={`font-semibold ${s.hidden ? 'text-[#9a99a8] italic' : 'text-[#050a44]'}`}>
+                    {s.name}
+                    {s.optional && !s.hidden && <span className="ml-1.5 text-[10px] font-bold text-[#6d28d9] bg-[#ede9fe] rounded-full px-1.5 py-0.5 align-middle">on request · {s.minSeats ?? 1}</span>}
+                    {s.hidden && <span className="ml-1.5 text-[10px] font-semibold not-italic">(hidden)</span>}
+                  </span>
                   <span className="text-[#46464f] tabular-nums">+{formatDuration(s.offsetMin)}</span>
                   <span className="font-bold text-[#050a44] tabular-nums w-[88px] text-right">{r.flatFare !== false ? '' : formatLKR(s.fareFromStart)}</span>
                 </li>

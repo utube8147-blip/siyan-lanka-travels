@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { RouteMapOverlay, type RouteData, type RouteStop } from '@/components/RouteMapOverlay';
 import { OnRequestChip } from '@/components/OnRequestNotice';
+import { BusCover } from '@/components/BusPhoto';
 import { detourState, goesTo, useOptionalStatus } from '@/lib/conductor';
 import { useJunction } from '@/lib/detour';
 import type { RouteStop as RouteStopT } from '@/lib/types';
@@ -37,6 +38,7 @@ interface Schedule {
   operator: string;
   operatorInitials: string;
   busName: string;
+  busPhotos: string[];
   busType: 'AC' | 'Non-AC';
   departure: string; // display, e.g. 05:30 AM
   arrival: string;
@@ -55,6 +57,7 @@ function toSchedule(t: Trip): Schedule {
     operator: OPERATOR.name,
     operatorInitials: OPERATOR.initials,
     busName: `${t.bus.name} · ${t.bus.regNo}`,
+    busPhotos: t.bus.photos ?? [],
     busType: t.bus.type,
     departure: formatTime12(t.departure),
     arrival: `${formatTime12(t.arrival)}${t.arrivalDayOffset ? ' +1' : ''}`,
@@ -177,6 +180,8 @@ function SearchPageInner() {
 
   // Holds the schedule whose route is being viewed, if any
   const [routeSchedule, setRouteSchedule] = useState<Schedule | null>(null);
+  // The bus whose photos are open
+  const [photosOf, setPhotosOf] = useState<Schedule | null>(null);
 
   // --- Date strip state ---
   const [dateWindowOffset, setDateWindowOffset] = useState(0);
@@ -675,9 +680,16 @@ function SearchPageInner() {
                     {/* Header: navy operator badge + gold class pill */}
                     <div className="flex justify-between items-center mb-[20px]">
                       <div className="flex items-center gap-[12px]">
-                        <div className="w-11 h-11 rounded-lg bg-[#050a44] text-white flex items-center justify-center text-[13px] font-bold flex-shrink-0">
-                          {s.operatorInitials}
-                        </div>
+                        {s.busPhotos.length ? (
+                          <button type="button" onClick={() => setPhotosOf(s)} title={tx('Photos of the bus')} className="w-[72px] h-12 rounded-lg overflow-hidden flex-shrink-0 border border-[#e1e2e4] hover:ring-2 hover:ring-[#feb700]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={s.busPhotos[0]} alt={tx('Photos of the bus')} className="w-full h-full object-cover" loading="lazy" />
+                          </button>
+                        ) : (
+                          <div className="w-11 h-11 rounded-lg bg-[#050a44] text-white flex items-center justify-center text-[13px] font-bold flex-shrink-0">
+                            {s.operatorInitials}
+                          </div>
+                        )}
                         <div>
                           <p className="text-[15px] font-bold text-[#050a44]">{s.operator}</p>
                           <p className="text-[12px] font-medium text-[#46464f]">{s.busName}</p>
@@ -799,6 +811,18 @@ function SearchPageInner() {
           </div>
         </div>
       </main>
+
+      {photosOf && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={tx('Photos of the bus')} onClick={() => setPhotosOf(null)}>
+          <div className="w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <BusCover photos={photosOf.busPhotos} name={photosOf.busName} className="aspect-[16/9] rounded-2xl" />
+            <div className="flex items-center justify-between mt-3 text-white">
+              <p className="text-[14px] font-bold">{photosOf.busName}</p>
+              <button type="button" onClick={() => setPhotosOf(null)} className="h-10 px-4 rounded-xl bg-white text-[#050a44] text-[14px] font-bold">{tx('Close')}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Route map overlay: real stops, timetable and (when shared) the live bus */}
       {routeSchedule && routeData && (

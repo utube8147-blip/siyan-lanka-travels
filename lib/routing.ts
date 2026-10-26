@@ -21,14 +21,47 @@ const ROUTING_URL =
   process.env.NEXT_PUBLIC_ROUTING_URL || process.env.NEXT_PUBLIC_ROUING_URL || 'https://router.project-osrm.org/route/v1/driving';
 
 const cache = new Map<string, RoadRoute>();
+const pending = new Map<string, Promise<{ route: RoadRoute | null; error?: string }>>();
+
+/**
+ * The free public server allows about one request a second: requests to it
+ * wait their turn (a short queue), and a "busy" answer is retried once.
+ * Your own server (NEXT_PUBLIC_ROUTING_URL) isn't queued.
+ */
+const PUBLIC = /router\.project-osrm\.org/.test(ROUTING_URL);
+let nextSlot = 0;
+async function turn(signal?: AbortSignal) {
+  if (!PUBLIC) return;
+  const now = Date.now();
+  const at = Math.max(now, nextSlot);
+  nextSlot = at + 1100;
+  if (at > now) await new Promise<void>((ok, no) => {
+    const t = setTimeout(ok, at - now);
+    signal?.addEventListener('abort', () => { clearTimeout(t); no(new DOMException('Aborted', 'AbortError')); }, { once: true });
+  });
+}
 
 export async function fetchRoadRoute(stops: LatLng[], signal?: AbortSignal): Promise<{ route: RoadRoute | null; error?: string }> {
   if (stops.length < 2) return { route: null };
   const key = stops.map(([lat, lng]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(';');
   const hit = cache.get(key);
   if (hit) return { route: hit };
+  // The same road asked for twice at once (two maps on a page): one request.
+  const inFlight = pending.get(key);
+  if (inFlight) return inFlight;
+  const p = request(key, signal).finally(() => pending.delete(key));
+  if (!signal) pending.set(key, p);
+  return p;
+}
+
+async function request(key: string, signal?: AbortSignal, retried = false): Promise<{ route: RoadRoute | null; error?: string }> {
   try {
+    await turn(signal);
     const res = await fetch(`${ROUTING_URL.replace(/\/$/, '')}/${key}?overview=full&geometries=geojson&steps=false`, { signal });
+    if (res.status === 429 && !retried) {
+      nextSlot = Date.now() + 2500;
+      return request(key, signal, true);
+    }
     if (res.status === 429) return { route: null, error: tx('The routing server is busy (too many requests). Try again in a moment.') };
     if (!res.ok) return { route: null, error: tx('The routing server answered {status}.', { status: res.status }) };
     const data = await res.json();
@@ -50,29 +83,3 @@ export async function fetchRoadRoute(stops: LatLng[], signal?: AbortSignal): Pro
   }
 }
 
-const tableCache = new Map<string, number[][]>();
-
-/**
- * Car minutes between every pair of points (OSRM "table" service, same server
- * as the routes). matrix[i][j] = minutes from point i to point j. Null when
- * the server can't be reached or doesn't offer it.
- */
-export async function fetchDriveTable(points: LatLng[], signal?: AbortSignal): Promise<number[][] | null> {
-  if (points.length < 2) return null;
-  const key = points.map(([lat, lng]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(';');
-  const hit = tableCache.get(key);
-  if (hit) return hit;
-  try {
-    const base = ROUTING_URL.replace(/\/$/, '').replace('/route/', '/table/');
-    const res = await fetch(`${base}/${key}?annotations=duration`, { signal });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const m = data?.durations as (number | null)[][] | undefined;
-    if (!m || m.length !== points.length) return null;
-    const minutes = m.map((row) => row.map((s) => (s == null ? Infinity : s / 60)));
-    tableCache.set(key, minutes);
-    return minutes;
-  } catch {
-    return null;
-  }
-}

@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { adminClient } from '@/lib/server/admin';
 import { sendSms } from '@/lib/server/messaging';
+import { MOCK_CODE, serverMockOn } from '@/lib/mockVerification';
 
 export const runtime = 'nodejs';
 
@@ -35,7 +36,8 @@ export async function POST(req: NextRequest) {
   if (!row) return NextResponse.json({ error: 'Could not read the code.' }, { status: 500 });
   const masked = `0${row.phone.slice(2, 4)} ••• •${row.phone.slice(-3)}`;
 
-  const testCode = (process.env.BOOKING_OTP_TEST_CODE ?? '').trim();
+  // Local testing (NEXT_PUBLIC_MOCK_VERIFICATION) uses the same fixed code.
+  const testCode = serverMockOn(req.headers.get('host')) ? MOCK_CODE : (process.env.BOOKING_OTP_TEST_CODE ?? '').trim();
   if (/^\d{6}$/.test(testCode)) {
     await db.from('booking_codes').update({ code: testCode }).eq('id', id);
     return NextResponse.json({ id, sentTo: masked, test: true });

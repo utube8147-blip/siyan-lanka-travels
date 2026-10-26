@@ -111,7 +111,7 @@ export function ConductorMap({
         L.marker([s.lat!, s.lng!], { icon, zIndexOffset: 1000 - i, keyboard: false }).on('click', () => cbs.current.onStop(i)).addTo(g);
       }
       if (!fitted.current && line.length) {
-        map.current.fitBounds(L.latLngBounds(line), { padding: [40, 40] });
+        map.current.fitBounds(L.latLngBounds(line), { paddingTopLeft: [30, 30], paddingBottomRight: [130, 70] });
         fitted.current = true;
       }
     })();
@@ -128,7 +128,7 @@ export function ConductorMap({
       const line = compare.map((s) => [s.lat, s.lng] as [number, number]);
       L.polyline(line, { color: '#93c5fd', weight: 4, opacity: 0.8, dashArray: '2 8', interactive: false }).addTo(g);
       for (const s of compare) L.circleMarker([s.lat, s.lng], { radius: 5, color: '#93c5fd', weight: 2, fillColor: '#0d0e11', fillOpacity: 1 }).bindTooltip(esc(s.name)).addTo(g);
-      map.current.fitBounds(L.latLngBounds(line), { padding: [40, 40] });
+      map.current.fitBounds(L.latLngBounds(line), { paddingTopLeft: [30, 30], paddingBottomRight: [130, 70] });
     })();
   }, [ready, compare]);
 

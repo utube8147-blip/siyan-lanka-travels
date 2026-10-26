@@ -79,10 +79,15 @@ export const OPERATOR = {
    *  Staff area → Settings; this is the fallback and the demo-mode value. */
   bookingWindowDays: 7,
 
-  /** Cancellation policy used for refunds (hours before departure → % back). */
+  /**
+   * Cancellation policy used for refunds (hours before the bus leaves the
+   * passenger's stop → % of the fare back). 4 hours or more before: 90% (a 10%
+   * service charge covers admin and payment processing); less than 4 hours, or
+   * not turning up: nothing (the seat counts as taken). The live value is
+   * Staff area → Settings; this is the fallback and the demo-mode value.
+   */
   refundPolicy: [
-    { hoursBefore: 24, percent: 90 },
-    { hoursBefore: 6, percent: 50 },
+    { hoursBefore: 4, percent: 90 },
     { hoursBefore: 0, percent: 0 },
   ],
 

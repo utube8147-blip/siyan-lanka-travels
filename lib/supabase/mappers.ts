@@ -74,6 +74,8 @@ export const bookingFromRow = (r: any, photoUrls: Record<string, string> = {}): 
   date: r.travel_date,
   from: r.from_stop,
   to: r.to_stop,
+  bookedFrom: r.booked_from || undefined,
+  bookedTo: r.booked_to || undefined,
   seats: r.seats ?? [],
   passenger: { name: r.passenger_name, gender: r.passenger_gender ?? '', phone: r.passenger_phone ?? '' },
   contact: { email: r.contact_email ?? '', phone: r.contact_phone ?? '' },
@@ -97,4 +99,5 @@ export const bookingFromRow = (r: any, photoUrls: Record<string, string> = {}): 
   paidOnBus: r.paid_on_bus === true,
   slip: r.slip_path ? { path: r.slip_path, reference: r.slip_reference ?? '', uploadedAt: r.slip_uploaded_at } : null,
   slipRejectedReason: r.slip_rejected_reason ?? null,
+  isTest: r.is_test === true,
 });

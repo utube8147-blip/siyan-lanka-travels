@@ -282,6 +282,12 @@ export interface PlanStop {
   off: number; // seats getting off here
   optional: boolean;
   detour: ReturnType<typeof detourState> | null;
+  /**
+   * Passengers counted here who booked a stop the bus doesn't go to tonight
+   * (an on-request stop that didn't fill → drop at / pick up from its turn-off;
+   * or a stop tonight's variant leaves out).
+   */
+  via?: { stop: string; onRequest: boolean; on: number; off: number }[];
 }
 
 /**
@@ -314,7 +320,27 @@ export function tonightsStops(route: Route, bookings: Booking[], optional: Optio
       const on = live.filter((b) => place(b.from, 'on') === n).reduce((k, b) => k + b.seats.length, 0);
       const off = live.filter((b) => place(b.to, 'off') === n).reduce((k, b) => k + b.seats.length, 0);
       const st = optional.find((o) => o.stop.toLowerCase() === n);
-      return { stop: { name: s.name, lat: s.lat, lng: s.lng, offsetMin: s.offsetMin, on, off, optional: !!s.optional, detour: st ? detourState(st) : null }, keep: !s.hidden && (i === 0 || i === way.length - 1 || on > 0 || off > 0) };
+      // Who is here for a stop the bus doesn't go to (booked there, or moved here at the cut-off).
+      const via = new Map<string, { stop: string; onRequest: boolean; on: number; off: number }>();
+      const add = (booked: string, part: 'on' | 'off', seats: number) => {
+        const e = via.get(low(booked)) ?? { stop: booked, onRequest: !!route.stops.find((x) => low(x.name) === low(booked))?.optional, on: 0, off: 0 };
+        e[part] += seats;
+        via.set(low(booked), e);
+      };
+      for (const b of live) {
+        if (place(b.from, 'on') === n) {
+          const booked = b.bookedFrom ?? (low(b.from) !== n ? b.from : null);
+          if (booked && low(booked) !== n) add(booked, 'on', b.seats.length);
+        }
+        if (place(b.to, 'off') === n) {
+          const booked = b.bookedTo ?? (low(b.to) !== n ? b.to : null);
+          if (booked && low(booked) !== n) add(booked, 'off', b.seats.length);
+        }
+      }
+      return {
+        stop: { name: s.name, lat: s.lat, lng: s.lng, offsetMin: s.offsetMin, on, off, optional: !!s.optional, detour: st ? detourState(st) : null, via: via.size ? [...via.values()] : undefined },
+        keep: !s.hidden && (i === 0 || i === way.length - 1 || on > 0 || off > 0),
+      };
     })
     .filter((x) => x.keep && x.stop.detour !== 'skipped' && x.stop.detour !== 'unlikely')
     .map((x) => x.stop);

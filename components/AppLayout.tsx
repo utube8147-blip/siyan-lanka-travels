@@ -1,7 +1,10 @@
 'use client';
 // components/AppLayout.tsx
 import Link from 'next/link';
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
+import { useStore } from '@/lib/store';
+import { allRoutePages } from '@/lib/seo';
+import { runningRoutes } from '@/lib/trips';
 import { TopNav } from './TopNav';
 import { OPERATOR } from '@/config/operator';
 import { Wordmark } from './Wordmark';
@@ -37,8 +40,39 @@ export function AppLayout({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Popular routes, from the routes that are really running: each route end to
+ * end first, then the trips most booked lately (this device's view of the
+ * bookings), then the longest trips from each route's first stop.
+ */
+function usePopularRoutes(max = 5) {
+  const { data } = useStore();
+  return useMemo(() => {
+    const pages = allRoutePages({ buses: data.buses, routes: data.routes, schedules: data.schedules });
+    const key = (a: string, b: string) => `${a.trim().toLowerCase()}|${b.trim().toLowerCase()}`;
+    const ends = new Set(runningRoutes(data).map((r) => {
+      const v = r.stops.filter((s) => !s.hidden);
+      return key(v[0].name, v[v.length - 1].name);
+    }));
+    const since = Date.now() - 60 * 864e5;
+    const booked = new Map<string, number>();
+    for (const b of data.bookings) {
+      if (b.status === 'cancelled' || new Date(`${b.date}T00:00:00`).getTime() < since) continue;
+      booked.set(key(b.from, b.to), (booked.get(key(b.from, b.to)) ?? 0) + b.seats.length);
+    }
+    return [...pages]
+      .sort((a, b) =>
+        Number(ends.has(key(b.from, b.to))) - Number(ends.has(key(a.from, a.to))) ||
+        (booked.get(key(b.from, b.to)) ?? 0) - (booked.get(key(a.from, a.to)) ?? 0) ||
+        b.durationMin - a.durationMin,
+      )
+      .slice(0, max);
+  }, [data, max]);
+}
+
 export function SiteFooter() {
   const { t } = useT();
+  const popular = usePopularRoutes();
   return (
     <footer className="bg-[#f8f9fb] border-t border-[#edeef0] w-full pt-12 pb-12">
       <div className="px-4 md:px-[64px] max-w-[1440px] mx-auto flex flex-col md:flex-row justify-between gap-10">
@@ -51,8 +85,8 @@ export function SiteFooter() {
           <div className="space-y-2">
             <h4 className="font-bold text-[#7c5800]">{t('Popular routes')}</h4>
             <ul className="space-y-2 text-[#46464f]">
-              {['Batticaloa', 'Kalmunai', 'Akkaraipattu', 'Polonnaruwa'].map((town) => (
-                <li key={town}><Link className="hover:text-[#050a44]" href={`/bus/colombo-to-${town.toLowerCase()}`}>{tx('{from} to {to}', { from: 'Colombo', to: town })}</Link></li>
+              {popular.map((p) => (
+                <li key={p.slug}><Link className="hover:text-[#050a44]" href={`/bus/${p.slug}`}>{tx('{from} to {to}', { from: p.from, to: p.to })}</Link></li>
               ))}
               <li><Link className="hover:text-[#050a44] font-semibold" href="/bus">{t('All routes')}</Link></li>
             </ul>

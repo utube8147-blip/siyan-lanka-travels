@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatLK, toE164LK } from '@/lib/phone';
 import { authButton, authInput } from './AuthShell';
 import { tx, txr } from '@/lib/i18n';
+import { MOCK_CODE, mockVerificationOn } from '@/lib/mockVerification';
 
 export function PhoneCodeForm({
   mode,
@@ -133,6 +134,7 @@ export function PhoneCodeForm({
             onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
           />
           {authMode === 'demo' && <p className="text-[12px] text-[#7c5800] font-semibold">{tx('Demo mode: no text is sent. Use 123456.')}</p>}
+          {authMode !== 'demo' && mockVerificationOn() && <p className="text-[12px] text-[#7c5800] font-semibold">{tx('Test mode: no text is sent. Use {code}.', { code: MOCK_CODE })}</p>}
           {error && <p role="alert" className="text-[13px] font-semibold text-[#ba1a1a]">{error}</p>}
           <button className={authButton} disabled={busy || code.length !== 6}>
             {busy ? tx('Checking…') : mode === 'signup' ? tx('Verify & create account') : tx('Verify & sign in')}

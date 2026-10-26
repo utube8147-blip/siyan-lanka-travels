@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { compressPhoto } from '@/lib/trips';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { uuid } from '@/lib/uuid';
+import { tx } from '@/lib/i18n';
 
 /** Bus photos: public storage with Supabase, an embedded image in demo mode. */
 export async function uploadBusPhoto(file: File) {
@@ -92,16 +93,16 @@ export function BusCover({ photos = [], name, className = '', children }: { phot
     <div className={`keep-navy relative overflow-hidden bg-[#050a44] ${className}`}>
       {n ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={photos[at]} alt={`${name}, photo ${at + 1} of ${n}`} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+        <img src={photos[at]} alt={tx('{name}, photo {n} of {total}', { name, n: at + 1, total: n })} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
       ) : (
         <BusIllustration className="absolute inset-0 w-full h-full" />
       )}
       {n > 1 && (
         <>
-          <button type="button" aria-label="Previous photo" onClick={() => setI(at - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/45 hover:bg-black/65 text-white flex items-center justify-center backdrop-blur-sm z-10">
+          <button type="button" aria-label={tx('Previous photo')} onClick={() => setI(at - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/45 hover:bg-black/65 text-white flex items-center justify-center backdrop-blur-sm z-10">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button type="button" aria-label="Next photo" onClick={() => setI(at + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/45 hover:bg-black/65 text-white flex items-center justify-center backdrop-blur-sm z-10">
+          <button type="button" aria-label={tx('Next photo')} onClick={() => setI(at + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/45 hover:bg-black/65 text-white flex items-center justify-center backdrop-blur-sm z-10">
             <ChevronRight className="w-4 h-4" />
           </button>
           <div className="absolute top-3 left-1/2 -translate-x-1/2 flex gap-1 z-10">

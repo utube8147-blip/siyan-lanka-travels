@@ -335,6 +335,22 @@ in with an email address is asked for a mobile number too.
   text is sent and that code works for every number. Never set it on the live
   site.
 
+### Local testing without texts (one switch)
+Put `NEXT_PUBLIC_MOCK_VERIFICATION=true` in `.env.local` and restart
+`npm run dev`. Then, on your computer only:
+- **Phone sign-in / sign-up:** no text; enter `123456` (or
+  `NEXT_PUBLIC_MOCK_VERIFICATION_CODE`). You're signed in to a real account in
+  your Supabase project (created on first sign-up, found by phone after that),
+  so the database and its rules work as on the live site. Needs
+  `SUPABASE_SECRET_KEY` and Phone sign-in switched on in Supabase.
+- **Booking code** and the **owner's reserved-seat code:** also `123456`, no
+  text (no `OWNER_PHONE` needed).
+- **Trip texts and WhatsApp messages:** not sent; printed in the terminal and
+  listed at `http://localhost:3000/api/dev/outbox`.
+It turns itself off on Vercel and on any address that isn't localhost or your
+local network, so it can't open the live site even if the flag is left on.
+Set it back to `false` (or remove it) to test real texts.
+
 ## Finance and Analytics (super admin)
 Both pages share one filter bar: a period (last 7 days, this month, last
 month, last 90 days, or custom dates), a bus and a route. Headline numbers
@@ -658,6 +674,27 @@ A full page with the stops on one side and a live map on the other.
   and `NEXT_PUBLIC_GEOCODING_URL` (default: nominatim.openstreetmap.org, one
   search a second, so searches run only when you press Search). For heavy use,
   run your own OSRM / Nominatim or use a paid service.
+- With the public server the app waits its turn (about one road a second)
+  and retries once when it says it's busy; when it can't be reached, maps
+  draw straight lines between stops and turn-off points fall back to the stop
+  before / after.
+
+### Your own road server (recommended for the live site)
+Every map, turn-off point and road estimate asks a road server. Your own
+(one small server, Sri Lanka only) is fast and has no limits:
+```bash
+# on a Linux server with Docker (2 GB RAM is plenty for Sri Lanka)
+mkdir osrm && cd osrm
+wget https://download.geofabrik.de/asia/sri-lanka-latest.osm.pbf
+docker run -t -v "$PWD:/data" ghcr.io/project-osrm/osrm-backend osrm-extract -p /opt/car.lua /data/sri-lanka-latest.osm.pbf
+docker run -t -v "$PWD:/data" ghcr.io/project-osrm/osrm-backend osrm-partition /data/sri-lanka-latest.osrm
+docker run -t -v "$PWD:/data" ghcr.io/project-osrm/osrm-backend osrm-customize /data/sri-lanka-latest.osrm
+docker run -d --restart unless-stopped -p 5000:5000 -v "$PWD:/data" ghcr.io/project-osrm/osrm-backend osrm-routed --algorithm mld /data/sri-lanka-latest.osrm
+```
+Put it behind HTTPS (e.g. Caddy: `routing.yourdomain.lk { reverse_proxy localhost:5000 }`)
+and set `NEXT_PUBLIC_ROUTING_URL=https://routing.yourdomain.lk/route/v1/driving`.
+Refresh the map data every few months (download again, repeat the three
+`osrm-*` steps, restart the container).
 
 ### Hidden points (shaping the road)
 To make the road follow the exact way the bus goes, add as many points as you
@@ -1110,4 +1147,4 @@ step with `config/operator.ts`, which the pages use for display.
    and 36 (road reports, on-request stops, route drafts for conductors).
 7. Add `https://your-domain/auth/reset` to Supabase's Redirect URLs (staff
    invites and password resets).
-8. `npm run lint` and `npm run i18n:check` should pass before deploying.
+8. `npm run lint`, `npm test` (route and stop logic) and `npm run i18n:check` should pass before deploying.

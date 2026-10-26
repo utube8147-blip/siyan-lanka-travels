@@ -37,6 +37,9 @@ interface StoreContextValue {
   deleteRoute: (id: string) => Promise<ActionResult>;
   saveSchedule: (schedule: Schedule) => Promise<ActionResult>;
   deleteSchedule: (id: string) => Promise<ActionResult>;
+  /** Test passengers (Staff area → Test passengers): demo mode, or test mode on your computer. */
+  addTestBookings: (list: Booking[]) => Promise<ActionResult>;
+  deleteTestBookings: (ids: string[]) => Promise<ActionResult>;
   createBooking: (b: NewBooking) => Promise<BookingResult>;
   updateBooking: (id: string, patch: Partial<Booking>) => Promise<ActionResult>;
   /** Staff: take payment for a held (unpaid) booking. */
@@ -528,6 +531,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [mode, refresh],
   );
 
+  const testCall = useCallback(
+    async (body: object): Promise<ActionResult> => {
+      const res = await fetch('/api/dev/test-passengers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+      const j = res ? await res.json().catch(() => ({})) : {};
+      if (!res?.ok) return { ok: false, reason: j.error ?? tx('Could not save') };
+      await refresh();
+      return { ok: true };
+    },
+    [refresh],
+  );
+  const addTestBookings = useCallback<StoreContextValue['addTestBookings']>(
+    async (list) => {
+      const marked = list.map((b) => ({ ...b, isTest: true }));
+      if (mode === 'supabase') return testCall({ action: 'add', bookings: marked });
+      setData((d) => ({ ...d, bookings: [...d.bookings, ...marked] }));
+      return { ok: true };
+    },
+    [mode, testCall],
+  );
+  const deleteTestBookings = useCallback<StoreContextValue['deleteTestBookings']>(
+    async (ids) => {
+      if (mode === 'supabase') return testCall({ action: 'delete', ids });
+      setData((d) => ({ ...d, bookings: d.bookings.filter((b) => !(b.isTest && ids.includes(b.id))) }));
+      return { ok: true };
+    },
+    [mode, testCall],
+  );
+
   const resetDemo = useCallback(() => {
     if (mode === 'demo') setData(createSeedData());
   }, [mode]);
@@ -536,8 +567,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [refresh]);
 
   const value = useMemo(
-    () => ({ data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, createBooking, updateBooking, confirmPayment, resetDemo, reload }),
-    [data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, createBooking, updateBooking, confirmPayment, resetDemo, reload],
+    () => ({ data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, addTestBookings, deleteTestBookings, createBooking, updateBooking, confirmPayment, resetDemo, reload }),
+    [data, ready, mode, error, saveBus, deleteBus, saveRoute, deleteRoute, saveSchedule, deleteSchedule, addTestBookings, deleteTestBookings, createBooking, updateBooking, confirmPayment, resetDemo, reload],
   );
 
   return (

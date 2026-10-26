@@ -11,6 +11,7 @@ import { sendSms } from '@/lib/server/messaging';
 import { deliverQueued } from '@/lib/server/dispatch';
 import { pushPendingNotifications } from '@/lib/server/push';
 import { sameSecret } from '@/lib/server/webhook';
+import { settleVariantStops } from '@/lib/server/variantStops';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,8 +41,11 @@ async function handle(req: Request) {
 
   await db.rpc('release_expired_holds');
   // Optional ("on request") stops whose cut-off has passed: the detour runs, or the
-  // passengers who booked it are moved to the nearest main stop (notification + text queued).
+  // passengers who booked it are moved to the stop just before / after the turn-off (notification + text queued).
   const optional = await db.rpc('settle_optional_stops').then((r) => (r.error ? { error: r.error.message.slice(0, 200) } : { moved: r.data }));
+  // Then stops that the variant in use leaves out (same treatment), and "your stop is going" alerts.
+  const variantStops = await settleVariantStops(db).catch((e) => ({ error: String(e).slice(0, 200) }));
+  const going = await db.rpc('alert_filled_optional_stops').then((r) => (r.error ? { error: r.error.message.slice(0, 200) } : { told: r.data }));
   // Push first: it's quick, and a slow SMS provider shouldn't delay reminders.
   // Documents and licences that are about to expire (or have): super admins get a
   // notification (pushed below); the owner also gets one text listing them.
@@ -51,7 +55,7 @@ async function handle(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const results = await deliverQueued(db, batch ?? []);
-  return NextResponse.json({ processed: batch?.length ?? 0, ...results, push, renewals, optional });
+  return NextResponse.json({ processed: batch?.length ?? 0, ...results, push, renewals, optional, variantStops, going });
 }
 
 export const GET = handle;

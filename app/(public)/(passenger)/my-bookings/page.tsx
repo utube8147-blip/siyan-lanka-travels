@@ -368,7 +368,7 @@ export default function MyBookingsPage() {
   const cancelRefund = useMemo(() => {
     const raw = cancelTarget ? rawOf(cancelTarget.id) : undefined;
     if (!raw) return { percent: 0, amount: 0 };
-    return refundQuote(raw, getTrip(data, raw.scheduleId, raw.date, raw.from, raw.to));
+    return refundQuote(raw, getTrip(data, raw.scheduleId, raw.date, raw.from, raw.to), new Date(), pub.refundPolicy);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelTarget, data]);
   const rescheduleOptions = useMemo<RescheduleOption[]>(() => {
@@ -589,9 +589,9 @@ export default function MyBookingsPage() {
                           </div>
                         </div>
 
-                        {/* Trip details on their own row; the buttons sit on a full-width row below. */}
-                        <div className="mt-[16px] space-y-[12px]">
-                          <div className="flex items-center gap-2">
+                        {/* The trip details keep a readable width; when the buttons don't fit beside them they drop to their own row. */}
+                        <div className="mt-[16px] flex flex-wrap justify-between items-center gap-x-[12px] gap-y-[12px]">
+                          <div className="flex items-center gap-2 min-w-[200px] flex-1">
                             <OperatorBadge operator={booking.operator} />
                             <div className="min-w-0">
                               <p className="text-[12px] text-[#46464f] font-medium whitespace-nowrap">{txn(booking.seats.length, '{date} · Seat {seats}', '{date} · Seats {seats}', { date: booking.date, seats: booking.seats.join(', ') })}
@@ -600,33 +600,29 @@ export default function MyBookingsPage() {
                             </div>
                           </div>
 
-                          {/* Phones: bell + Track share line 1, View Ticket fills line 2.
-                              Desktop (sm+): all three share one row, equal width, filling the card. */}
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full">
+                          {/* Phones: the three buttons share one row, equal widths. Wider: their natural size, on the right. */}
+                          <div className="flex items-start gap-2 w-full sm:w-auto">
                           {isPending ? (
                             <button
                               disabled
-                              className="col-span-full h-[38px] bg-[#f2f4f6] text-[#6b6d78] px-4 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                              className="bg-[#f2f4f6] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
                             >{tx('Ticket Pending')}</button>
                           ) : isCancelling ? (
                             <button
                               disabled
-                              className="col-span-full h-[38px] bg-[#e1e2e4] text-[#6b6d78] px-4 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
+                              className="bg-[#e1e2e4] text-[#6b6d78] px-4 py-2.5 rounded-xl font-bold text-[12px] cursor-not-allowed whitespace-nowrap"
                             >{tx('Cancelling…')}</button>
                           ) : (
                             <>
-                            {/* Wrapper forces whatever TripBell renders (and its nested button) to fill the grid cell */}
-                            <div className="min-w-0 grid [&>*]:!w-full [&_button]:!w-full [&_button]:!h-[38px] [&_button]:!justify-center">
-                              <TripBell bookingId={booking.id} size="sm" />
-                            </div>
+                            <TripBell bookingId={booking.id} size="sm" className="flex-1 sm:flex-none" />
                             <a
                               href={`/track?ref=${booking.bookingRef}`}
-                              className="w-full h-[38px] justify-center bg-[#feb700] text-[#14120a] px-3 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
+                              className="flex-1 sm:flex-none h-[38px] justify-center bg-[#feb700] text-[#14120a] px-2 sm:px-3 rounded-xl font-bold text-[12px] hover:brightness-105 transition-all flex items-center gap-1 whitespace-nowrap"
                             >
                               <span className="material-symbols-outlined text-[14px]">my_location</span>{tx('Track')}</a>
                             <button
                               onClick={() => setTicketTarget(booking)}
-                              className="col-span-2 sm:col-span-1 w-full h-[38px] justify-center bg-[#050a44] text-white px-4 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
+                              className="flex-1 sm:flex-none h-[38px] justify-center bg-[#050a44] text-white px-2 sm:px-4 rounded-xl font-bold text-[12px] hover:opacity-90 transition-all flex items-center gap-1.5 whitespace-nowrap"
                             >{tx('View Ticket')}<span className="material-symbols-outlined text-[14px]">confirmation_number</span>
                             </button>
                             </>
@@ -636,7 +632,19 @@ export default function MyBookingsPage() {
                         {(() => {
                           const raw = rawOf(booking.id);
                           const routeId = raw && data.schedules.find((x) => x.id === raw.scheduleId)?.routeId;
-                          return raw && routeId ? <OnRequestNotice routeId={routeId} scheduleId={raw.scheduleId} date={raw.date} from={raw.from} to={raw.to} className="mt-4" /> : null;
+                          if (!raw || !routeId) return null;
+                          return (
+                            <>
+                              {(raw.bookedFrom || raw.bookedTo) && (
+                                <p className="mt-4 rounded-xl bg-[#fef3c7] text-[#92400e] text-[13px] font-semibold px-3 py-2.5">
+                                  {raw.bookedTo
+                                    ? tx('You booked {stop}, but the bus doesn’t go there on this trip. You get off at {instead} (or where the road turns off for it).', { stop: raw.bookedTo, instead: raw.to })
+                                    : tx('You booked {stop}, but the bus doesn’t go there on this trip. You get on at {instead}.', { stop: raw.bookedFrom!, instead: raw.from })}
+                                </p>
+                              )}
+                              <OnRequestNotice routeId={routeId} scheduleId={raw.scheduleId} date={raw.date} from={raw.bookedFrom ?? raw.from} to={raw.bookedTo ?? raw.to} className="mt-4" />
+                            </>
+                          );
                         })()}
                       </div>
 

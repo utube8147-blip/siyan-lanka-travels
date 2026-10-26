@@ -23,6 +23,7 @@ import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/cl
 import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
 import { FileDown } from 'lucide-react';
 import { tx, txn } from '@/lib/i18n';
+import { MOCK_CODE } from '@/lib/mockVerification';
 
 export default function DeparturesPage() {
   return (
@@ -516,7 +517,7 @@ function SellSeatsModal({
     if (!res || !res.ok) return setApprovalMsg({ text: j.error ?? tx('Couldn\'t send the code. Check the connection and try again.'), bad: true });
     setApprovalId(j.id);
     setOwnerCode('');
-    setApprovalMsg({ text: tx('Code sent to the owner ({sentTo}). Ask them for it; it works for 10 minutes.', { sentTo: j.sentTo }) });
+    setApprovalMsg({ text: j.test ? `Test mode: nothing was texted. The code is ${MOCK_CODE}.` : tx('Code sent to the owner ({sentTo}). Ask them for it; it works for 10 minutes.', { sentTo: j.sentTo }) });
   };
   const checkOwnerCode = async () => {
     if (!approvalId) return;

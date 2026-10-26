@@ -34,6 +34,9 @@ reset role;
 select 'status: ' || stop || ' ' || seats || '/' || min_seats || case when decided then ' decided' else ' waiting' end
 from optional_stop_status('sch-cmb-2100', (select d from t)) order by stop;
 select 'settle before the cut-off moves: ' || settle_optional_stops();
+select 'going alerts: ' || alert_filled_optional_stops() || ', again: ' || alert_filled_optional_stops();
+select 'Bina told: ' || title from notifications where user_id = 'bbbbbbbb-0000-0000-0000-000000000002' and tag like 'optional-going-%';
+select 'going texts queued: ' || count(*) from message_queue where kind = 'optional_stop_going';
 
 select '--- cut-off passes';
 update app_settings set optional_stop_cutoff_hours = 72;
@@ -43,6 +46,8 @@ from optional_stop_decisions where travel_date = (select d from t) order by stop
 select 'Alex now: ' || from_stop || ' → ' || to_stop from bookings where ref = (select ref from bk_a);
 select 'Bina now: ' || from_stop || ' → ' || to_stop from bookings where ref = (select ref from bk_b);
 select 'Alex told: ' || title || ' / ' || body from notifications where user_id = 'aaaaaaaa-0000-0000-0000-000000000001' and tag like 'optional-%';
+select 'Alex booked: ' || coalesce(booked_from, '-') || ' → ' || coalesce(booked_to, '-') from bookings where ref = (select ref from bk_a);
+select 'Alex text: ' || body from message_queue where kind = 'optional_stop' limit 1;
 select 'texts queued: ' || count(*) from message_queue where kind = 'optional_stop';
 select 'settle again moves: ' || settle_optional_stops();
 

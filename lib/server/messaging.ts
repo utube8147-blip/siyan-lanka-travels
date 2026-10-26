@@ -2,6 +2,8 @@
 // Sign-in codes go out through the same sendSms(), called by /api/auth/sms-hook.
 // Without credentials they return 'skipped' so the queue still drains.
 
+import { mockSend, serverMockOn } from '@/lib/mockVerification';
+
 export type SendResult = { status: 'sent' | 'failed' | 'skipped'; error?: string };
 
 /** "077 123 4567" / "+94771234567" → "94771234567" */
@@ -13,6 +15,7 @@ export function toLkMsisdn(phone: string) {
 }
 
 export async function sendSms(to: string, body: string): Promise<SendResult> {
+  if (serverMockOn()) return mockSend('sms', to, body), { status: 'sent' };
   const user = process.env.NOTIFYLK_USER_ID;
   const key = process.env.NOTIFYLK_API_KEY;
   const sender = process.env.NOTIFYLK_SENDER_ID || 'NotifyDEMO';
@@ -36,6 +39,7 @@ export async function sendSms(to: string, body: string): Promise<SendResult> {
 export async function sendWhatsApp(to: string, body: string): Promise<SendResult> {
   const token = process.env.WHATSAPP_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (serverMockOn()) return mockSend('whatsapp', to, body), { status: 'sent' };
   const template = process.env.WHATSAPP_TEMPLATE || 'siyan_update';
   const lang = process.env.WHATSAPP_TEMPLATE_LANG || 'en';
   if (!token || !phoneId) return { status: 'skipped', error: 'WhatsApp not configured' };

@@ -47,7 +47,9 @@ function Track() {
   const tRoute = trip ? data.routes.find((r) => r.id === trip.routeId) : undefined;
   const tRoad = useMemo(() => (tRoute ? tripWay(tRoute, goesTo(optStatus)).stops : []), [tRoute, optStatus]);
   // Booked an on-request stop that hasn't filled: picked up where the bus would turn off for it.
-  const jFrom = useJunction(tRoute?.stops, tRoad, booking?.from ?? null, 'board');
+  // The stop the passenger chose (kept on the ticket when the bus doesn't go there).
+  const bookedFrom = booking ? booking.bookedFrom ?? booking.from : null;
+  const jFrom = useJunction(tRoute?.stops, tRoad, bookedFrom, 'board');
 
   if (!ready) return <PageSkeleton />;
   if (!booking || !trip) {
@@ -66,12 +68,13 @@ function Track() {
   const stops: RouteStop[] = [...tRoad];
   let boardAt = booking.from;
   if (route && jFrom.skipped) {
-    if (jFrom.junction) {
-      const pt: RouteStop = { name: tx('Turn-off for {stop}', { stop: booking.from }), offsetMin: jFrom.junction.offsetMin, fareFromStart: 0, lat: jFrom.junction.lat, lng: jFrom.junction.lng, landmark: tx('Where the road turns off for {stop}, about {km} km from it', { stop: booking.from, km: jFrom.junction.kmToStop < 1 ? jFrom.junction.kmToStop.toFixed(1) : Math.round(jFrom.junction.kmToStop) }) };
+    if (jFrom.junction && tRoute?.stops.find((s) => s.name === bookedFrom)?.optional) {
+      const pt: RouteStop = { name: tx('Turn-off for {stop}', { stop: bookedFrom! }), offsetMin: jFrom.junction.offsetMin, fareFromStart: 0, lat: jFrom.junction.lat, lng: jFrom.junction.lng, landmark: tx('Where the road turns off for {stop}, about {km} km from it', { stop: bookedFrom!, km: jFrom.junction.kmToStop < 1 ? jFrom.junction.kmToStop.toFixed(1) : Math.round(jFrom.junction.kmToStop) }) };
       const at = stops.findIndex((x) => x.offsetMin > pt.offsetMin);
       stops.splice(at < 0 ? stops.length : at, 0, pt);
       boardAt = pt.name;
-    } else if (jFrom.fallback != null) boardAt = route.stops[jFrom.fallback].name;
+    } else if (stops.some((s) => s.name === booking.from)) boardAt = booking.from; // moved at the cut-off
+    else if (jFrom.fallback != null) boardAt = route.stops[jFrom.fallback].name;
   }
   const bi = stops.findIndex((s) => s.name === boardAt);
   const stop = stops[bi];

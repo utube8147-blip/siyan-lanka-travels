@@ -11,11 +11,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { ArrowDown, ArrowUp, Check, ChevronDown, Crosshair, ExternalLink, Layers, Navigation, Plus, RotateCcw, Shuffle, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, Crosshair, ExternalLink, Layers, Navigation, Plus, RotateCcw, Shuffle, X } from 'lucide-react';
 import {
   REPORT_KINDS, applyOrder, goesTo, isLive, kindOf, kmBetween, minutesToStop, nearestFirst, reportRoad, saveOrder, savedOrder, tonightsStops, useMyPosition, useNearbyAlerts, useOptionalStatus, useRoadReports, voteReport,
   type ReportKind, type RoadReport,
 } from '@/lib/conductor';
+import type { PlanStop } from '@/lib/conductor';
 import { fetchRoadRoute } from '@/lib/routing';
 import { googleMapsParts } from '@/lib/routeShare';
 import { loadPlans, type RoutePlan } from '@/lib/routeEditor';
@@ -70,6 +71,8 @@ export function MapTab({
     changeOrder(names);
   };
   const inRouteOrder = !order || stops.every((s, i) => s.name === base[i]?.name);
+  // The way the bus goes tonight (a variant when not every on-request stop filled).
+  const wayNow = useMemo(() => tripWay(route, goesTo(optional)), [route, optional]);
 
   // ---- the road through them (from the bus, when we know where it is)
   const [road, setRoad] = useState<{ path: [number, number][]; km: number; min: number } | null>(null);
@@ -100,6 +103,15 @@ export function MapTab({
     };
   }, [pinKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---- the stop the bus comes to next (first one not yet passed by the clock)
+  const [ordering, setOrdering] = useState(false);
+  const next = useMemo(() => {
+    const k = stops.findIndex((s) => minutesToStop(date, schedule.departure, s.offsetMin) > -5);
+    const s = stops[k < 0 ? stops.length - 1 : k];
+    if (!s) return null;
+    return { stop: s, due: minutesToStop(date, schedule.departure, s.offsetMin), km: here && s.lat != null && s.lng != null ? kmBetween(here, { lat: s.lat, lng: s.lng }) : null };
+  }, [stops, date, schedule.departure, here]);
+
   // ---- map state
   const [follow, setFollow] = useState(false);
   const [compare, setCompare] = useState<{ label: string; stops: { name: string; lat: number; lng: number }[] } | null>(null);
@@ -119,8 +131,35 @@ export function MapTab({
 
   return (
     <div className="space-y-4">
+      {/* Next stop */}
+      {next && (
+        <section className="rounded-2xl bg-white/[0.05] border border-white/10 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold text-white/60">{tx('Next stop')}</p>
+              <p className="text-[20px] font-bold leading-tight truncate">{next.stop.name}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <Chips s={next.stop} />
+                <span className="text-[12px] text-white/60">{formatTime12(addMinutes(schedule.departure, next.stop.offsetMin))}</span>
+                {next.km != null && <span className="text-[12px] text-white/60">· {next.km.toFixed(next.km < 10 ? 1 : 0)} km</span>}
+                {next.due > 0 && next.due < 90 && <span className="text-[12px] font-semibold text-[#9be8ad]">· {tx('in {m} min', { m: next.due })}</span>}
+              </div>
+            </div>
+            {road && (
+              <p className="text-right shrink-0">
+                <span className="block text-[22px] font-bold tabular-nums leading-tight">{road.km.toFixed(0)} km</span>
+                <span className="block text-[12px] text-white/60">{roadBusy ? tx('working out the road…') : tx('about {dur}', { dur: formatDuration(Math.round(road.min)) })}</span>
+              </p>
+            )}
+          </div>
+          {wayNow.variant && (
+            <p className="mt-3 rounded-xl bg-[#7c3aed]/15 border border-[#a78bfa]/30 px-3 py-2 text-[12px] font-semibold text-[#ddd6fe]">{tx('Tonight: the “{name}” way (not every on-request stop filled).', { name: wayNow.variant.name })}</p>
+          )}
+        </section>
+      )}
+
       {/* Map */}
-      <div className="relative -mx-4 h-[52vh] min-h-[300px] border-y border-white/10">
+      <div className="conductor-map relative h-[46vh] min-h-[300px] rounded-2xl overflow-hidden border border-white/10 bg-[#111216]">
         <ConductorMap
           className="h-full"
           stops={stops}
@@ -153,8 +192,8 @@ export function MapTab({
             <Layers className="w-5 h-5" />
           </button>
         </div>
-        <button onClick={startReport} className="absolute right-3 bottom-4 z-[500] h-14 pl-4 pr-5 rounded-2xl bg-[#dc2626] text-white text-[15px] font-bold flex items-center gap-2 shadow-[0_10px_30px_-8px_rgba(220,38,38,.8)] active:scale-95 transition-transform">
-          <Plus className="w-5 h-5" /> {tx('Report')}
+        <button onClick={startReport} className="absolute right-3 bottom-8 z-[500] h-11 pl-3 pr-4 rounded-full bg-[#dc2626] text-white text-[14px] font-bold flex items-center gap-1.5 shadow-lg active:scale-95 transition-transform">
+          <Plus className="w-4 h-4" /> {tx('Report')}
         </button>
       </div>
 
@@ -185,67 +224,82 @@ export function MapTab({
 
       {/* Tonight's stops */}
       <section className="rounded-2xl bg-white/[0.05] border border-white/10">
-        <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-3">
-          <div>
+        <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <h2 className="text-[16px] font-bold">{tx('Tonight’s stops')}</h2>
-            <p className="text-[12px] text-white/60">{tx('Only where someone gets on or off. ↑ getting on, ↓ getting off.')}</p>
+            <p className="text-[12px] text-white/60">{tx('Only where someone gets on or off.')}</p>
           </div>
-          {road && (
-            <p className="text-right shrink-0">
-              <span className="block text-[18px] font-bold tabular-nums">{road.km.toFixed(0)} km</span>
-              <span className="block text-[12px] text-white/60">{roadBusy ? tx('working out the road…') : tx('about {dur}', { dur: formatDuration(Math.round(road.min)) })}</span>
-            </p>
+          {stops.length > 2 && (
+            <button onClick={() => setOrdering((o) => !o)} aria-pressed={ordering}
+              className={`shrink-0 h-9 px-3 rounded-full text-[13px] font-semibold flex items-center gap-1.5 border ${ordering ? 'bg-[#feb700] text-[#14120a] border-[#feb700]' : 'bg-white/5 border-white/15'}`}>
+              <ArrowUpDown className="w-4 h-4" />{ordering ? tx('Done') : tx('Change order')}
+            </button>
           )}
         </div>
-        <div className="px-4 pb-3 flex flex-wrap gap-2">
-          <button onClick={() => changeOrder(nearestFirst(stops, here ? { lat: here.lat, lng: here.lng } : null).map((s) => s.name))}
-            className="h-9 px-3 rounded-lg bg-white/10 text-[13px] font-semibold flex items-center gap-1.5"><Shuffle className="w-4 h-4" />{tx('Nearest drop-off first')}</button>
-          {!inRouteOrder && (
-            <button onClick={() => changeOrder(null)} className="h-9 px-3 rounded-lg bg-white/10 text-[13px] font-semibold flex items-center gap-1.5"><RotateCcw className="w-4 h-4" />{tx('Route order')}</button>
-          )}
-          <label className="h-9 px-3 rounded-lg bg-white/10 text-[13px] font-semibold flex items-center gap-2">
-            <input type="checkbox" checked={fromBus} disabled={!here} onChange={(e) => setFromBus(e.target.checked)} className="accent-[#feb700]" />
-            {tx('From the bus')}
-          </label>
-        </div>
+        {ordering && (
+          <div className="px-4 pb-3 flex flex-wrap gap-2">
+            <button onClick={() => changeOrder(nearestFirst(stops, here ? { lat: here.lat, lng: here.lng } : null).map((s) => s.name))}
+              className="h-9 px-3 rounded-full bg-white/10 text-[13px] font-semibold flex items-center gap-1.5"><Shuffle className="w-4 h-4" />{tx('Nearest drop-off first')}</button>
+            {!inRouteOrder && (
+              <button onClick={() => changeOrder(null)} className="h-9 px-3 rounded-full bg-white/10 text-[13px] font-semibold flex items-center gap-1.5"><RotateCcw className="w-4 h-4" />{tx('Route order')}</button>
+            )}
+            <label className="h-9 px-3 rounded-full bg-white/10 text-[13px] font-semibold flex items-center gap-2">
+              <input type="checkbox" checked={fromBus} disabled={!here} onChange={(e) => setFromBus(e.target.checked)} className="accent-[#feb700]" />
+              {tx('From the bus')}
+            </label>
+          </div>
+        )}
         {stops.length === 0 ? (
           <p className="px-4 pb-4 text-[14px] text-white/60">{tx('No passengers booked on this departure yet.')}</p>
         ) : (
-          <ol className="divide-y divide-white/10 border-t border-white/10">
+          <ol className="pb-2">
             {stops.map((s, i) => {
               const due = minutesToStop(date, schedule.departure, s.offsetMin);
               const dist = here && s.lat != null && s.lng != null ? kmBetween(here, { lat: s.lat, lng: s.lng }) : null;
+              const end = i === 0 || i === stops.length - 1;
+              const isNext = next?.stop.name === s.name;
               return (
-                <li key={s.name} className="flex items-center gap-3 px-4 py-3">
-                  <span className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-extrabold text-[#0d0e11] ${i === 0 || i === stops.length - 1 ? 'bg-white' : s.optional ? 'bg-[#a78bfa]' : 'bg-[#feb700]'}`}>{i + 1}</span>
+                <li key={s.name} className={`relative flex gap-3 px-4 py-2.5 ${isNext ? 'bg-[#feb700]/[0.07]' : ''}`}>
+                  <span className="w-[58px] shrink-0 pt-0.5 text-[12px] font-semibold text-white/60 tabular-nums">{formatTime12(addMinutes(schedule.departure, s.offsetMin))}</span>
+                  <span className="relative w-4 shrink-0 flex justify-center" aria-hidden>
+                    {i > 0 && <span className="absolute top-0 h-2.5 w-[2px] bg-white/15" />}
+                    {i < stops.length - 1 && <span className="absolute top-3 -bottom-2.5 w-[2px] bg-white/15" />}
+                    <span className={`relative mt-1 rounded-full ${end ? 'w-3.5 h-3.5 bg-white' : s.optional ? 'w-3 h-3 bg-[#a78bfa]' : 'w-3 h-3 bg-[#feb700]'} ${isNext ? 'ring-4 ring-[#feb700]/30' : ''}`} />
+                  </span>
                   <span className="flex-1 min-w-0">
-                    <span className="block text-[15px] font-semibold truncate">{s.name}</span>
-                    <span className="block text-[12px] text-white/60">
-                      {[
-                        s.on ? `↑${s.on}` : '',
-                        s.off ? `↓${s.off}` : '',
-                        formatTime12(addMinutes(schedule.departure, s.offsetMin)),
-                        dist != null ? `${dist.toFixed(dist < 10 ? 1 : 0)} km` : '',
-                        s.optional ? tx('on request') : '',
-                        s.lat == null ? tx('no map pin') : '',
-                      ].filter(Boolean).join(' · ')}
-                      {due > 0 && due < 90 && <span className="text-[#9be8ad]"> · {tx('in {m} min', { m: due })}</span>}
+                    <span className="flex items-center gap-2">
+                      <span className="text-[15px] font-semibold truncate">{s.name}</span>
+                      {isNext && <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#14120a] bg-[#feb700] rounded-full px-1.5 py-0.5">{tx('Next')}</span>}
                     </span>
+                    <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <Chips s={s} />
+                      {dist != null && <span className="text-[12px] text-white/50">{dist.toFixed(dist < 10 ? 1 : 0)} km</span>}
+                      {due > 0 && due < 90 && <span className="text-[12px] text-[#9be8ad]">{tx('in {m} min', { m: due })}</span>}
+                      {s.lat == null && <span className="text-[12px] text-white/50">{tx('no map pin')}</span>}
+                    </span>
+                    {s.via?.map((v) => (
+                      <span key={v.stop} className="mt-1 block text-[12px] font-semibold text-[#c4b5fd]">
+                        {[v.on ? `↑${v.on}` : '', v.off ? `↓${v.off}` : ''].filter(Boolean).join(' ')}{' '}
+                        {v.onRequest ? tx('booked {stop}: at the turn-off for it', { stop: v.stop }) : tx('booked {stop} (not on tonight’s way)', { stop: v.stop })}
+                      </span>
+                    ))}
                   </span>
-                  <span className="shrink-0 flex gap-1">
-                    <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={tx('Move {name} up', { name: s.name })} className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center disabled:opacity-25"><ArrowUp className="w-4 h-4" /></button>
-                    <button onClick={() => move(i, 1)} disabled={i === stops.length - 1} aria-label={tx('Move {name} down', { name: s.name })} className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center disabled:opacity-25"><ArrowDown className="w-4 h-4" /></button>
-                  </span>
+                  {ordering && (
+                    <span className="shrink-0 flex gap-1 self-center">
+                      <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={tx('Move {name} up', { name: s.name })} className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center disabled:opacity-25"><ArrowUp className="w-4 h-4" /></button>
+                      <button onClick={() => move(i, 1)} disabled={i === stops.length - 1} aria-label={tx('Move {name} down', { name: s.name })} className="w-9 h-9 rounded-lg bg-white/10 flex items-center justify-center disabled:opacity-25"><ArrowDown className="w-4 h-4" /></button>
+                    </span>
+                  )}
                 </li>
               );
             })}
           </ol>
         )}
         {mapsLinks.length > 0 && (
-          <div className="px-4 py-3 border-t border-white/10 flex flex-wrap gap-2">
+          <div className="px-4 pt-1 pb-4 flex flex-wrap gap-2">
             {mapsLinks.map((p, i) => (
-              <a key={p.url} href={p.url} target="_blank" rel="noopener" className="h-10 px-3 rounded-lg bg-[#1d4ed8] text-[13px] font-bold flex items-center gap-1.5">
-                <Navigation className="w-4 h-4" />
+              <a key={p.url} href={p.url} target="_blank" rel="noopener" className="flex-1 min-w-[160px] h-11 px-3 rounded-xl bg-white/5 border border-white/15 text-[14px] font-semibold flex items-center justify-center gap-2">
+                <Navigation className="w-4 h-4 text-[#93c5fd]" />
                 {mapsLinks.length > 1 ? tx('Google Maps, part {n}', { n: i + 1 }) : tx('Open in Google Maps')}
               </a>
             ))}
@@ -286,7 +340,7 @@ export function MapTab({
             <h2 className="text-[16px] font-bold">{tx('Road reports')}</h2>
             <p className="text-[12px] text-white/60">{tx('From every conductor. They go after 2 hours unless someone says they are still there.')}</p>
           </div>
-          <button onClick={startReport} className="shrink-0 h-9 px-3 rounded-lg bg-[#dc2626] text-[13px] font-bold flex items-center gap-1"><Plus className="w-4 h-4" />{tx('Report')}</button>
+          <button onClick={startReport} className="shrink-0 h-9 px-3 rounded-full bg-[#dc2626]/15 border border-[#dc2626]/40 text-[#fca5a5] text-[13px] font-bold flex items-center gap-1"><Plus className="w-4 h-4" />{tx('Report')}</button>
         </div>
         {reportsError && <p className="px-4 pb-3 text-[13px] text-[#ffb4ab]">{reportsError}</p>}
         {alertsPerm === 'default' && (
@@ -377,6 +431,17 @@ export function MapTab({
         </Sheet>
       )}
     </div>
+  );
+}
+
+/** ↑ getting on / ↓ getting off / on request, as small chips. */
+function Chips({ s }: { s: PlanStop }) {
+  return (
+    <>
+      {s.on > 0 && <span className="h-6 px-2 rounded-full bg-[#16a34a]/20 text-[#9be8ad] text-[12px] font-bold flex items-center">↑ {s.on}</span>}
+      {s.off > 0 && <span className="h-6 px-2 rounded-full bg-[#feb700]/15 text-[#fcd34d] text-[12px] font-bold flex items-center">↓ {s.off}</span>}
+      {s.optional && <span className="h-6 px-2 rounded-full bg-[#7c3aed]/20 text-[#c4b5fd] text-[12px] font-bold flex items-center">{tx('on request')}</span>}
+    </>
   );
 }
 

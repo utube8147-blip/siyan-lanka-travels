@@ -159,6 +159,13 @@ export interface Booking {
   date: string;
   from: string;
   to: string;
+  /**
+   * The stop the passenger chose, when the bus doesn't go there on this trip
+   * (an on-request stop that didn't fill, or one tonight's variant leaves out):
+   * from/to then hold the stop they use instead.
+   */
+  bookedFrom?: string;
+  bookedTo?: string;
   seats: string[];
   passenger: { name: string; gender: Gender; phone: string };
   contact: { email: string; phone: string };
@@ -192,6 +199,8 @@ export interface Booking {
   slip?: { path: string; reference: string; uploadedAt: string } | null;
   /** Why staff sent the last slip back (cleared when a new one is uploaded). */
   slipRejectedReason?: string | null;
+  /** Made from Staff area → Test passengers (to try the conductor app); deleted from there. */
+  isTest?: boolean;
 }
 
 /** A bookable departure on a specific date, for a from→to segment. */

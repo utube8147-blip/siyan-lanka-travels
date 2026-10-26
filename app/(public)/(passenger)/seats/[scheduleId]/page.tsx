@@ -14,7 +14,8 @@ import { useSavedPassengers, usePublicSettings } from '@/lib/extras';
 import { isLkMobile, useBookingCode } from '@/components/BookingCodeGate';
 import type { BikeItem } from '@/lib/types';
 import { useStore, StoreLoading } from '@/lib/store';
-import { OnRequestNotice } from '@/components/OnRequestNotice';
+import { OnRequestNotice, WayNotice } from '@/components/OnRequestNotice';
+import { BusCover } from '@/components/BusPhoto';
 import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO, seatsBesideLoneWoman, BESIDE_WOMAN_MESSAGE } from '@/lib/trips';
 import { useT, txn, txr } from '@/lib/i18n';
 import { tx } from '@/lib/i18n';
@@ -397,6 +398,7 @@ function BookingPageInner() {
         </nav>
 
         {trip && <OnRequestNotice routeId={trip.routeId} scheduleId={trip.scheduleId} date={date} from={from} to={to} className="mb-6" />}
+        {trip && <WayNotice routeId={trip.routeId} scheduleId={trip.scheduleId} date={date} from={from} to={to} className="mb-6" />}
         <div className="mb-[32px] flex items-center justify-between">
           <div>
             <button
@@ -645,6 +647,9 @@ function BookingPageInner() {
           <div className="lg:col-span-5 lg:sticky lg:top-24 lg:self-start space-y-[24px]">
             <div className="bg-[#ffffff] rounded-xl p-[32px] shadow-lg border border-[#c7c5d1]">
               <h2 className="text-[20px] font-semibold mb-[24px]">{t('Trip Summary')}</h2>
+              {!!trip.bus.photos?.length && (
+                <BusCover photos={trip.bus.photos} name={trip.bus.name} className="aspect-[16/9] rounded-xl mb-[24px]" />
+              )}
 
               <div className="space-y-[16px] mb-[24px] text-[14px]">
                 <div className="flex justify-between">

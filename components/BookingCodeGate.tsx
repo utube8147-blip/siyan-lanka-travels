@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ShieldCheck, X } from 'lucide-react';
 import { friendlyError, isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { tx, txr } from '@/lib/i18n';
+import { MOCK_CODE, mockVerificationOn } from '@/lib/mockVerification';
 
 /** Must match the message raised by require_booking_code() in the database. */
 const CODE_REQUIRED = 'Confirm this booking with the code we send you.';
@@ -126,7 +127,7 @@ export function useBookingCode() {
           </div>
           <p className="text-[14px] text-[#46464f] mt-2">
             {target.test
-              ? txr('Test mode: no text was sent. Enter the test code for <b>{phone}</b>.', { phone: target.label, b: (c) => <b className="text-[#050a44]">{c}</b> })
+              ? <>{txr('Test mode: no text was sent. Enter the test code for <b>{phone}</b>.', { phone: target.label, b: (c) => <b className="text-[#050a44]">{c}</b> })}{mockVerificationOn() && <> {tx('(It is {code}.)', { code: MOCK_CODE })}</>}</>
               : txr('We texted a 6-digit code to <b>{phone}</b>. Enter it to confirm this booking.', { phone: target.label, b: (c) => <b className="text-[#050a44]">{c}</b> })}
           </p>
           <input

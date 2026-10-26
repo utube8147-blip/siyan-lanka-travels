@@ -6,8 +6,8 @@
 
 import { useMemo } from 'react';
 import { Check, Clock, X } from 'lucide-react';
-import { detourState, useOptionalStatus, type OptionalStopStatus } from '@/lib/conductor';
-import { departureDate, formatDateLabel, formatTime12 } from '@/lib/trips';
+import { detourState, goesTo, useOptionalStatus, type OptionalStopStatus } from '@/lib/conductor';
+import { departureDate, formatDateLabel, formatTime12, tripWay } from '@/lib/trips';
 import { useStore } from '@/lib/store';
 import { tx } from '@/lib/i18n';
 import type { RouteStop } from '@/lib/types';
@@ -70,7 +70,9 @@ export function OnRequestNotice({ routeId, scheduleId, date, from, to, className
       {mine.map((s) => {
         const l = look(s);
         const d = detourState(s);
-        const main = nearestMain(route.stops, s.stop);
+        // Same rule as the cut-off: getting off → the stop before the turn-off; getting on → the one after.
+        const off = s.stop.trim().toLowerCase() === to.trim().toLowerCase();
+        const main = sideStop(route.stops, s.stop, off ? 'before' : 'after');
         return (
           <div key={s.stop} className="rounded-2xl bg-[#f7f5ff] border border-[#e4ddfb] px-4 py-3.5">
             <div className="flex items-start justify-between gap-3">
@@ -95,7 +97,11 @@ export function OnRequestNotice({ routeId, scheduleId, date, from, to, className
                   : d === 'likely'
                     ? tx('Enough seats are booked, so the bus is going there. It is final at {cutoff}.', { cutoff })
                     : tx('The bus goes there only if {min} seats are booked to or from it by {cutoff}.', { min: s.minSeats, cutoff })}
-              {(d === 'unlikely' || d === 'likely') && main && <> {tx('If not, you will use {main} instead, and we will tell you by text.', { main })}</>}
+              {(d === 'unlikely' || d === 'likely') && main && (
+                <> {off
+                  ? tx('If not, you get off where the road turns off for it, after {main} (your ticket will then say {main}), and we will tell you by text.', { main })
+                  : tx('If not, you board at {main} (or where the road comes back from it, just before), and we will tell you by text.', { main })}</>
+              )}
             </p>
           </div>
         );
@@ -170,8 +176,47 @@ export function OnRequestChip({
   );
 }
 
-/** The main stop nearest in time to an on-request stop (what passengers are moved to). */
-function nearestMain(stops: RouteStop[], name: string) {
+/**
+ * Seat page, before paying: when tonight's way (a variant, while some
+ * on-request stops haven't filled) leaves out the stop being booked, say so
+ * and where the passenger would get on / off instead.
+ */
+export function WayNotice({ routeId, scheduleId, date, from, to, className = '' }: { routeId: string; scheduleId: string; date: string; from: string; to: string; className?: string }) {
+  const { data } = useStore();
+  const route = data.routes.find((r) => r.id === routeId);
+  const status = useOptionalStatus(route, scheduleId, date, data.bookings);
+  const way = useMemo(() => (route ? tripWay(route, goesTo(status)) : null), [route, status]);
+  if (!route || !way?.variant) return null;
+  const eq = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const onWay = (n: string) => way.stops.some((s) => !s.hidden && eq(s.name, n));
+  const order = route.stops.map((s) => s.name);
+  const near = (n: string, after: boolean) => {
+    const i = order.findIndex((x) => eq(x, n));
+    const list = after ? order.slice(i + 1) : order.slice(0, i).reverse();
+    return list.find((x) => onWay(x));
+  };
+  const lines: string[] = [];
+  const isMain = (n: string) => !route.stops.find((s) => eq(s.name, n))?.optional;
+  if (isMain(from) && !onWay(from)) lines.push(tx('This trip currently goes the “{way}” way, which doesn’t stop at {stop}. Unless more on-request stops fill, you get on at {instead}.', { way: way.variant.name, stop: from, instead: near(from, true) ?? '—' }));
+  if (isMain(to) && !onWay(to)) lines.push(tx('This trip currently goes the “{way}” way, which doesn’t stop at {stop}. Unless more on-request stops fill, you get off at {instead}.', { way: way.variant.name, stop: to, instead: near(to, false) ?? '—' }));
+  if (!lines.length) return null;
+  return (
+    <div role="note" className={`rounded-2xl bg-[#fef3c7] border border-[#f59e0b]/40 text-[#92400e] text-[13px] font-semibold px-4 py-3 space-y-1 ${className}`}>
+      {lines.map((l) => <p key={l}>{l}</p>)}
+    </div>
+  );
+}
+
+/** The main stop just before / after an on-request stop on the route (where its passengers go if it doesn't fill). */
+function sideStop(stops: RouteStop[], name: string, side: 'before' | 'after') {
+  const i = stops.findIndex((s) => s.name.toLowerCase() === name.toLowerCase());
+  if (i < 0) return null;
+  const list = side === 'after' ? stops.slice(i + 1) : stops.slice(0, i).reverse();
+  return list.find((s) => !s.optional && !s.hidden)?.name ?? null;
+}
+
+/** The main stop nearest in time to an on-request stop. */
+export function nearestMain(stops: RouteStop[], name: string) {
   const at = stops.find((s) => s.name.toLowerCase() === name.toLowerCase());
   if (!at) return null;
   return [...stops].filter((s) => !s.optional && !s.hidden).sort((a, b) => Math.abs(a.offsetMin - at.offsetMin) - Math.abs(b.offsetMin - at.offsetMin))[0]?.name ?? null;

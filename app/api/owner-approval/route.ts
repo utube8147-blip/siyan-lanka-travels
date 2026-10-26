@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { adminClient } from '@/lib/server/admin';
 import { sendSms } from '@/lib/server/messaging';
+import { MOCK_CODE, mockSend, serverMockOn } from '@/lib/mockVerification';
 
 export const runtime = 'nodejs';
 
@@ -14,7 +15,9 @@ const clean = (m: string) => m.replace(/^[A-Z_]+:\s*/, '');
 export async function POST(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const owner = (process.env.OWNER_PHONE ?? '').trim();
+  const mock = serverMockOn(req.headers.get('host'));
+  // Local testing: no owner number needed, nothing is texted, the code is the test code.
+  const owner = (process.env.OWNER_PHONE ?? '').trim() || (mock ? '+94700000000' : '');
   const db = adminClient();
   if (!url || !key) return NextResponse.json({ error: 'The database is not configured.' }, { status: 503 });
   if (!owner) return NextResponse.json({ error: "The owner's number isn't set (OWNER_PHONE in .env)." }, { status: 503 });
@@ -45,6 +48,11 @@ export async function POST(req: NextRequest) {
   const text =
     `Siyan Lanka: ${who?.full_name || 'Staff'} asks to sell reserved seat ${a.seats.join(', ')} on ${day} ${sch?.departure ?? ''}${route ? ` ${route}` : ''}` +
     `${a.note ? ` for ${a.note}` : ''}. If you agree, give them this code: ${a.code} (valid 10 minutes). If not, ignore this message.`;
+  if (mock) {
+    await db.from('seat_approvals').update({ code: MOCK_CODE }).eq('id', id);
+    mockSend('sms', owner, text.replace(a.code, MOCK_CODE));
+    return NextResponse.json({ id, sentTo: owner.replace(/\d(?=\d{3})/g, '•'), test: true });
+  }
   const sent = await sendSms(owner, text);
   if (sent.status !== 'sent') {
     // No text went out: cancel the request so staff can try again straight away.
