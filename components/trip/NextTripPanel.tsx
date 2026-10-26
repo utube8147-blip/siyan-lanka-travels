@@ -104,18 +104,21 @@ export function NextTripPanel() {
           </h2>
           <p className="text-[13px] text-[#46464f]">{tx('{date} · {time} · seat {seats} · {ref}', { date: formatDateLabel(trip.boardingDate), time: formatTime12(trip.departure), seats: booking.seats.join(', '), ref: booking.ref })}</p>
         </div>
-        <div className="flex flex-wrap items-start gap-2">
-          {/* Bell shows only its icon (label hidden) so Track + WhatsApp fit on one row on phones */}
-          <div className="shrink-0 [&_button]:!w-10 [&_button]:!min-w-0 [&_button]:!h-10 [&_button]:!px-0 [&_button]:!gap-0 [&_button]:!justify-center [&_button]:!text-[0px] [&_button_svg]:!w-[18px] [&_button_svg]:!h-[18px]">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Bell: fixed 40x40 icon-only box. overflow-hidden + hidden captions so nothing inside TripBell can widen it. */}
+          <div
+            className="shrink-0 w-10 h-10 overflow-hidden [&_p]:!hidden [&_button]:!w-10 [&_button]:!min-w-0 [&_button]:!h-10 [&_button]:!px-0 [&_button]:!gap-0 [&_button]:!justify-center [&_button]:!text-[0px] [&_button_svg]:!w-[18px] [&_button_svg]:!h-[18px]"
+            title={tx('Reminders')}
+          >
             <TripBell bookingId={booking.id} />
           </div>
           {contact && (
-            <a href={`tel:${contact.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold">
+            <a href={`tel:${contact.phone.replace(/\s/g, '')}`} className="inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold">
               <Phone className="w-4 h-4" />{' '}{tx('Call {role}', { role: contact.role })}</a>
           )}
-          <a href={`/track?ref=${booking.ref}`} className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#feb700] text-[#14120a] text-[13px] font-bold">
+          <a href={`/track?ref=${booking.ref}`} className="flex-1 sm:flex-none min-w-[110px] inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#feb700] text-[#14120a] text-[13px] font-bold whitespace-nowrap">
             <Radio className="w-4 h-4" />{' '}{tx('Track bus')}</a>
-          <a href={share} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#25D366] text-white text-[13px] font-bold">
+          <a href={share} target="_blank" rel="noopener" className="flex-1 sm:flex-none min-w-[110px] inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#25D366] text-white text-[13px] font-bold whitespace-nowrap">
             <Share2 className="w-4 h-4" />{' '}{tx('WhatsApp')}</a>
         </div>
       </div>
