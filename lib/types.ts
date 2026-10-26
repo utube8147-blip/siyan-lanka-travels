@@ -168,6 +168,8 @@ export interface Booking {
   bookedTo?: string;
   seats: string[];
   passenger: { name: string; gender: Gender; phone: string };
+  /** Who sits in each seat ('' = not given); missing seats use passenger.gender. */
+  seatGenders?: Record<string, Gender>;
   contact: { email: string; phone: string };
   /** Set when a signed-in passenger booked it (links it to My Bookings). */
   userId?: string;

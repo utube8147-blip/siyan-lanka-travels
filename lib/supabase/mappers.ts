@@ -84,6 +84,7 @@ export const bookingFromRow = (r: any, photoUrls: Record<string, string> = {}): 
   fare: r.fare,
   fee: r.fee,
   gatewayFee: r.gateway_fee ?? 0,
+  seatGenders: r.seat_genders && Object.keys(r.seat_genders).length ? r.seat_genders : undefined,
   discount: r.discount,
   bikeFee: r.bike_fee || undefined,
   bikes: (r.booking_bikes ?? []).map((b: any) => bikeFromRow(b, b.photo_path ? photoUrls[b.photo_path] : undefined)),

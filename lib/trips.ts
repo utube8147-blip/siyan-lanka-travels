@@ -172,12 +172,16 @@ export function isLiveBooking(b: Booking) {
  * Simplification for v1: a seat booked for any part of the route is taken for
  * the whole run (no re-selling Colombo→Kegalle seats for Kegalle→Kandy).
  */
+/** Who sits in one seat of a booking: the seat's own answer, else the passenger's. */
+export const seatGenderOf = (b: Pick<Booking, 'seatGenders' | 'passenger'>, seat: string): Gender =>
+  b.seatGenders && seat in b.seatGenders ? b.seatGenders[seat] : b.passenger.gender;
+
 export function takenSeats(bookings: Booking[], scheduleId: string, date: string, ignoreBookingId?: string) {
   const map = new Map<string, Gender>();
   for (const b of bookings) {
     if (b.scheduleId !== scheduleId || b.date !== date || !isLiveBooking(b)) continue;
     if (ignoreBookingId && b.id === ignoreBookingId) continue;
-    b.seats.forEach((s) => map.set(s, b.passenger.gender));
+    b.seats.forEach((s) => map.set(s, seatGenderOf(b, s)));
   }
   return map;
 }
@@ -195,9 +199,19 @@ export function seatsBesideLoneWoman(bookings: Booking[], bus: Pick<Bus, 'rows' 
   const taken = new Set(here.flatMap((b) => b.seats));
   // seats on my own bookings (their anonymous "availability" twin has no user on it)
   const mine = new Set(myUserId ? here.filter((b) => b.userId === myUserId).flatMap((b) => b.seats) : []);
-  const lone = new Set(here.filter((b) => b.passenger.gender === 'Female' && b.seats.length === 1 && !mine.has(b.seats[0])).map((b) => b.seats[0]));
+  // A woman's seat with no neighbour from her own booking: she's travelling alone there.
+  const cells = busSeatMap(bus).cells;
+  const neighboursOf = new Map<string, string[]>();
+  for (const row of cells) row.forEach((c, i) => c && neighboursOf.set(c, [row[i - 1], row[i + 1]].filter(Boolean) as string[]));
+  const lone = new Set<string>();
+  for (const b of here) for (const s of b.seats) {
+    if (mine.has(s) || seatGenderOf(b, s) !== 'Female') continue;
+    // Someone else's booking seen as anonymous seat-map rows: the database says which seats sit alone.
+    if (b.id.startsWith('avail-')) { if (b.id.includes('|solo-')) lone.add(s); continue; }
+    if (!(neighboursOf.get(s) ?? []).some((n) => b.seats.includes(n))) lone.add(s);
+  }
   const out = new Set<string>();
-  for (const row of busSeatMap(bus).cells) {
+  for (const row of cells) {
     row.forEach((cell, i) => {
       if (!cell || taken.has(cell)) return;
       for (const nb of [row[i - 1], row[i + 1]]) if (nb && lone.has(nb)) out.add(cell);

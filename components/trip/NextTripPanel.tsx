@@ -93,38 +93,32 @@ export function NextTripPanel() {
     <motion.section
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm overflow-hidden mb-[28px] scroll-mb-28"
+      className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm overflow-hidden mb-[28px]"
       aria-label={tx('Your next trip')}
     >
-      <div className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border-b border-[#edeef0]">
-        <div className="min-w-0">
+      <div className="px-5 py-4 flex flex-wrap items-start justify-between gap-3 border-b border-[#edeef0]">
+        <div>
           <p className="text-[12px] font-bold uppercase tracking-wide text-[#7c5800]">{held ? (booking.paymentMethod === 'bus' ? tx('Seat reserved · pay on the bus') : t('Seat held · not paid yet')) : minsToDep < 24 * 60 ? t('Your trip is coming up') : t('Your next trip')}</p>
-          <h2 className="text-[18px] sm:text-[20px] font-semibold text-[#050a44] mt-0.5 leading-snug">
+          <h2 className="text-[20px] font-semibold text-[#050a44] mt-0.5">
             {booking.from} → {booking.to}
           </h2>
           <p className="text-[13px] text-[#46464f]">{tx('{date} · {time} · seat {seats} · {ref}', { date: formatDateLabel(trip.boardingDate), time: formatTime12(trip.departure), seats: booking.seats.join(', '), ref: booking.ref })}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          {/* Bell: fixed 40x40 icon-only box. overflow-hidden + hidden captions so nothing inside TripBell can widen it. */}
-          <div
-            className="shrink-0 w-10 h-10 overflow-hidden [&_p]:!hidden [&_button]:!w-10 [&_button]:!min-w-0 [&_button]:!h-10 [&_button]:!px-0 [&_button]:!gap-0 [&_button]:!justify-center [&_button]:!text-[0px] [&_button_svg]:!w-[18px] [&_button_svg]:!h-[18px]"
-            title={tx('Reminders')}
-          >
-            <TripBell bookingId={booking.id} />
-          </div>
+        <div className="flex flex-wrap items-start gap-2">
+          <TripBell bookingId={booking.id} />
           {contact && (
-            <a href={`tel:${contact.phone.replace(/\s/g, '')}`} className="basis-full sm:basis-auto order-last sm:order-none inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold whitespace-nowrap">
+            <a href={`tel:${contact.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold">
               <Phone className="w-4 h-4" />{' '}{tx('Call {role}', { role: contact.role })}</a>
           )}
-          <a href={`/track?ref=${booking.ref}`} className="flex-1 sm:flex-none min-w-0 inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#feb700] text-[#14120a] text-[13px] font-bold whitespace-nowrap">
+          <a href={`/track?ref=${booking.ref}`} className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#feb700] text-[#14120a] text-[13px] font-bold">
             <Radio className="w-4 h-4" />{' '}{tx('Track bus')}</a>
-          <a href={share} target="_blank" rel="noopener" className="flex-1 sm:flex-none min-w-0 inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#25D366] text-white text-[13px] font-bold whitespace-nowrap">
+          <a href={share} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#25D366] text-white text-[13px] font-bold">
             <Share2 className="w-4 h-4" />{' '}{tx('WhatsApp')}</a>
         </div>
       </div>
 
       {held && (
-        <div className="px-4 sm:px-5 py-3 bg-[#feb700]/10 border-b border-[#feb700]/30 text-[13px] text-[#46464f] flex flex-wrap items-center gap-3">
+        <div className="px-5 py-3 bg-[#feb700]/10 border-b border-[#feb700]/30 text-[13px] text-[#46464f] flex flex-wrap items-center gap-3">
           <Clock3 className="w-4 h-4 text-[#7c5800]" />
           <span className="flex-1 min-w-[200px]">
             {(() => {
@@ -156,7 +150,7 @@ export function NextTripPanel() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#edeef0]">
-        <div className="p-4 sm:p-5">
+        <div className="p-5">
           <p className="text-[12px] font-bold text-[#46464f] flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {t('Where to wait')}</p>
           <p className="text-[15px] font-semibold text-[#050a44] mt-1">{stop?.landmark || tx('{from} bus stand', { from: booking.from })}</p>
           {stop?.notes && <p className="text-[13px] text-[#46464f] mt-1">{stop.notes}</p>}
@@ -169,7 +163,7 @@ export function NextTripPanel() {
             <Navigation className="w-4 h-4" /> {t('Open in Maps')}
           </a>
         </div>
-        <div className="p-4 sm:p-5">
+        <div className="p-5">
           <p className="text-[12px] font-bold text-[#46464f] flex items-center gap-1.5">
             <Radio className={`w-4 h-4 ${location ? 'text-[#006e1c]' : ''}`} /> {t("Where's my bus")}
           </p>

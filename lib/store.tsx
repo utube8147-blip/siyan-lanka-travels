@@ -426,6 +426,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               contact: input.contact,
               promo: input.promo ?? '',
               in_app: input.inApp ?? false,
+              ...(input.seatGenders ? { seat_genders: input.seatGenders } : {}),
               channel: input.channel,
               payment: input.payment,
               use_reward: input.useReward ?? false,

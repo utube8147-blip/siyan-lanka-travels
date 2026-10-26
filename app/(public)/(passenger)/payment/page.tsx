@@ -66,6 +66,14 @@ function PaymentPageInner() {
   const contactEmail = searchParams.get('contactEmail') || '';
   const contactPhone = searchParams.get('contactPhone') || '';
   const promo = searchParams.get('promo');
+  const seatGenders = useMemo<Record<string, Gender> | undefined>(() => {
+    try {
+      const raw = searchParams.get('seatGenders');
+      return raw ? JSON.parse(raw) : undefined;
+    } catch {
+      return undefined;
+    }
+  }, [searchParams]);
 
   const passengers: Passenger[] = useMemo(() => {
     const raw = searchParams.get('passengers');
@@ -175,6 +183,7 @@ function PaymentPageInner() {
         total: totalPrice,
         promo: promoApplied ? pub.promoCode ?? undefined : undefined,
         inApp,
+        seatGenders,
         payment: method,
         useReward: useReward && (loyalty?.available ?? 0) > 0,
       }), contactPhone);

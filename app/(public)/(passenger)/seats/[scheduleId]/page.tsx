@@ -8,6 +8,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import SeatSelectionDrawer, { formatTime, type Gender } from '@/components/SeatSelectionDrawer';
+import { busSeatMap } from '@/lib/seatLayout';
 import { OPERATOR } from '@/config/operator';
 import { BikeAddon, bikesProblem } from '@/components/BikeAddon';
 import { useSavedPassengers, usePublicSettings } from '@/lib/extras';
@@ -16,7 +17,7 @@ import type { BikeItem } from '@/lib/types';
 import { useStore, StoreLoading } from '@/lib/store';
 import { OnRequestNotice, WayNotice } from '@/components/OnRequestNotice';
 import { BusCover } from '@/components/BusPhoto';
-import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO, seatsBesideLoneWoman, BESIDE_WOMAN_MESSAGE } from '@/lib/trips';
+import { formatDateLabel, formatLKR, formatTime12, getTrip, takenSeats, todayISO, seatsBesideLoneWoman } from '@/lib/trips';
 import { useT, txn, txr } from '@/lib/i18n';
 import { tx } from '@/lib/i18n';
 
@@ -102,6 +103,10 @@ function BookingPageInner() {
   const [bookingFor, setBookingFor] = useState<BookingFor>('self');
   const [passengerName, setPassengerName] = useState(accountName);
   const [passengerGender, setPassengerGender] = useState<Gender>('');
+  // Who sits in each chosen seat. Needed for a seat beside someone else's seat (the
+  // "beside a woman travelling alone" rule uses it); seats side by side in this
+  // booking (travelling together) may leave it blank. The database checks the same.
+  const [seatGenders, setSeatGenders] = useState<Record<string, Gender>>({});
   const [passengerPhone, setPassengerPhone] = useState('');
   const savedPassengers = useSavedPassengers(user?.id);
 
@@ -270,7 +275,6 @@ function BookingPageInner() {
 
   const passengerValid =
     passengerName.trim().length > 1 &&
-    passengerGender !== '' &&
     (bookingFor === 'self' || passengerPhone.trim().length >= 6);
   // Email is optional (accounts created with a phone number may not have one), but must look right if given.
   const emailOk = (email ?? '').trim() === '' || /^\S+@\S+\.\S+$/.test((email ?? '').trim());
@@ -286,17 +290,30 @@ function BookingPageInner() {
     [trip, pub.ladiesAdjacent, data.bookings, date, user?.id],
   );
 
+  // Seats only a woman may take: women-only seats, and seats beside a woman travelling alone.
+  const womenOnlySeat = (seatId: string) => FEMALE_ONLY_SEATS.includes(seatId) || besideWoman.has(seatId);
+  const neighbours = useMemo(() => {
+    const m = new Map<string, string[]>();
+    if (trip) for (const row of busSeatMap(trip.bus).cells) row.forEach((c, i) => c && m.set(c, [row[i - 1], row[i + 1]].filter(Boolean) as string[]));
+    return m;
+  }, [trip]);
+  /** A seat beside a seat that isn't in this booking needs to know who sits in it. */
+  const genderNeeded = (seatId: string) => (neighbours.get(seatId) ?? []).some((n) => !selectedSeats.includes(n));
+  const genderOf = (seatId: string): Gender => (womenOnlySeat(seatId) ? 'Female' : seatGenders[seatId] ?? '');
+  const seatsValid = selectedSeats.every((sId) => !genderNeeded(sId) || genderOf(sId) !== '');
+  void hasMalePassenger;
+
   const toggleSeat = (seatId: string) => {
     setSelectedSeats((prev) => {
       const isSelected = prev.includes(seatId);
 
-      if (!isSelected && FEMALE_ONLY_SEATS.includes(seatId) && hasMalePassenger) {
-        addToast(tx('Seat {seatId} is reserved for female passengers.', { seatId }), 'error');
-        return prev;
+      // A woman-only seat can be chosen; it's then marked as a woman's seat.
+      if (!isSelected && womenOnlySeat(seatId)) {
+        addToast(FEMALE_ONLY_SEATS.includes(seatId) ? tx('Seat {seatId} is for women: marked as a woman\'s seat.', { seatId }) : tx('Seat {seatId} is beside a woman travelling alone, so it\'s for a woman: marked as a woman\'s seat.', { seatId }), 'info');
       }
-      if (!isSelected && besideWoman.has(seatId) && passengerGender !== 'Female') {
-        addToast(BESIDE_WOMAN_MESSAGE(seatId), 'error');
-        return prev;
+      // The first seat of a booking for yourself takes your gender, if you gave it before.
+      if (!isSelected && prev.length === 0 && passengerGender && !womenOnlySeat(seatId)) {
+        setSeatGenders((g) => ({ ...g, [seatId]: g[seatId] ?? passengerGender }));
       }
 
       if (isSelected) {
@@ -320,7 +337,7 @@ function BookingPageInner() {
   // Fees (platform, and the card fee when paying by card) are added at checkout, in one "Service fee" line.
   const totalPrice = selectedSeats.length > 0 ? basePrice - discount + bikeTotal : 0;
 
-  const canProceedToPayment = detailsValid && selectedSeats.length > 0 && !bikeError;
+  const canProceedToPayment = detailsValid && selectedSeats.length > 0 && seatsValid && !bikeError;
 
   const handleProceedToPayment = () => {
     if (!trip || !canProceedToPayment) return;
@@ -328,7 +345,7 @@ function BookingPageInner() {
       JSON.stringify([
         {
           name: passengerName,
-          gender: passengerGender,
+          gender: genderOf(selectedSeats[0] ?? '') || passengerGender,
           phone: bookingFor === 'self' ? phone : passengerPhone,
         },
       ])
@@ -343,6 +360,7 @@ function BookingPageInner() {
       drop,
       contactPhone: phone ?? '',
       contactEmail: email ?? '',
+      seatGenders: JSON.stringify(Object.fromEntries(selectedSeats.map((sId) => [sId, genderOf(sId)]))),
     });
     // Bike photos are too big for a URL, so hand them to the payment page via
     // this tab's sessionStorage.
@@ -512,27 +530,42 @@ function BookingPageInner() {
                 )}
               </div>
 
-              <div>
-                <label className="text-[11px] font-bold text-[#46464f] px-1 mb-1 block">{tx('Gender')}</label>
-                <div className="flex gap-[8px]">
-                  {(['Male', 'Female'] as Gender[]).map((g) => (
-                    <button
-                      key={g}
-                      onClick={() => setPassengerGender(g)}
-                      className={`px-4 py-2 rounded-lg text-[13px] font-bold border transition-colors ${
-                        passengerGender === g
-                          ? 'border-[#050a44] bg-[#050a44] text-white'
-                          : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f2f4f6]'
-                      }`}
-                    >
-                      {tx(g)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <p className="mt-[16px] text-[11px] text-[#6b6d78]">{tx('Booking more than one seat (e.g. for family)? Pick as many seats as you need in the next step.')}</p>
             </div>
+
+            {selectedSeats.length > 0 && (
+              <div className="bg-[#ffffff] rounded-xl p-[24px] shadow-sm border border-[#c7c5d1]">
+                <h2 className="text-[16px] font-semibold">{tx('Who sits where')}</h2>
+                <p className="text-[12px] text-[#6b6d78] mt-1 mb-[16px]">{tx('Needed for a seat beside someone else\'s, so women travelling alone can sit beside women. Seats side by side in your booking can skip it.')}</p>
+                <ul className="space-y-[10px]">
+                  {selectedSeats.map((sId, i) => {
+                    const need = genderNeeded(sId);
+                    const locked = womenOnlySeat(sId);
+                    const g = genderOf(sId);
+                    return (
+                      <li key={sId} className="flex flex-wrap items-center gap-3 rounded-xl border border-[#e1e2e4] px-3 py-2.5">
+                        <span className="w-12 h-10 rounded-lg bg-[#050a44] text-white text-[14px] font-bold flex items-center justify-center keep-navy">{sId}</span>
+                        <span className="flex-1 min-w-[140px]">
+                          <span className="block text-[14px] font-semibold text-[#050a44]">{i === 0 && passengerName.trim() ? passengerName.trim() : tx('Seat {seat}', { seat: sId })}</span>
+                          <span className={`block text-[12px] ${need && !g ? 'text-[#ba1a1a] font-semibold' : 'text-[#6b6d78]'}`}>
+                            {locked ? tx('For a woman') : need ? tx('Needed: the seat beside it is someone else\'s') : tx('Optional: you\'re sitting together')}
+                          </span>
+                        </span>
+                        <span className="flex gap-1.5" role="radiogroup" aria-label={tx('Who sits in seat {seat}', { seat: sId })}>
+                          {(['Male', 'Female'] as Gender[]).map((opt) => (
+                            <button key={opt} type="button" role="radio" aria-checked={g === opt} disabled={locked && opt === 'Male'}
+                              onClick={() => setSeatGenders((m) => ({ ...m, [sId]: m[sId] === opt && !need ? '' : opt }))}
+                              className={`px-3 h-9 rounded-lg text-[13px] font-bold border transition-colors disabled:opacity-30 ${g === opt ? 'border-[#050a44] bg-[#050a44] text-white' : 'border-[#e1e2e4] bg-white text-[#46464f] hover:bg-[#f2f4f6]'}`}>
+                              {tx(opt)}
+                            </button>
+                          ))}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
 
             <BikeAddon trip={trip} bikes={bikes} onChange={setBikes} />
 
@@ -723,12 +756,14 @@ function BookingPageInner() {
                 <p className="text-center text-[11px] font-medium text-[#ba1a1a] mt-[12px]">
                   {!passengerValid
                     ? bookingFor === 'other'
-                      ? tx('Fill in the passenger\'s name, gender, and phone number.')
-                      : tx('Fill in the passenger name and gender.')
+                      ? tx('Fill in the passenger\'s name and phone number.')
+                      : tx('Fill in the passenger name.')
                     : !contactValid
                     ? tx('Verify your phone number to continue.')
                     : selectedSeats.length === 0
                     ? tx('Select at least one seat to continue.')
+                    : !seatsValid
+                    ? tx('Choose male or female for seat {seat} (the seat beside it is someone else\'s).', { seat: selectedSeats.find((sId) => genderNeeded(sId) && !genderOf(sId)) ?? '' })
                     : bikeError}
                 </p>
               )}
