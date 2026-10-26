@@ -105,7 +105,10 @@ export function NextTripPanel() {
           <p className="text-[13px] text-[#46464f]">{tx('{date} · {time} · seat {seats} · {ref}', { date: formatDateLabel(trip.boardingDate), time: formatTime12(trip.departure), seats: booking.seats.join(', '), ref: booking.ref })}</p>
         </div>
         <div className="flex flex-wrap items-start gap-2">
-          <TripBell bookingId={booking.id} />
+          {/* Bell shows only its icon (label hidden) so Track + WhatsApp fit on one row on phones */}
+          <div className="shrink-0 [&_button]:!w-10 [&_button]:!min-w-0 [&_button]:!h-10 [&_button]:!px-0 [&_button]:!gap-0 [&_button]:!justify-center [&_button]:!text-[0px] [&_button_svg]:!w-[18px] [&_button_svg]:!h-[18px]">
+            <TripBell bookingId={booking.id} />
+          </div>
           {contact && (
             <a href={`tel:${contact.phone.replace(/\s/g, '')}`} className="inline-flex items-center gap-1.5 px-3 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold">
               <Phone className="w-4 h-4" />{' '}{tx('Call {role}', { role: contact.role })}</a>
