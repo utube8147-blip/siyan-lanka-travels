@@ -1,208 +1,236 @@
 'use client';
-// "Your next trip": boarding spot (landmark, photo, map), live bus position
-// and ETA to your stop, trip updates, call the conductor (on the day), share
-// on WhatsApp, and how/when to pay for held seats.
+// app/admin/layout.tsx — operator dashboard shell.
+// Access is gated on the mock "operator" (staff) role. When real auth is added,
+// enforce this on the server too (middleware + database row-level security);
+// a client-side check alone only hides the UI.
 
-import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { House, Bus, Banknote, Ticket, BarChart3, Users, Settings as SettingsIcon, LogOut, ScanLine, Menu, X } from 'lucide-react';
 import { motion } from 'motion/react';
-import { MapPin, Navigation, Phone, Radio, Share2, Clock3, CreditCard } from 'lucide-react';
-import { OPERATOR } from '@/config/operator';
-import { useAuth } from '@/contexts/AuthContext';
-import { useStore } from '@/lib/store';
-import { departureDate, formatDateLabel, formatLKR, formatTime12, getTrip, toMinutes, dateLocale } from '@/lib/trips';
-import { km, useLiveTrip, usePublicSettings, useTripContact, whatsappShareUrl } from '@/lib/extras';
-import { startPayhere } from '@/lib/payhere-client';
-import { mockPaymentsOn } from '@/lib/mockVerification';
-import type { Booking } from '@/lib/types';
-import { useT, txr } from '@/lib/i18n';
-import { counterPlaces, useBranches } from '@/lib/branches';
-import { TripBell } from '@/components/trip/TripBell';
-import { tx } from '@/lib/i18n';
+import { isOfficeRole, useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useStore, StoreLoading } from '@/lib/store';
+import { Wordmark } from '@/components/Wordmark';
+import { Button } from '@/components/admin/ui';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { usePayouts } from '@/lib/money';
 
-import { fmtDate } from '@/lib/dates';
-const ago = (iso: string) => {
-  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  return m < 1 ? tx('just now') : m < 60 ? tx('{m} min ago', { m }) : tx('{round} h ago', { round: Math.round(m / 60) });
-};
+import { tx, txn } from '@/lib/i18n';
+// Seven places, one job each, each an icon and one word. Most pages are tabs
+// inside these (see components/admin/Hub.tsx).
+type NavItem = { href: string; label: string; icon: typeof House; adminOnly?: boolean; also?: string[] };
+const SECTIONS: { title: string; items: NavItem[] }[] = [
+  {
+    title: 'Daily work',
+    items: [
+      { href: '/admin', label: 'Today', icon: House },
+      { href: '/admin/trips', label: 'Trips', icon: Ticket, also: ['/admin/requests'] },
+      { href: '/admin/money', label: 'Money', icon: Banknote },
+      { href: '/admin/buses', label: 'Buses', icon: Bus, also: ['/admin/routes/'] },
+    ],
+  },
+  {
+    title: 'Owner',
+    items: [
+      { href: '/admin/reports', label: 'Reports', icon: BarChart3, adminOnly: true },
+      { href: '/admin/people', label: 'People', icon: Users, adminOnly: true },
+      { href: '/admin/settings', label: 'Settings', icon: SettingsIcon, adminOnly: true },
+    ],
+  },
+];
 
-export function NextTripPanel() {
-  const { t } = useT();
-  const { user } = useAuth();
-  const { data, ready } = useStore();
-  const pub = usePublicSettings();
-  const counters = counterPlaces(useBranches().branches);
-  const [payErr, setPayErr] = useState<string | null>(null);
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { user, logout, isLoading, mode } = useAuth();
+  const { ready, data } = useStore();
+  // Work waiting for the office: unpaid online holds for the counter or bank (incl. slips to check).
+  const waiting = data.bookings.filter((b) => b.status === 'held' && b.channel === 'online' && (b.paymentMethod === 'bank' || b.paymentMethod === 'counter')).length;
+  const { payouts } = usePayouts('all');
+  const owed = payouts.filter((p) => p.status === 'pending').length;
+  const counts: Record<string, number> = { '/admin/trips': waiting, '/admin/money': owed };
+  const badge = (href: string) =>
+    counts[href] > 0 ? (
+      <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-[#feb700] text-[#14120a] text-[11px] font-bold inline-flex items-center justify-center" aria-label={txn(counts[href], '{n} waiting', '{n} waiting')}>{counts[href] > 99 ? '99+' : counts[href]}</span>
+    ) : null;
+  const isStaff = isOfficeRole(user?.role);
+  // Slide-out menu on phones and tablets.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => setMenuOpen(false), [pathname]); // a link was followed
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden'; // the page behind doesn't scroll while the menu is open
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+  const router = useRouter();
+  useEffect(() => {
+    if (user?.role === 'conductor') router.replace('/conductor');
+  }, [user?.role, router]);
+  const isAdmin = user?.role === 'admin';
+  const sections = SECTIONS.map((sec) => ({ ...sec, items: sec.items.filter((i) => !i.adminOnly || isAdmin) })).filter((sec) => sec.items.length);
+  const NAV = sections.flatMap((sec) => sec.items);
+  const active = (href: string) => {
+    if (href === '/admin') return pathname === '/admin';
+    const item = NAV.find((i) => i.href === href);
+    return pathname === href || !!pathname?.startsWith(`${href}/`) || !!item?.also?.some((a) => pathname?.startsWith(a));
+  };
 
-  const next = useMemo(() => {
-    if (!ready || !user) return null;
-    const now = Date.now();
-    return data.bookings
-      .filter((b) => b.userId === user.id && (b.status === 'confirmed' || b.status === 'held'))
-      .map((b) => {
-        const t = getTrip(data, b.scheduleId, b.date, b.from, b.to);
-        const arr = t ? departureDate(t.boardingDate, t.arrival).getTime() + (t.arrivalDayOffset ? 86_400_000 : 0) : 0;
-        return { b, t, arr };
-      })
-      .filter((x) => x.t && x.arr > now)
-      .sort((a, b) => a.arr - b.arr)[0] ?? null;
-  }, [data, ready, user]);
+  if (isLoading) return <StoreLoading />;
 
-  const booking: Booking | null = next?.b ?? null;
-  const trip = next?.t ?? null;
-  const { location, events } = useLiveTrip(booking?.scheduleId, booking?.date);
-  const contact = useTripContact(booking);
-  if (!booking || !trip) return null;
+  if (!isStaff) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-[#f8f9fb]">
+        <div className="bg-white rounded-2xl border border-[#e1e2e4] shadow-sm p-8 max-w-sm w-full text-center space-y-5">
+          <div className="flex justify-center">
+            <Wordmark badge />
+          </div>
+          <div>
+            <h1 className="text-[20px] font-bold text-[#050a44]">{tx('Staff area')}</h1>
+            <p className="text-[14px] text-[#46464f] mt-1">{tx('Staff only. Sign in with your staff account.')}</p>
+          </div>
+          {user && !isStaff && mode === 'supabase' ? (
+            <p className="text-[13px] text-[#46464f] bg-[#f2f4f6] rounded-xl p-3">
+              {tx("You're signed in as {email}, which doesn't have staff access.", { email: user.email })}
+            </p>
+          ) : (
+            <Link href={`/staff/login?next=${encodeURIComponent(pathname || '/admin')}`} className="block">
+              <Button className="w-full">{tx('Staff sign-in')}</Button>
+            </Link>
+          )}
 
-  const route = data.routes.find((r) => r.id === trip.routeId);
-  const stops = route?.stops ?? [];
-  const bi = stops.findIndex((s) => s.name === booking.from);
-  const stop = stops[bi];
-  const leaves = departureDate(trip.boardingDate, trip.departure);
-  const minsToDep = Math.round((leaves.getTime() - Date.now()) / 60000);
-  const liveWindow = minsToDep < 6 * 60;
-  const delay = events.find((e) => e.kind === 'delayed')?.minutes ?? 0;
-
-  // ETA from the bus's live position (nearest stop + timetable gap), else timetable + reported delay.
-  let eta: { text: string; tone: 'ok' | 'warn' | 'done' } | null = null;
-  if (liveWindow) {
-    const fresh = location && Date.now() - new Date(location.updatedAt).getTime() < 20 * 60000;
-    if (fresh && stop?.lat != null && stop.lng != null) {
-      const withPos = stops.map((s, i) => ({ i, d: s.lat != null && s.lng != null ? km(location, { lat: s.lat, lng: s.lng! }) : Infinity }));
-      const near = withPos.sort((a, b) => a.d - b.d)[0];
-      const toStop = km(location, { lat: stop.lat, lng: stop.lng });
-      if (near.i > bi && toStop > 3) eta = { text: tx('The bus has passed your stop'), tone: 'done' };
-      else if (toStop <= 1) eta = { text: tx('The bus is at your stop now'), tone: 'ok' };
-      else {
-        const mins = Math.max(2, stops[bi].offsetMin - stops[near.i].offsetMin + Math.round((near.d / 45) * 60));
-        eta = { text: tx('About {mins} min away · near {name}', { mins, name: stops[near.i].name }), tone: 'ok' };
-      }
-    } else if (minsToDep > -30) {
-      const at = new Date(leaves.getTime() + delay * 60000);
-      eta = { text: delay ? tx('Running ~{delay} min late · expected {toLocaleTimeString}', { delay, toLocaleTimeString: at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) }) : tx('On schedule · {time}', { time: formatTime12(trip.departure) }), tone: delay ? 'warn' : 'ok' };
-    }
+        </div>
+      </div>
+    );
   }
 
-  const mapUrl = stop?.lat != null ? `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${booking.from} bus stand Sri Lanka`)}`;
-  const busUrl = location ? `https://www.google.com/maps/search/?api=1&query=${location.lat},${location.lng}` : null;
-  const share = whatsappShareUrl(
-    tx('My {name} ticket {ref}: {from} → {to}, {date} at {time}, seat {seats}. Boarding: {v}. {siteUrl}/my-bookings', { name: OPERATOR.name, ref: booking.ref, from: booking.from, to: booking.to, date: formatDateLabel(trip.boardingDate), time: formatTime12(trip.departure), seats: booking.seats.join(', '), v: stop?.landmark ?? booking.from, siteUrl: OPERATOR.siteUrl }),
+  // The staff menu: one definition, shown as the fixed sidebar on large screens
+  // and inside the slide-out drawer (hamburger) on phones and tablets.
+  const sidebarBody = ({ closeButton = false }: { closeButton?: boolean } = {}) => (
+    <>
+      <div className="flex items-start justify-between gap-2 mb-8">
+        <Link href="/admin" className="block min-w-0" onClick={() => setMenuOpen(false)}>
+          <Wordmark />
+          <span className="block text-[11px] font-semibold text-white/50 mt-2 truncate">{isAdmin ? tx('Super admin') : tx('Staff')} · {user.user_metadata.full_name}</span>
+        </Link>
+        {closeButton && (
+          <button onClick={() => setMenuOpen(false)} aria-label={tx('Close menu')} className="shrink-0 w-10 h-10 -mr-2 -mt-1 rounded-xl flex items-center justify-center text-white/80 hover:bg-white/10">
+            <X className="w-5 h-5" />
+          </button>
+        )}
+      </div>
+
+      {/* Scrolls with wheel / trackpad / touch, but the scrollbar is hidden
+          (.no-scrollbar is defined in globals.css). */}
+      <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar space-y-5" aria-label={tx('Staff')}>
+        {sections.map((sec) => (
+          <div key={sec.title} className="space-y-1">
+            <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-white/40">{sec.title}</p>
+            {sec.items.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMenuOpen(false)}
+                aria-current={active(href) ? 'page' : undefined}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-[14px] font-semibold transition-colors ${
+                  active(href) ? 'bg-white text-[#050a44]' : 'text-white/80 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Icon className="w-[18px] h-[18px] shrink-0" />
+                {label}
+                {badge(href)}
+              </Link>
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      {/* Bottom block: Sign out on the left, theme toggle beside it on the right
+          (same in the desktop sidebar and the hamburger drawer). */}
+      <div className="space-y-1 border-t border-white/10 pt-4">
+        <Link href="/conductor" className="flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
+          <ScanLine className="w-4 h-4" /> {tx('Conductor app (phone)')}
+        </Link>
+        <div className="flex items-center gap-2">
+          <button onClick={logout} className="flex-1 min-w-0 flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-semibold text-white/80 hover:bg-white/10">
+            <LogOut className="w-4 h-4 shrink-0" /> {tx('Sign out')}
+          </button>
+          <ThemeToggle onDark />
+        </div>
+      </div>
+    </>
   );
-  const held = booking.status === 'held';
 
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-2xl border border-[#c7c5d1] shadow-sm overflow-hidden mb-[28px] scroll-mb-28"
-      aria-label={tx('Your next trip')}
-    >
-      <div className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 border-b border-[#edeef0]">
-        <div className="min-w-0">
-          <p className="text-[12px] font-bold uppercase tracking-wide text-[#7c5800]">{held ? (booking.paymentMethod === 'bus' ? tx('Seat reserved · pay on the bus') : t('Seat held · not paid yet')) : minsToDep < 24 * 60 ? t('Your trip is coming up') : t('Your next trip')}</p>
-          <h2 className="text-[18px] sm:text-[20px] font-semibold text-[#050a44] mt-0.5 leading-snug">
-            {booking.from} → {booking.to}
-          </h2>
-          <p className="text-[13px] text-[#46464f]">{tx('{date} · {time} · seat {seats} · {ref}', { date: formatDateLabel(trip.boardingDate), time: formatTime12(trip.departure), seats: booking.seats.join(', '), ref: booking.ref })}</p>
-        </div>
-        <div className="grid grid-cols-[40px_1fr_1fr] sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
-          {/* Bell: fixed 40x40 icon-only box. overflow-hidden + hidden captions so nothing inside TripBell can widen it. */}
-          <div
-            className="shrink-0 w-10 h-10 overflow-hidden [&_p]:!hidden [&_button]:!w-10 [&_button]:!min-w-0 [&_button]:!h-10 [&_button]:!px-0 [&_button]:!gap-0 [&_button]:!justify-center [&_button]:!text-[0px] [&_button_svg]:!w-[18px] [&_button_svg]:!h-[18px]"
-            title={tx('Reminders')}
-          >
-            <TripBell bookingId={booking.id} />
+    // overflow-x-clip: nothing in the staff area can make the page scroll sideways.
+    <div className="min-h-screen bg-[#f2f4f7] lg:grid lg:grid-cols-[248px_1fr] overflow-x-clip">
+      <title>Staff area | Siyan Lanka Travels</title>
+      <meta name="robots" content="noindex, nofollow" />
+
+      {/* Large screens: fixed sidebar */}
+      <aside className="keep-navy hidden lg:flex flex-col bg-[#111216] text-white sticky top-0 h-screen p-5">{sidebarBody()}</aside>
+
+      {/* Phones and tablets: top bar with the hamburger */}
+      <div className="keep-navy lg:hidden sticky top-0 z-40 bg-[#111216] text-white">
+        <div className="flex items-center justify-between gap-2 px-2 h-14">
+          <div className="flex items-center gap-1 min-w-0">
+            <button onClick={() => setMenuOpen(true)} aria-label={tx('Open menu')} aria-expanded={menuOpen} className="relative w-11 h-11 rounded-xl flex items-center justify-center hover:bg-white/10">
+              <Menu className="w-6 h-6" />
+              {waiting > 0 && <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-[#feb700]" aria-hidden />}
+            </button>
+            <Link href="/admin" aria-label={tx('Staff area home')}>
+              <Wordmark size="sm" />
+            </Link>
           </div>
-          {contact && (
-            <a href={`tel:${contact.phone.replace(/\s/g, '')}`} className="col-span-3 sm:col-span-1 order-last sm:order-none inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#050a44] text-white text-[13px] font-bold whitespace-nowrap">
-              <Phone className="w-4 h-4" />{' '}{tx('Call {role}', { role: contact.role })}</a>
-          )}
-          <a href={`/track?ref=${booking.ref}`} className="sm:flex-none min-w-0 inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#feb700] text-[#14120a] text-[13px] font-bold whitespace-nowrap">
-            <Radio className="w-4 h-4" />{' '}{tx('Track bus')}</a>
-          <a href={share} target="_blank" rel="noopener" className="sm:flex-none min-w-0 inline-flex items-center justify-center gap-1.5 px-3 h-10 rounded-xl bg-[#25D366] text-white text-[13px] font-bold whitespace-nowrap">
-            <Share2 className="w-4 h-4" />{' '}{tx('WhatsApp')}</a>
+          <ThemeToggle onDark />
         </div>
       </div>
 
-      {held && (
-        <div className="px-4 sm:px-5 py-3 bg-[#feb700]/10 border-b border-[#feb700]/30 text-[13px] text-[#46464f] flex flex-wrap items-center gap-3">
-          <Clock3 className="w-4 h-4 text-[#7c5800]" />
-          <span className="flex-1 min-w-[200px]">
-            {(() => {
-              const b = (c: React.ReactNode) => <b className="text-[#050a44]">{c}</b>;
-              const amount = formatLKR(booking.total);
-              const until = booking.holdExpiresAt ? fmtDate(new Date(booking.holdExpiresAt), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-              if (booking.paymentMethod === 'bus') return txr('Pay <b>{amount}</b> in cash to the conductor when you board. Your seat is reserved; show the QR code.', { amount, b });
-              if (booking.paymentMethod === 'bank') return txr('Pay <b>{amount}</b> by <b2>{until}</b2> by bank transfer to {bankDetails} (reference {ref}).', { amount, until, bankDetails: pub.bankDetails, ref: booking.ref, b, b2: b });
-              if (booking.paymentMethod === 'counter')
-                return txr('Pay <b>{amount}</b> by <b2>{until}</b2> at {where}.', { amount, until, where: counters.list.length ? `${counters.text} (${counters.list.map((x) => x.address || x.name).join('; ')})` : tx('our counter, {address}', { address: OPERATOR.contact.address }), b, b2: b });
-              return txr('Payment not finished. Pay <b>{amount}</b> by <b2>{until}</b2> or the seat is released.', { amount, until, b, b2: b });
-            })()}
-          </span>
-          {/* Card / wallet bookings finish through the gateway (its fee is in the total, so a bank-transfer hold stays on bank transfer). */}
-          {(booking.paymentMethod === 'card' || booking.paymentMethod === 'wallet') && ((pub.paymentsMode === 'payhere' && pub.cardPayments) || mockPaymentsOn()) && (
-            <button
-              onClick={async () => {
-                if (pub.paymentsMode !== 'payhere' && mockPaymentsOn()) {
-                  window.location.href = `/mock-gateway?${new URLSearchParams({ ref: booking.ref, amount: String(booking.total) })}`;
-                  return;
-                }
-                setPayErr(await startPayhere(booking.id));
-              }}
-              className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-[#feb700] text-[#14120a] font-bold">
-              <CreditCard className="w-4 h-4" />{' '}{tx('Pay online now')}</button>
-          )}
-          {payErr && <span className="w-full text-[#ba1a1a] font-semibold">{payErr}</span>}
+      {/* The drawer. "fixed inset-0" (not 100vw) so it never widens the page. */}
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <button aria-label={tx('Close menu')} onClick={() => setMenuOpen(false)} className="absolute inset-0 w-full h-full bg-black/60 cursor-default" />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label={tx('Staff menu')}
+            className={`keep-navy absolute left-0 top-0 bottom-0 w-[280px] max-w-[85%] bg-[#111216] text-white flex flex-col p-5 shadow-2xl`}
+          >
+            {sidebarBody({ closeButton: true })}
+          </aside>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#edeef0]">
-        <div className="p-4 sm:p-5">
-          <p className="text-[12px] font-bold text-[#46464f] flex items-center gap-1.5"><MapPin className="w-4 h-4" /> {t('Where to wait')}</p>
-          <p className="text-[15px] font-semibold text-[#050a44] mt-1">{stop?.landmark || tx('{from} bus stand', { from: booking.from })}</p>
-          {stop?.notes && <p className="text-[13px] text-[#46464f] mt-1">{stop.notes}</p>}
-          {stop?.photo && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={stop.photo} alt={tx('Boarding point at {from}', { from: booking.from })} className="mt-3 w-full max-h-48 object-cover rounded-xl border border-[#edeef0]" />
-          )}
-          <p className="text-[12px] text-[#6b6d78] mt-2">{tx('Be there 20 minutes early. At night, wait in a lit spot and look for “SIYAN LANKA” on the windscreen.')}</p>
-          <a href={mapUrl} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 mt-3 text-[13px] font-bold text-[#050a44] underline">
-            <Navigation className="w-4 h-4" /> {t('Open in Maps')}
-          </a>
-        </div>
-        <div className="p-4 sm:p-5">
-          <p className="text-[12px] font-bold text-[#46464f] flex items-center gap-1.5">
-            <Radio className={`w-4 h-4 ${location ? 'text-[#006e1c]' : ''}`} /> {t("Where's my bus")}
-          </p>
-          {!liveWindow ? (
-            <p className="text-[14px] text-[#46464f] mt-1">{t('Live tracking starts a few hours before departure.')}</p>
-          ) : (
-            <>
-              {eta && (
-                <p className={`text-[15px] font-semibold mt-1 ${eta.tone === 'warn' ? 'text-[#7c5800]' : eta.tone === 'done' ? 'text-[#46464f]' : 'text-[#006e1c]'}`}>{eta.text}</p>
-              )}
-              {location ? (
-                <p className="text-[12px] text-[#6b6d78] mt-1">{location.speedKmh ? tx('Location updated {updatedAt} · {speed} km/h', { updatedAt: ago(location.updatedAt), speed: location.speedKmh }) : tx('Location updated {updatedAt}', { updatedAt: ago(location.updatedAt) })} ·{' '}
-                  <a href={busUrl!} target="_blank" rel="noopener" className="underline font-semibold text-[#050a44]">{tx('see bus on map')}</a>
-                </p>
-              ) : (
-                <p className="text-[12px] text-[#6b6d78] mt-1">{tx('The bus hasn\'t started sharing its location yet.')}</p>
-              )}
-            </>
-          )}
-          {events.length > 0 && (
-            <ul className="mt-3 space-y-1.5">
-              {events.slice(0, 3).map((e) => (
-                <li key={e.id} className="text-[13px] text-[#46464f]">
-                  <span className="text-[#6b6d78]">{new Date(e.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>{' '}
-                  {e.kind === 'departed' ? tx('Left {stop}', { stop: e.stop }) : e.kind === 'delayed' ? tx('Running {minutes} min late', { minutes: e.minutes }) : e.kind === 'arriving' ? tx('{minutes} min from {stop}', { minutes: e.minutes, stop: e.stop }) : e.kind === 'arrived' ? tx('Reached {stop}', { stop: e.stop }) : e.message}
-                  {e.message && e.kind !== 'note' ? ` · ${e.message}` : ''}
+      <main className="min-w-0 px-4 md:px-8 pt-6 md:pt-8 pb-[calc(env(safe-area-inset-bottom)+110px)] lg:pb-8 max-w-[1280px] w-full">{ready ? children : <StoreLoading />}</main>
+
+      {/* Phones and tablets: the four daily places in a bottom bar (the owner's are in the menu). */}
+      <div className="keep-navy lg:hidden fixed inset-x-0 z-40 px-3 flex justify-center pointer-events-none bottom-[calc(env(safe-area-inset-bottom)+10px)]">
+        <nav aria-label="Daily work" className="pointer-events-auto w-full max-w-[480px] rounded-full bg-[#111216]/95 backdrop-blur border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.35)] p-1.5">
+          <ul className="grid grid-cols-4 gap-1 h-[64px]">
+            {SECTIONS[0].items.map(({ href, label, icon: Icon }) => {
+              const on = active(href);
+              return (
+                <li key={href} className="relative">
+                  <Link href={href} aria-current={on ? 'page' : undefined} className="relative h-full flex flex-col items-center justify-center gap-1 rounded-full">
+                    {on && <motion.span layoutId="staff-tab-pill" className="absolute inset-0 rounded-full bg-white/[0.12]" transition={{ type: 'spring', stiffness: 520, damping: 38 }} />}
+                    <span className="relative flex items-center justify-center">
+                      <Icon className={`w-6 h-6 ${on ? 'text-[#feb700]' : 'text-white/60'}`} strokeWidth={on ? 2.3 : 1.8} />
+                      {counts[href] > 0 && <span className="absolute -top-1.5 -right-2.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#feb700] text-[#14120a] text-[10px] font-extrabold flex items-center justify-center">{counts[href] > 99 ? '99+' : counts[href]}</span>}
+                    </span>
+                    <span className={`relative text-[12px] leading-none ${on ? 'font-bold text-white' : 'font-medium text-white/70'}`}>{label}</span>
+                  </Link>
                 </li>
-              ))}
-            </ul>
-          )}
-          {liveWindow && toMinutes(trip.departure) >= 0 && <p className="sr-only">{tx('Scheduled departure {time}', { time: formatTime12(trip.departure) })}</p>}
-        </div>
+              );
+            })}
+          </ul>
+        </nav>
       </div>
-    </motion.section>
+    </div>
   );
 }
