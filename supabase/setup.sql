@@ -63,6 +63,7 @@
 --  45. The conductor changes a passenger's stops (after asking them), logged
 --  46. Fare + card fee + platform fee; online = gateway or bank slip only;
 --      first-trip app promo; monthly money breakdown
+--  47. Bank details for transfers (BOC A/C 95572680, Siyan Lanka)
 --
 -- This one file is everything: every migration in supabase/migrations/ plus
 -- the starting data. (Checked: a database built from this file has exactly the
@@ -6437,3 +6438,19 @@ revoke execute on function public.money_breakdown(date, date) from public, anon;
 grant execute on function public.money_breakdown(date, date) to authenticated;
 
 notify pgrst, 'reload schema';
+
+
+-- =============================================================================
+-- ▼ 20261046000000_bank_details.sql
+-- =============================================================================
+-- =============================================================================
+-- 20261046000000_bank_details.sql
+-- The account passengers pay into by bank transfer (shown at checkout, in My
+-- trips and in the "seat held" text). Only filled in where none was set, or the
+-- old placeholder account is still there; change it any time in
+-- Staff area → Settings → Payments → Bank details.
+-- =============================================================================
+alter table public.app_settings alter column bank_details set default 'Bank of Ceylon (BOC) · A/C 95572680 · Siyan Lanka';
+update public.app_settings
+   set bank_details = 'Bank of Ceylon (BOC) · A/C 95572680 · Siyan Lanka'
+ where coalesce(trim(bank_details), '') = '' or bank_details like '%0077411020%';

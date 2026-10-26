@@ -9,9 +9,10 @@ import AnimatedNumber from '@/components/motion/AnimatedNumber';
 import { useStaggerIn } from '@/components/motion/useStaggerIn';
 import { WaitlistButton } from '@/components/trip/WaitlistButton';
 import { useStore } from '@/lib/store';
-import { addDays, allStopNames, nearbyOptions, routeLabel, roadStops, tripWay, runningRoutes, type NearbyOption, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
+import { addDays, allStopNames, stopHintsOf, nearbyOptions, routeLabel, roadStops, tripWay, runningRoutes, type NearbyOption, cityCode, formatDateLabel, findTrips, formatDuration, formatLKR, formatTime12, lastBookableDate, todayISO, dateLocale } from '@/lib/trips';
 import type { Trip } from '@/lib/types';
 import { StopPicker } from '@/components/StopPicker';
+import { geocodePlace, type Place } from '@/lib/geocode';
 import { useT, txn } from '@/lib/i18n';
 import {
   MapPin,
@@ -129,6 +130,7 @@ function SearchPageInner() {
   // so half-typed place names don't flash "no results".
   const [query, setQuery] = useState({ from: initialFrom, to: initialTo });
   const stopNames = useMemo(() => allStopNames(data), [data]);
+  const stopHints = useMemo(() => stopHintsOf(data), [data]);
 
   // First visit with no query: default to the operator's main route.
   useEffect(() => {
@@ -143,26 +145,55 @@ function SearchPageInner() {
   }, [ready, data, query.from, query.to]);
 
   const loading = !ready;
-  const schedules = useMemo<Schedule[]>(
-    () => (ready && query.from && query.to ? findTrips(data, query.from, query.to, date).map(toSchedule) : []),
+  // The bus between the two stops as typed.
+  const direct = useMemo(
+    () => (ready && query.from && query.to ? findTrips(data, query.from, query.to, date) : []),
     [data, ready, query, date],
   );
 
   // When nothing runs on the chosen date, point to the next day that does.
   const nextRunDate = useMemo(() => {
-    if (!ready || !query.from || !query.to || schedules.length > 0) return null;
+    if (!ready || !query.from || !query.to || direct.length > 0) return null;
     for (let i = 1; i <= 14; i++) {
       const d = addDays(date, i);
       if (findTrips(data, query.from, query.to, d).some((trip) => !trip.closed)) return d;
     }
     return null;
-  }, [ready, data, query, date, schedules.length]);
+  }, [ready, data, query, date, direct.length]);
+
+  // A typed place that isn't one of our stops ("Colombo" when the stop is
+  // "Technical Junction"): find it on the map, then the nearest stops.
+  const isStop = useCallback((n: string) => data.routes.some((r) => r.stops.some((x) => !x.hidden && x.name.trim().toLowerCase() === n.trim().toLowerCase())), [data.routes]);
+  const [places, setPlaces] = useState<{ key: string; from: Place | null; to: Place | null; busy: boolean }>({ key: '', from: null, to: null, busy: false });
+  const placeKey = `${query.from}|${query.to}`;
+  useEffect(() => {
+    if (!ready || !query.from || !query.to || direct.length > 0 || nextRunDate) return;
+    const needFrom = !isStop(query.from);
+    const needTo = !isStop(query.to);
+    if (!needFrom && !needTo) return;
+    const ctl = new AbortController();
+    setPlaces({ key: placeKey, from: null, to: null, busy: true });
+    Promise.all([needFrom ? geocodePlace(query.from, ctl.signal) : null, needTo ? geocodePlace(query.to, ctl.signal) : null]).then(([f, t]) => {
+      if (!ctl.signal.aborted) setPlaces({ key: placeKey, from: f, to: t, busy: false });
+    });
+    return () => ctl.abort();
+  }, [ready, query.from, query.to, placeKey, direct.length, nextRunDate, isStop]);
+  const looked = places.key === placeKey ? places : { from: null, to: null, busy: false };
 
   // No bus between the stops as typed: the nearest stops on a bus that runs.
   const nearby = useMemo(
-    () => (ready && query.from && query.to && schedules.length === 0 ? nearbyOptions(data, query.from, query.to, date) : []),
-    [ready, data, query, date, schedules.length],
+    () => (ready && query.from && query.to && direct.length === 0 ? nearbyOptions(data, query.from, query.to, date, 40, { from: looked.from, to: looked.to }) : []),
+    [ready, data, query, date, direct.length, looked.from, looked.to],
   );
+  // Close by and running that day: show those buses straight away, and say so.
+  const auto = direct.length === 0 && !nextRunDate && nearby[0] && nearby[0].date === date && nearby[0].fromKm <= 25 && nearby[0].toKm <= 25 ? nearby[0] : null;
+  const shownFrom = auto ? auto.from : query.from;
+  const shownTo = auto ? auto.to : query.to;
+  const schedules = useMemo<Schedule[]>(
+    () => (direct.length ? direct : auto ? findTrips(data, auto.from, auto.to, date) : []).map(toSchedule),
+    [direct, auto, data, date],
+  );
+
   const pickNearby = (o: NearbyOption) => {
     setFrom(o.from);
     setTo(o.to);
@@ -252,8 +283,8 @@ function SearchPageInner() {
     setBusTypeFilter('all');
   };
 
-  const fromCode = cityCode(query.from);
-  const toCode = cityCode(query.to);
+  const fromCode = cityCode(shownFrom);
+  const toCode = cityCode(shownTo);
 
   const activeFilterCount = busTypeFilter !== 'all' ? 1 : 0;
 
@@ -430,6 +461,7 @@ function SearchPageInner() {
                     value={from}
                     onChange={setFrom}
                     options={stopNames}
+                    hints={stopHints}
                     ariaLabel={tx('Boarding point')}
                     onEnter={runSearch}
                     icon={<MapPin className="w-3.5 h-3.5 sm:w-5 sm:h-5 absolute left-2.5 sm:left-4 top-1/2 -translate-y-1/2 text-[#c7c5d1] pointer-events-none z-[1]" />}
@@ -453,6 +485,7 @@ function SearchPageInner() {
                     value={to}
                     onChange={setTo}
                     options={stopNames}
+                    hints={stopHints}
                     ariaLabel={tx('Drop-off point')}
                     onEnter={runSearch}
                     align="right"
@@ -617,13 +650,24 @@ function SearchPageInner() {
           <div className="p-4 sm:p-6 md:p-8">
             <div className="flex justify-between items-center mb-6 sm:mb-8 px-1 sm:px-2 flex-wrap gap-2">
               <h1 className="text-lg sm:text-xl font-bold text-[#050a44]">
-                {t('Buses from {from} to {to}', { from: query.from, to: query.to })}
+                {t('Buses from {from} to {to}', { from: shownFrom, to: shownTo })}
               </h1>
               <span className="text-sm font-semibold text-[#46464f]">{txn(filteredSchedules.length, '{n} result found', '{n} results found')}
               </span>
             </div>
 
-            {loading ? (
+            {auto && (
+              <div className="mb-6 rounded-2xl border border-[#feb700]/50 bg-[#feb700]/10 px-4 py-3 text-[14px] text-[#46464f] flex items-start gap-3">
+                <MapPin className="w-5 h-5 text-[#7c5800] shrink-0 mt-0.5" />
+                <span className="flex-1">
+                  {auto.fromKm > 0 && <span className="block">{tx('We don’t stop at “{place}” by that name. Nearest stop: {stop}, about {km} km away.', { place: query.from, stop: auto.from, km: auto.fromKm })}</span>}
+                  {auto.toKm > 0 && <span className="block">{tx('We don’t stop at “{place}” by that name. Nearest stop: {stop}, about {km} km away.', { place: query.to, stop: auto.to, km: auto.toKm })}</span>}
+                  {auto.fromKm === 0 && auto.toKm === 0 && <span className="block">{tx('Showing the nearest stops we have.')}</span>}
+                </span>
+                <button onClick={() => pickNearby(auto)} className="shrink-0 text-[13px] font-bold text-[#050a44] underline">{tx('Use these stops')}</button>
+              </div>
+            )}
+            {loading || (looked.busy && direct.length === 0 && !nextRunDate) ? (
               <div className="flex items-center justify-center py-24">
                 <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#edeef0] border-t-[#050a44]"></div>
               </div>
@@ -653,7 +697,9 @@ function SearchPageInner() {
                     className="mt-5 px-6 py-3 bg-[#050a44] text-white rounded-xl text-sm font-bold hover:opacity-90"
                   >{tx('Next bus: {date}', { date: formatDateLabel(nextRunDate, false) })}</button>
                 ) : (
-                  <p className="text-[#46464f] text-sm mt-2">{tx('We stop at {stopNames}. Check the spelling of your stops.', { stopNames: stopNames.join(', ') })}</p>
+                  <p className="text-[#46464f] text-sm mt-2">{(!isStop(query.from) && !looked.from) || (!isStop(query.to) && !looked.to)
+                    ? tx('We couldn’t find {place} on the map. We stop at {stopNames}.', { place: !isStop(query.from) && !looked.from ? query.from : query.to, stopNames: stopNames.join(', ') })
+                    : tx('No bus of ours runs near both places. We stop at {stopNames}.', { stopNames: stopNames.join(', ') })}</p>
                 )}
               </div>
             ) : filteredSchedules.length === 0 ? (

@@ -16,7 +16,7 @@ import { OnRequestChip } from '@/components/OnRequestNotice';
 import { useStore } from '@/lib/store';
 import { StopsMap } from '@/components/StopsMap';
 import { StopPicker } from '@/components/StopPicker';
-import { addDays, allStopNames, tripWay, runningRoutes, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
+import { addDays, allStopNames, stopHintsOf, tripWay, runningRoutes, bookingWindowDays, busCapacity, findTrips, lastBookableDate, formatDateLabel, formatDuration, formatLKR, formatTime12, routeLabel, todayISO } from '@/lib/trips';
 import type { Route, Trip } from '@/lib/types';
 import { useT, N_ } from '@/lib/i18n';
 import { tx } from '@/lib/i18n';
@@ -44,6 +44,7 @@ export default function LandingPage() {
   const router = useRouter();
   const { data, ready } = useStore();
   const stops = useMemo(() => allStopNames(data), [data]);
+  const stopHints = useMemo(() => stopHintsOf(data), [data]);
   // Only routes that are running: a paused or deleted one isn't shown.
   const activeRoutes = useMemo(() => runningRoutes(data), [data]);
   const firstRoute = activeRoutes[0];
@@ -201,7 +202,8 @@ export default function LandingPage() {
                     <label htmlFor="hero-from" className="text-[11px] md:text-[12px] font-semibold text-white/80 ml-1">
                       {t('Boarding point')}
                     </label>
-                    <StopPicker id="hero-from" value={from} onChange={setFrom} options={stops} onEnter={search} placeholder={t('Where from?')} className={inputClass}
+                    <StopPicker id="hero-from" value={from} onChange={setFrom} options={stops}
+                    hints={stopHints} onEnter={search} placeholder={t('Where from?')} className={inputClass}
                       icon={<MapPin className="w-4 h-4 md:w-5 md:h-5 absolute left-3 md:left-[16px] top-1/2 -translate-y-1/2 text-white/60 pointer-events-none z-[1]" />} />
                   </div>
 
@@ -218,7 +220,8 @@ export default function LandingPage() {
                     <label htmlFor="hero-to" className="text-[11px] md:text-[12px] font-semibold text-white/80 ml-1">
                       {t('Drop-off point')}
                     </label>
-                    <StopPicker id="hero-to" value={to} onChange={setTo} options={stops} onEnter={search} align="right" placeholder={t('Where to?')} className={inputClass}
+                    <StopPicker id="hero-to" value={to} onChange={setTo} options={stops}
+                    hints={stopHints} onEnter={search} align="right" placeholder={t('Where to?')} className={inputClass}
                       icon={<Navigation className="w-4 h-4 md:w-5 md:h-5 absolute left-3 md:left-[16px] top-1/2 -translate-y-1/2 text-white/60 pointer-events-none z-[1]" />} />
                   </div>
                 </div>

@@ -179,7 +179,7 @@ export const DEFAULT_SETTINGS: Settings = {
   promoFirstOrder: true,
   promoAppOnly: true,
   paymentsMode: 'demo',
-  bankDetails: 'Bank of Ceylon, Pettah branch · A/C 0077411020 · Siyan Lanka Travels',
+  bankDetails: 'Bank of Ceylon (BOC) · A/C 95572680 · Siyan Lanka',
   holdMinutesCounter: 120,
   holdMinutesBank: 1440,
   rewardEvery: 10,

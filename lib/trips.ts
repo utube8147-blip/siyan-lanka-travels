@@ -640,6 +640,13 @@ export function compressPhoto(file: File, maxSide = 720): Promise<string> {
   });
 }
 
+/** A line to show under each stop in the stop picker: its landmark (e.g. "Bastian Mawatha, Pettah"). */
+export function stopHintsOf(data: StoreData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const r of runningRoutes(data)) for (const s of r.stops) if (!s.hidden && s.landmark && !out[s.name]) out[s.name] = s.landmark;
+  return out;
+}
+
 // ----------------------------------------------------- nearby stop advice ---
 export interface NearbyOption {
   from: string;
@@ -662,12 +669,16 @@ const distKm = (a: { lat: number; lng: number }, b: { lat: number; lng: number }
  * the stops nearest to them on a bus that does run: "board at Kadawatha,
  * 12 km from Katunayake". Places are found on the map from any route's pins.
  */
-export function nearbyOptions(data: StoreData, from: string, to: string, date: string, maxKm = 40): NearbyOption[] {
+export function nearbyOptions(
+  data: StoreData, from: string, to: string, date: string, maxKm = 40,
+  /** Where typed places that aren't stops are (looked up on the map, lib/geocode). */
+  places: { from?: { lat: number; lng: number } | null; to?: { lat: number; lng: number } | null } = {},
+): NearbyOption[] {
   const key = (n: string) => n.trim().toLowerCase();
   const where = new Map<string, { lat: number; lng: number }>();
   for (const r of data.routes) for (const s of r.stops) if (s.lat != null && s.lng != null && !where.has(key(s.name))) where.set(key(s.name), { lat: s.lat, lng: s.lng });
-  const fromAt = where.get(key(from));
-  const toAt = where.get(key(to));
+  const fromAt = where.get(key(from)) ?? places.from ?? undefined;
+  const toAt = where.get(key(to)) ?? places.to ?? undefined;
   const out = new Map<string, NearbyOption>();
   for (const route of runningRoutes(data)) {
     const stops = route.stops.filter((s) => !s.hidden && !s.optional);
