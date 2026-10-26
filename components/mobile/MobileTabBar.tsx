@@ -26,7 +26,8 @@ export function MobileTabBar() {
   const { t } = useT();
   const pathname = usePathname() || '/';
   // Must run before the early return below so hooks stay in the same order.
-  const hidden = useHideOnScroll();
+  // Within 200px of the page bottom the bar always shows (its spacer is there anyway).
+  const hidden = useHideOnScroll({ showNearBottom: 200 });
   if (isFocused(pathname)) return null;
   return (
     <>
