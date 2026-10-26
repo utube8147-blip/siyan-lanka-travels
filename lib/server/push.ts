@@ -8,10 +8,17 @@ import { OPERATOR } from '@/config/operator';
 let configured: boolean | null = null;
 function configure() {
   if (configured !== null) return configured;
-  const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const priv = process.env.VAPID_PRIVATE_KEY;
+  // Pasted keys sometimes carry quotes or spaces: tidy them the same way the browser does.
+  const clean = (v?: string) => (v || '').trim().replace(/^['"]|['"]$/g, '').trim();
+  const pub = clean(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
+  const priv = clean(process.env.VAPID_PRIVATE_KEY);
   if (!pub || !priv) return (configured = false);
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || `mailto:${OPERATOR.contact.email}`, pub, priv);
+  try {
+    webpush.setVapidDetails(clean(process.env.VAPID_SUBJECT) || `mailto:${OPERATOR.contact.email}`, pub, priv);
+  } catch (e) {
+    console.error('Push keys are not valid (check NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY):', (e as Error).message);
+    return (configured = false);
+  }
   return (configured = true);
 }
 export const pushConfigured = () => configure();
