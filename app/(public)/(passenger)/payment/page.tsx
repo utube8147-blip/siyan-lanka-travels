@@ -541,8 +541,8 @@ function PaymentPageInner() {
 
             <div className="grid grid-cols-2 gap-2 mb-[20px]">
               {([
-                { id: 'card' as const, icon: 'credit_card', label: tx('Card or mobile wallet'), sub: cardOpen ? tx('Pay now · {p}% card fee', { p: pub.gatewayFeePercent }) : tx('Not available yet') },
-                { id: 'bank' as const, icon: 'account_balance', label: tx('Bank transfer'), sub: tx('Upload your slip · no card fee') },
+                { id: 'card' as const, icon: 'credit_card', label: tx('Card or mobile wallet'), sub: cardOpen ? tx('Pay now, confirmed straight away') : tx('Not available yet') },
+                { id: 'bank' as const, icon: 'account_balance', label: tx('Bank transfer'), sub: tx('Transfer, then upload your slip') },
               ]).map((m) => {
                 const off = m.id === 'card' && !cardOpen;
                 const on = method === m.id;
@@ -618,7 +618,6 @@ function PaymentPageInner() {
                       ? tx('Test mode on this computer: the next page lets you choose whether the payment goes through. No money moves.')
                       : tx('Demo mode: the payment is simulated and confirmed straight away.')}
                 </p>
-                <p className="mt-2 text-[12px]">{tx('The payment company charges {p}% to process a card or wallet payment; it is added to your total. Bank transfer has no such fee.', { p: pub.gatewayFeePercent })}</p>
               </div>
             )}
           </div>
@@ -693,14 +692,11 @@ function PaymentPageInner() {
                   <span className="font-bold">-{formatLKR(rewardOff)}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-[#46464f]">{tx('Platform fee')}</span>
-                <span className="font-bold">{formatLKR(platformFee)}</span>
-              </div>
-              {gatewayFee > 0 && (
+              {/* One line for the fees (platform fee, plus the card fee when paying by card or wallet). */}
+              {platformFee + gatewayFee > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-[#46464f]">{tx('Card payment fee ({p}%)', { p: pub.gatewayFeePercent })}</span>
-                  <span className="font-bold">{formatLKR(gatewayFee)}</span>
+                  <span className="text-[#46464f]">{tx('Service fee')}</span>
+                  <span className="font-bold">{formatLKR(platformFee + gatewayFee)}</span>
                 </div>
               )}
             </div>

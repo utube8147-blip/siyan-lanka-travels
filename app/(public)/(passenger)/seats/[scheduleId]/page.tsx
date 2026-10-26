@@ -165,7 +165,7 @@ function BookingPageInner() {
 
   const [seatMapOpen, setSeatMapOpen] = useState(false);
   const [timeLeft, setTimeLeft] = useState(HOLD_SECONDS);
-  const [promoApplied, setPromoApplied] = useState(false);
+  const promoApplied = false;
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [bikes, setBikes] = useState<BikeItem[]>([]);
 
@@ -278,7 +278,6 @@ function BookingPageInner() {
   const detailsValid = passengerValid && contactValid;
 
   const seatPrice = trip ? trip.fare : 0;
-  const platformFee = OPERATOR.bookingFee;
   const FEMALE_ONLY_SEATS = trip ? trip.bus.ladiesSeats : [];
   // Seats kept for women on this trip because the seat beside them is booked by a woman travelling alone
   // (Settings → "Seat beside a woman travelling alone"). The database enforces the same rule.
@@ -314,27 +313,12 @@ function BookingPageInner() {
   };
 
   const basePrice = selectedSeats.length * seatPrice;
-  const discount = promoApplied ? Math.round((basePrice * pub.promoPercent) / 100) : 0;
+  // The promo is applied by itself at checkout when it applies (first trip, in the app).
+  const discount = 0;
   const bikeTotal = bikes.reduce((n, b) => n + b.fee, 0);
   const bikeError = bikesProblem(bikes);
-  const totalPrice = selectedSeats.length > 0 ? basePrice - discount + bikeTotal + platformFee : 0;
-
-  const [promoInput, setPromoInput] = useState('');
-  const [promoError, setPromoError] = useState('');
-  const applyPromo = () => {
-    if (promoApplied) {
-      setPromoApplied(false);
-      setPromoInput('');
-      addToast(tx('Promo code removed'), 'info');
-      return;
-    }
-    const typed = promoInput.trim().toUpperCase();
-    if (!typed) return setPromoError(tx('Enter a promo code.'));
-    if (!pub.promoCode || pub.promoPercent <= 0 || typed !== pub.promoCode.toUpperCase()) return setPromoError(tx('That code isn\'t valid.'));
-    setPromoError('');
-    setPromoApplied(true);
-    addToast(tx('{promoCode} applied: {promoPercent}% off the fare.', { promoCode: pub.promoCode, promoPercent: pub.promoPercent }), 'success');
-  };
+  // Fees (platform, and the card fee when paying by card) are added at checkout, in one "Service fee" line.
+  const totalPrice = selectedSeats.length > 0 ? basePrice - discount + bikeTotal : 0;
 
   const canProceedToPayment = detailsValid && selectedSeats.length > 0 && !bikeError;
 
@@ -359,7 +343,6 @@ function BookingPageInner() {
       drop,
       contactPhone: phone ?? '',
       contactEmail: email ?? '',
-      ...(promoApplied && pub.promoCode ? { promo: pub.promoCode } : {}),
     });
     // Bike photos are too big for a URL, so hand them to the payment page via
     // this tab's sessionStorage.
@@ -708,10 +691,7 @@ function BookingPageInner() {
                         <span className="font-bold">{formatLKR(b.fee)}</span>
                       </div>
                     ))}
-                    <div className="flex justify-between">
-                      <span className="text-[#46464f]">{tx('Booking fee')}</span>
-                      <span className="font-bold">{formatLKR(platformFee)}</span>
-                    </div>
+                    <p className="text-[12px] text-[#46464f]">{tx('A small service fee is added at checkout.')}</p>
                   </div>
 
                   <div className="bg-[#f2f4f6] rounded-xl p-[20px] mb-[24px]">
@@ -757,33 +737,6 @@ function BookingPageInner() {
               </p>
             </div>
 
-            <div className="bg-[#e1e2e4] rounded-xl p-[24px] border border-[#c7c5d1] flex items-center justify-between">
-              <div className="flex items-center space-x-[16px]">
-                <div className="w-10 h-10 bg-[#0f144c] rounded-full flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[#7a7fbb]">sell</span>
-                </div>
-                <div className="min-w-0">
-                  <label htmlFor="promo-code" className="font-bold text-[14px] block">{promoApplied ? tx('{promoCode} applied', { promoCode: pub.promoCode }) : tx('Have a promo code?')}</label>
-                  {promoApplied ? (
-                    <p className="text-[12px] font-medium text-[#006e1c]">{tx('{promoPercent}% off the fare: you save {amount}', { promoPercent: pub.promoPercent, amount: formatLKR(discount) })}</p>
-                  ) : (
-                    <input
-                      id="promo-code"
-                      value={promoInput}
-                      onChange={(e) => { setPromoInput(e.target.value.toUpperCase().replace(/\s/g, '')); setPromoError(''); }}
-                      onKeyDown={(e) => e.key === 'Enter' && applyPromo()}
-                      placeholder={tx('Enter code')}
-                      autoCapitalize="characters"
-                      className="mt-1 w-full max-w-[220px] px-3 py-2 bg-white rounded-lg text-sm font-bold tracking-wide outline-none focus:ring-1 focus:ring-[#050a44] placeholder:font-normal placeholder:tracking-normal placeholder:text-[#9a9ba5]"
-                    />
-                  )}
-                  {promoError && <p role="alert" className="mt-1 text-[12px] font-semibold text-[#ba1a1a]">{promoError}</p>}
-                </div>
-              </div>
-              <button onClick={applyPromo} className="text-[#000000] font-bold text-[14px] hover:underline transition-all shrink-0 ml-3">
-                {promoApplied ? tx('Remove') : tx('Apply')}
-              </button>
-            </div>
           </div>
         </div>
       </main>

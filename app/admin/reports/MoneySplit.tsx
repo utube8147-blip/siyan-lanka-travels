@@ -5,7 +5,7 @@
 // end of the month). Counted on the day the money came in; test bookings left out.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Card, PageHeader } from '@/components/admin/ui';
+import { Card, PageHeader, inputClass } from '@/components/admin/ui';
 import { useStore } from '@/lib/store';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase/client';
 import { formatLKR } from '@/lib/trips';
@@ -53,43 +53,60 @@ export default function MoneySplit() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Where the money goes" description="What passengers paid each month, split into the ticket, the card fee and the platform fee. Counted on the day the money came in; test bookings left out." />
+      <PageHeader title="Where the money goes" description="Each month: what passengers paid, the platform payout, the payment gateway's cut and what the bus company keeps. Counted on the day the money came in; test bookings left out." />
       {error && <Card className="p-4 text-[14px] text-[#ba1a1a] font-semibold">{error}</Card>}
 
-      {sel && (
-        <Card className="p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h2 className="text-[18px] font-bold text-[#050a44]">{monthName(sel.month)}</h2>
-            <select value={sel.month} onChange={(e) => setPick(e.target.value)} className="h-10 px-3 rounded-xl border border-[#e1e2e4] bg-white text-[14px] font-semibold text-[#050a44]">
-              {list.map((r) => <option key={r.month} value={r.month}>{monthName(r.month)}</option>)}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { k: 'Collected from passengers', v: sel.collected, note: `${sel.bookings} booking${sel.bookings === 1 ? '' : 's'} · ${sel.seats} seat${sel.seats === 1 ? '' : 's'}`, tone: 'bg-[#f2f4f6] text-[#050a44]' },
-              { k: 'Tickets (bus company)', v: sel.tickets, note: sel.refunds ? `${formatLKR(sel.refunds)} refunded from this` : 'fares, bikes, less discounts', tone: 'bg-[#dcfce7] text-[#166534]' },
-              { k: 'Card fees (payment gateway)', v: sel.gateway_fees, note: 'kept by the gateway', tone: 'bg-[#dbeafe] text-[#1e40af]' },
-              { k: 'Platform fees (to pay out)', v: sel.platform_fees, note: 'paid to the platform at month end', tone: 'bg-[#fff3cc] text-[#7c5800]' },
-            ].map((t) => (
-              <div key={t.k} className={`rounded-2xl p-4 ${t.tone}`}>
-                <p className="text-[12px] font-semibold opacity-80">{t.k}</p>
-                <p className="text-[22px] font-extrabold mt-1">{formatLKR(t.v)}</p>
-                <p className="text-[12px] opacity-80 mt-0.5">{t.note}</p>
-              </div>
-            ))}
-          </div>
-          {sel.collected > 0 && (
-            <div className="mt-4">
-              <div className="h-3 rounded-full overflow-hidden flex bg-[#f2f4f6]" aria-hidden>
-                <span className="bg-[#16a34a]" style={{ width: `${(sel.tickets / sel.collected) * 100}%` }} />
-                <span className="bg-[#2563eb]" style={{ width: `${(sel.gateway_fees / sel.collected) * 100}%` }} />
-                <span className="bg-[#feb700]" style={{ width: `${(sel.platform_fees / sel.collected) * 100}%` }} />
-              </div>
-              <p className="text-[12px] text-[#46464f] mt-2">Platform payout for {monthName(sel.month)}: <b className="text-[#050a44]">{formatLKR(sel.platform_fees)}</b>{sel.refunds ? `. Refunds come out of the ticket part; the fees aren't refunded.` : '.'}</p>
+      {sel && (() => {
+        const each = sel.bookings && sel.platform_fees % sel.bookings === 0 ? sel.platform_fees / sel.bookings : null;
+        const pct = (v: number) => (sel.collected ? `${Math.round((v / sel.collected) * 100)}%` : '');
+        const lines: { sign: string; k: string; v: number; dot: string; note?: string; strong?: boolean }[] = [
+          { sign: '', k: 'Collected from passengers', v: sel.collected, dot: 'bg-[#64748b]', note: `${sel.bookings} booking${sel.bookings === 1 ? '' : 's'} · ${sel.seats} seat${sel.seats === 1 ? '' : 's'}` },
+          { sign: '−', k: 'Card fees (kept by the payment gateway)', v: sel.gateway_fees, dot: 'bg-[#3b82f6]', note: pct(sel.gateway_fees) },
+          { sign: '−', k: 'Platform fees (your payout)', v: sel.platform_fees, dot: 'bg-[#f59e0b]', note: pct(sel.platform_fees) },
+          { sign: '=', k: 'Tickets (bus company)', v: sel.tickets, dot: 'bg-[#22c55e]', note: pct(sel.tickets), strong: true },
+          ...(sel.refunds ? [
+            { sign: '−', k: 'Refunds paid back to passengers', v: sel.refunds, dot: 'bg-[#ef4444]' },
+            { sign: '=', k: 'Bus company keeps', v: sel.tickets - sel.refunds, dot: 'bg-[#22c55e]', strong: true },
+          ] : []),
+        ];
+        return (
+          <Card className="p-5 md:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <h2 className="text-[18px] font-bold text-[#050a44]">{monthName(sel.month)}</h2>
+              <select value={sel.month} onChange={(e) => setPick(e.target.value)} aria-label="Month" className={`${inputClass} !w-auto`}>
+                {list.map((r) => <option key={r.month} value={r.month}>{monthName(r.month)}</option>)}
+              </select>
             </div>
-          )}
-        </Card>
-      )}
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-5">
+              {/* The payout: what the platform is owed for the month */}
+              <div className="rounded-2xl border border-[#f59e0b]/40 bg-[#f59e0b]/10 p-5 lg:self-start">
+                <p className="text-[13px] font-semibold text-[#46464f]">Platform payout for {monthName(sel.month)}</p>
+                <p className="text-[34px] leading-tight font-extrabold text-[#050a44] mt-1 tabular-nums">{formatLKR(sel.platform_fees)}</p>
+                <p className="text-[13px] text-[#46464f] mt-2">
+                  {each != null
+                    ? <>The platform fee on {sel.bookings} paid booking{sel.bookings === 1 ? '' : 's'}: <b className="text-[#050a44]">{sel.bookings} × {formatLKR(each)}</b>.</>
+                    : <>The platform fee on {sel.bookings} paid bookings (the fee changed during the month).</>}
+                </p>
+                <p className="text-[12px] text-[#46464f] mt-4 pt-3 border-t border-[#f59e0b]/30">Paid to the platform at the end of the month. Each booking pays the fee set in Settings when it was made; it isn&apos;t refunded if the trip is cancelled.</p>
+              </div>
+              {/* How the month's money splits */}
+              <div>
+                <p className="text-[13px] font-semibold text-[#46464f] mb-2">How it splits</p>
+                <ul className="divide-y divide-[#edeef0] rounded-2xl border border-[#e1e2e4]">
+                  {lines.map((l) => (
+                    <li key={l.k} className={`flex items-center gap-3 px-4 py-3 ${l.strong ? 'font-bold' : ''}`}>
+                      <span className="w-4 text-center text-[#46464f] font-bold">{l.sign}</span>
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${l.dot}`} aria-hidden />
+                      <span className="flex-1 min-w-0 text-[14px] text-[#050a44]">{l.k}{l.note && <span className="block text-[12px] font-normal text-[#46464f]">{l.note}</span>}</span>
+                      <span className="text-[15px] tabular-nums text-[#050a44]">{formatLKR(l.v)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
 
       <Card className="p-0 overflow-x-auto">
         <table className="w-full text-[14px] min-w-[720px]">
@@ -99,7 +116,7 @@ export default function MoneySplit() {
               <th className="px-4 py-3 text-right">Bookings</th>
               <th className="px-4 py-3 text-right">Tickets</th>
               <th className="px-4 py-3 text-right">Card fees</th>
-              <th className="px-4 py-3 text-right">Platform fees</th>
+              <th className="px-4 py-3 text-right">Platform payout</th>
               <th className="px-4 py-3 text-right">Refunded</th>
               <th className="px-4 py-3 text-right">Collected</th>
             </tr>
@@ -107,12 +124,12 @@ export default function MoneySplit() {
           <tbody className="divide-y divide-[#edeef0]">
             {list.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-[#46464f]">{isSupabaseConfigured && rows === null && !error ? 'Loading…' : 'No paid bookings yet.'}</td></tr>}
             {list.map((r) => (
-              <tr key={r.month} className={r.month === sel?.month ? 'bg-[#fff8e1]' : ''}>
+              <tr key={r.month} onClick={() => setPick(r.month)} className={`cursor-pointer ${r.month === sel?.month ? 'bg-[#f59e0b]/10' : 'hover:bg-[#f8f9fb]'}`}>
                 <td className="px-4 py-3 font-semibold text-[#050a44]">{monthName(r.month)}</td>
                 <td className="px-4 py-3 text-right">{r.bookings}</td>
                 <td className="px-4 py-3 text-right">{formatLKR(r.tickets)}</td>
                 <td className="px-4 py-3 text-right">{formatLKR(r.gateway_fees)}</td>
-                <td className="px-4 py-3 text-right font-bold text-[#7c5800]">{formatLKR(r.platform_fees)}</td>
+                <td className="px-4 py-3 text-right font-bold text-[#050a44]">{formatLKR(r.platform_fees)}</td>
                 <td className="px-4 py-3 text-right">{r.refunds ? formatLKR(r.refunds) : '–'}</td>
                 <td className="px-4 py-3 text-right font-bold text-[#050a44]">{formatLKR(r.collected)}</td>
               </tr>
@@ -123,7 +140,7 @@ export default function MoneySplit() {
                 <td />
                 <td className="px-4 py-3 text-right">{formatLKR(total.tickets)}</td>
                 <td className="px-4 py-3 text-right">{formatLKR(total.gateway)}</td>
-                <td className="px-4 py-3 text-right text-[#7c5800]">{formatLKR(total.platform)}</td>
+                <td className="px-4 py-3 text-right">{formatLKR(total.platform)}</td>
                 <td />
                 <td className="px-4 py-3 text-right">{formatLKR(total.collected)}</td>
               </tr>
