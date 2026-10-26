@@ -2,11 +2,11 @@
 // Install buttons. Only rendered when the browser can actually install the
 // app (Chrome/Edge/Samsung: native prompt; iPhone: Share → Add to Home Screen).
 //   variant="footer" — gold button with text
-//   variant="icon"   — round header icon
+//   variant="icon"   — labelled pill for the header ("Get the app")
 //   variant="menu"   — row in the account menu
 
 import { useState } from 'react';
-import { Download, Share, X } from 'lucide-react';
+import { Download, Share, Smartphone, X } from 'lucide-react';
 import { useInstall } from '@/lib/pwa';
 import { useT, txr } from '@/lib/i18n';
 import { tx } from '@/lib/i18n';
@@ -57,10 +57,14 @@ export function InstallAppButton({ variant = 'footer', className = '', onDone }:
         type="button"
         onClick={go}
         aria-label={tx('Install the app')}
-        title={tx('Install the app')}
-        className={`w-10 h-10 rounded-full flex items-center justify-center text-[#7c5800] hover:bg-[#f2f4f6] transition-colors ${className}`}
+        title={tx('Install the app: book faster, works offline')}
+        className={`install-pill group inline-flex items-center gap-2 h-9 pl-1 pr-3 rounded-full border border-[#feb700]/60 bg-[#fff8e1] text-[#050a44] text-[13px] font-bold whitespace-nowrap hover:bg-[#feb700] hover:border-[#feb700] active:scale-95 transition-all shadow-sm ${className}`}
       >
-        <Download className="w-5 h-5" />
+        <span className="w-7 h-7 rounded-full bg-[#feb700] group-hover:bg-[#050a44] text-[#050a44] group-hover:text-[#feb700] flex items-center justify-center transition-colors">
+          <Smartphone className="w-4 h-4" strokeWidth={2.4} />
+        </span>
+        <span className="hidden sm:inline">{t('Get the app')}</span>
+        <span className="sm:hidden">{t('App')}</span>
       </button>
     ) : variant === 'menu' ? (
       <button type="button" onClick={go} className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-[#050a44] hover:bg-[#f2f4f6] transition-all ${className}`}>

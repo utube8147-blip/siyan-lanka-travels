@@ -526,3 +526,7 @@ h4, h5, h6 { font-weight: 600; }
 .conductor-map .leaflet-bar a.leaflet-disabled { background: #18191d; color: rgba(255,255,255,.3); }
 .conductor-map .leaflet-control-attribution { background: rgba(13,14,17,.7) !important; color: rgba(255,255,255,.55) !important; font-size: 9px; border-top-left-radius: 8px; }
 .conductor-map .leaflet-control-attribution a { color: rgba(255,255,255,.75) !important; }
+
+/* Header "Get the app" pill in dark mode */
+html.dark .install-pill { background: rgba(254,183,0,.12) !important; border-color: rgba(254,183,0,.45) !important; color: #fff !important; }
+html.dark .install-pill:hover { background: #feb700 !important; color: #14120a !important; }

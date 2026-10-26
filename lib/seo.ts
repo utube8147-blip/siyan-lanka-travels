@@ -16,14 +16,15 @@ export interface Timetable {
 const SEED_TIMETABLE: Timetable = { buses: SEED_BUSES, routes: SEED_ROUTES, schedules: SEED_SCHEDULES };
 
 /** Timetable for server pages: database when connected (refreshed hourly), else the seed. */
-export async function loadTimetable(): Promise<Timetable> {
+export async function loadTimetable(opts: { fresh?: boolean } = {}): Promise<Timetable> {
   if (!HAS_DB) return SEED_TIMETABLE;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)!;
   const get = async (table: string) => {
-    const res = await fetch(`${url}/rest/v1/${table}?select=*`, {
+    // fresh: a separate, short-lived copy, for a link the hourly copy doesn't know yet.
+    const res = await fetch(`${url}/rest/v1/${table}?select=*${opts.fresh ? '&fresh=1' : ''}`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` },
-      next: { revalidate: 3600, tags: ['timetable'] },
+      next: { revalidate: opts.fresh ? 60 : 3600, tags: ['timetable'] },
     });
     if (!res.ok) throw new Error(`${table}: ${res.status}`);
     return res.json();
@@ -113,6 +114,32 @@ export function allRoutePages(tt: Timetable = SEED_TIMETABLE): RoutePage[] {
 
 export function findRoutePage(slug: string, tt: Timetable = SEED_TIMETABLE) {
   return allRoutePages(tt).find((p) => p.slug === slug);
+}
+
+/**
+ * A route page, looked up so a working link never ends on "page not found":
+ * the hourly timetable first, then a fresh one (a route added or renamed in
+ * the last hour). If there's still no page (a stop in the middle, or an
+ * on-request stop), but both places are stops on some route, the answer is a
+ * search for that trip.
+ */
+export async function resolveRoutePage(slug: string): Promise<{ page: RoutePage; tt: Timetable } | { search: { from: string; to: string } } | null> {
+  let tt = await loadTimetable();
+  let page = findRoutePage(slug, tt);
+  if (!page && HAS_DB) {
+    tt = await loadTimetable({ fresh: true });
+    page = findRoutePage(slug, tt);
+  }
+  if (page) return { page, tt };
+  const names = new Map<string, string>();
+  for (const r of tt.routes) if (!r.archived) for (const st of r.stops) if (!st.hidden) names.set(slugify(st.name), st.name);
+  const parts = slug.split('-to-');
+  for (let k = 1; k < parts.length; k++) {
+    const from = names.get(parts.slice(0, k).join('-to-'));
+    const to = names.get(parts.slice(k).join('-to-'));
+    if (from && to && from !== to) return { search: { from, to } };
+  }
+  return null;
 }
 
 /** A departure's running days in the language in use ("Monday, Friday", "every 3 days"). */

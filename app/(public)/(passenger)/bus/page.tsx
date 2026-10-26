@@ -1,52 +1,63 @@
-// app/(public)/(passenger)/bus/page.tsx — index of every route page.
+// app/(public)/(passenger)/bus/page.tsx — "Bus routes": a trip finder, then
+// each running route with its map, stops, times, fares and bus, and links to
+// the journey pages (/bus/colombo-to-batticaloa …) for search engines.
 import type { Metadata } from 'next';
-import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
 import { allRoutePages, loadTimetable } from '@/lib/seo';
-import { formatDuration, formatLKR } from '@/lib/trips';
 import { Tx } from '@/components/Tx';
-import { N_ } from '@/lib/i18n-core';
+import { RouteGuide, type Guide } from '@/components/RouteGuide';
 
 export const metadata: Metadata = {
   title: 'Bus routes, timetables and fares',
-  description: `All ${OPERATOR.name} routes: Colombo to Kurunegala, Dambulla, Habarana, Polonnaruwa, Batticaloa, Kalmunai and Akkaraipattu, with times and fares.`,
+  description: `All ${OPERATOR.name} routes with every stop, the time the bus gets there, fares, maps and on-request stops.`,
   alternates: { canonical: '/bus' },
 };
 
 export const revalidate = 3600;
 
+const low = (s: string) => s.trim().toLowerCase();
+
 export default async function RoutesIndex() {
-  const pages = allRoutePages(await loadTimetable());
-  const groups = [
-    { title: N_('From Colombo'), items: pages.filter((p) => p.from === 'Colombo') },
-    { title: N_('To Colombo'), items: pages.filter((p) => p.to === 'Colombo') },
-    { title: N_('Between towns'), items: pages.filter((p) => p.from !== 'Colombo' && p.to !== 'Colombo') },
-  ];
+  const tt = await loadTimetable();
+  const pages = allRoutePages(tt);
+  const guides: Guide[] = tt.routes
+    .filter((r) => r.active && !r.archived)
+    .map((r) => {
+      const schedules = tt.schedules
+        .filter((s) => s.routeId === r.id && s.active && !s.archived && tt.buses.find((b) => b.id === s.busId)?.status === 'active')
+        .sort((a, b) => a.departure.localeCompare(b.departure));
+      const stops = r.stops.filter((s) => !s.hidden);
+      const order = stops.map((s) => low(s.name));
+      return {
+        id: r.id,
+        title: r.name?.trim() || `${stops[0]?.name} – ${stops[stops.length - 1]?.name}`,
+        flat: r.flatFare !== false,
+        stops: r.stops.map((s) => ({ ...s, photo: undefined, notes: undefined })),
+        departures: schedules.map((s) => {
+          const bus = tt.buses.find((b) => b.id === s.busId);
+          return {
+            time: s.departure,
+            days: [...s.days],
+            every: s.everyDays && s.everyDays > 1 && s.startDate ? s.everyDays : null,
+            bus: bus ? { name: bus.name, ac: bus.type === 'AC', amenities: bus.amenities ?? [], photo: bus.photos?.[0] ?? null, bikes: (bus.bikeSpaces ?? 0) > 0 } : null,
+          };
+        }),
+        pages: pages
+          .filter((p) => {
+            const i = order.indexOf(low(p.from));
+            const j = order.indexOf(low(p.to));
+            return i >= 0 && j > i;
+          })
+          .map((p) => ({ slug: p.slug, from: p.from, to: p.to })),
+      };
+    })
+    .filter((g) => g.departures.length > 0 && g.stops.filter((s) => !s.hidden).length >= 2);
+
   return (
     <main className="max-w-[1100px] mx-auto px-4 md:px-[48px] py-[32px]">
       <h1 className="text-[32px] md:text-[34px] font-extrabold tracking-tight text-[#050a44]"><Tx k={'Bus routes'} /></h1>
-      <p className="text-[16px] text-[#46464f] mt-2 max-w-2xl"><Tx k={'Route 48 overnight luxury coach between Colombo and the Eastern Province. Pick a journey for its timetable, fare and stops.'} /></p>
-      {groups.map((g) => (
-        <section key={g.title} className="mt-10">
-          <h2 className="text-[20px] font-bold text-[#050a44] mb-4"><Tx k={g.title} /></h2>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {g.items.map((p) => (
-              <li key={p.slug}>
-                <Link href={`/bus/${p.slug}`} className="group flex items-center justify-between gap-3 bg-white rounded-2xl border border-[#e1e2e4] p-4 hover:border-[#050a44] transition-colors">
-                  <span>
-                    <span className="block text-[15px] font-bold text-[#050a44]"><Tx k={'{from} to {to}'} v={{ from: p.from, to: p.to }} /></span>
-                    <span className="block text-[13px] text-[#46464f]">
-                      {formatDuration(p.durationMin)} · {formatLKR(p.fare)}
-                    </span>
-                  </span>
-                  <ArrowRight className="w-5 h-5 text-[#46464f] group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      <p className="text-[16px] text-[#46464f] mt-2 mb-8 max-w-2xl"><Tx k={'Where our buses go, every stop on the way, when the bus gets there and what it costs.'} /></p>
+      {guides.length ? <RouteGuide guides={guides} /> : <p className="text-[15px] text-[#46464f]"><Tx k={'No routes are running right now.'} /></p>}
     </main>
   );
 }

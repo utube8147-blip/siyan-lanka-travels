@@ -4,10 +4,10 @@
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { ArrowRight, Clock, MapPin, Ticket, Bus, ChevronRight } from 'lucide-react';
 import { OPERATOR } from '@/config/operator';
-import { absoluteUrl, allRoutePages, findRoutePage, loadTimetable, routeFaqs, routeSummary, jsonLdScript } from '@/lib/seo';
+import { absoluteUrl, allRoutePages, findRoutePage, loadTimetable, resolveRoutePage, routeFaqs, routeSummary, jsonLdScript } from '@/lib/seo';
 import { N_ } from '@/lib/i18n-core';
 import { RouteDays, RouteFaqs, RouteSummary } from '@/components/RouteTexts';
 import { formatDuration, formatLKR } from '@/lib/trips';
@@ -36,9 +36,10 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function RoutePage({ params }: { params: Promise<{ slug: string }> }) {
-  const tt = await loadTimetable();
-  const p = findRoutePage((await params).slug, tt);
-  if (!p) notFound();
+  const found = await resolveRoutePage((await params).slug);
+  if (!found) notFound();
+  if ('search' in found) redirect(`/search?${new URLSearchParams(found.search).toString()}`);
+  const { page: p, tt } = found;
   const others = allRoutePages(tt).filter((o) => o.slug !== p.slug && (o.from === p.from || o.to === p.to)).slice(0, 8);
   const bookHref = `/search?${new URLSearchParams({ from: p.from, to: p.to }).toString()}`;
   const first = p.departures[0];
